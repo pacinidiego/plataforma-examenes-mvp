@@ -1,0 +1,89 @@
+# Especificación: 18.2 (Stack) y 19 (C4-4)
+# Este archivo le dice a Render cómo construir nuestros 3 servicios.
+
+services:
+  # Servicio 1: La Web App (Django/Gunicorn)
+  # (C4-4: Web Service, Plan Starter)
+  - type: web
+    name: plataforma-web
+    env: python
+    plan: starter # "Starter" para evitar que se suspenda (MVP Hosting)
+    region: oregon
+    buildFilter:
+      paths:
+      - "**.py"
+      - "requirements.txt"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn plataforma.wsgi"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: plataforma-db
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: plataforma-redis
+          property: connectionString
+      - key: CLOUDFLARE_R2_ACCOUNT_ID
+        sync: false # Poner el valor real en el dashboard de Render
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false # Poner el valor real en el dashboard de Render
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false # Poner el valor real en el dashboard de Render
+      - key: CLOUDFLARE_R2_BUCKET_NAME
+        sync: false # Poner el valor real en el dashboard de Render
+      - key: DJANGO_SETTINGS_MODULE
+        value: plataforma.settings
+      - key: PYTHON_VERSION
+        value: 3.12.3 # (Spec 18.2)
+
+  # Servicio 2: El Worker Asíncrono (Celery)
+  # (C4-4: Background Worker, Plan Starter)
+  - type: worker
+    name: plataforma-worker
+    env: python
+    plan: starter
+    region: oregon
+    buildFilter:
+      paths:
+      - "**.py"
+      - "requirements.txt"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "celery -A plataforma worker -l info"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: plataforma-db
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: plataforma-redis
+          property: connectionString
+      - key: CLOUDFLARE_R2_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET_NAME
+        sync: false
+      - key: DJANGO_SETTINGS_MODULE
+        value: plataforma.settings
+      - key: PYTHON_VERSION
+        value: 3.12.3
+
+  # Servicio 3: El Broker de Tareas (Redis)
+  # (C4-4: Redis, free tier)
+  - type: redis
+    name: plataforma-redis
+    plan: free
+    region: oregon
+
+# Base de datos 1: PostgreSQL
+# (C4-4: PostgreSQL, free tier)
+databases:
+  - name: plataforma-db
+    plan: free
+    region: oregon
