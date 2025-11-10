@@ -13,8 +13,12 @@ services:
       paths:
       - "**.py"
       - "requirements.txt"
-    buildCommand: "pip install -r requirements.txt"
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+      python manage.py migrate
     startCommand: "gunicorn plataforma.wsgi"
+    healthCheckPath: /health/
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -25,21 +29,18 @@ services:
           type: redis
           name: plataforma-redis
           property: connectionString
-      - key: CLOUDFLARE_R2_ACCOUNT_ID
-        sync: false # Poner el valor real en el dashboard de Render
-      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
-        sync: false # Poner el valor real en el dashboard de Render
-      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
-        sync: false # Poner el valor real en el dashboard de Render
-      - key: CLOUDFLARE_R2_BUCKET_NAME
-        sync: false # Poner el valor real en el dashboard de Render
-      - key: DJANGO_SETTINGS_MODULE
-        value: plataforma.settings
-      - key: PYTHON_VERSION
-        value: 3.12.3 # (Spec 18.2)
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: 4
+      # ---- ATENCIÓN: Añadir claves de R2 aquí en el Dashboard ----
+      # CLOUDFLARE_R2_ACCOUNT_ID
+      # CLOUDFLARE_R2_ACCESS_KEY_ID
+      # CLOUDFLARE_R2_SECRET_ACCESS_KEY
+      # CLOUDFLARE_R2_BUCKET_NAME
 
   # Servicio 2: El Worker Asíncrono (Celery)
-  # (C4-4: Background Worker, Plan Starter)
+  # (C4-4: Worker, Plan Starter)
   - type: worker
     name: plataforma-worker
     env: python
@@ -61,28 +62,23 @@ services:
           type: redis
           name: plataforma-redis
           property: connectionString
-      - key: CLOUDFLARE_R2_ACCOUNT_ID
-        sync: false
-      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
-        sync: false
-      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: CLOUDFLARE_R2_BUCKET_NAME
-        sync: false
-      - key: DJANGO_SETTINGS_MODULE
-        value: plataforma.settings
-      - key: PYTHON_VERSION
-        value: 3.12.3
+      - key: DJANGO_SECRET_KEY
+        generateValue: true # Usar un valor distinto al de la web
+      # ---- ATENCIÓN: Añadir claves de R2 aquí en el Dashboard ----
 
   # Servicio 3: El Broker de Tareas (Redis)
-  # (C4-4: Redis, free tier)
+  # (C4-4: Broker de Tareas, Plan Free)
   - type: redis
     name: plataforma-redis
     plan: free
     region: oregon
+    # --- !! CORRECCIÓN AÑADIDA AQUÍ !! ---
+    ipAllowList:
+      - ip: 0.0.0.0/0
+        description: "Permitir todas las IPs (MVP)"
 
-# Base de datos 1: PostgreSQL
-# (C4-4: PostgreSQL, free tier)
+# Base de Datos (PostgreSQL)
+# (C4-4: Base de Datos, Plan Free)
 databases:
   - name: plataforma-db
     plan: free
