@@ -6,6 +6,7 @@ Django==5.0.6
 gunicorn==22.0.0
 djangorestframework==3.15.1
 dj-database-url==2.1.0
+psycopg==3.1.19
 
 # Arquitectura Asíncrona (S0a)
 celery==5.4.0
@@ -23,7 +24,7 @@ WeasyPrint==62.1
 opencv-python-headless==4.10.0.82
 pyzbar==0.1.9
 reedsolo==1.7.0
-Pillow==10.3.0
+Pillow==1.0.3.0
 
 # LTI (S5b)
 pylti1p3==2.0.0
