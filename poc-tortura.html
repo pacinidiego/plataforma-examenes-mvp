@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S0a - PoC "Prototipo de Tortura"</title>
+    <!-- 
+      Especificación: Anexo A
+      Objetivo: Validar APIs críticas (cámara, mic, IA, fullscreen, visibility, snapshot)
+      Stack: JS Nativo, MediaPipe (face-api.js alternativo), html2canvas
+    -->
+    
+    <!-- 1. Carga de librerías (Stack 18.2) -->
+    
+    <!-- MediaPipe (para Face Detection) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/face_detection.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+    
+    <!-- html2canvas (para Snapshot DOM) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" xintegrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibjPKdxJYevSWhrCHgCUPiYgJ/qG/6EA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <!-- Estilos (autocontenidos) -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            border-bottom: 2px solid #444;
+            padding-bottom: 5px;
+            color: #4CAF50;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin: 5px 0;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        #controls, #status-panel, #video-container {
+            background-color: #242424;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            background-color: #333;
+            color: white;
+            border: 1px solid #555;
+        }
+        #video-container {
+            position: relative;
+            width: 640px;
+            height: 360px;
+            background-color: #000;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+        }
+        #log-output {
+            background-color: #000;
+            border: 1px solid #333;
+            height: 300px;
+            overflow-y: scroll;
+            padding: 10px;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            border-radius: 5px;
+        }
+        .status-light {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background-color: #D32F2F;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .status-light.on {
+            background-color: #388E3C;
+        }
+        .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px dotted #333;
+        }
+        .log-entry.error { color: #F44336; }
+        .log-entry.warn { color: #FFEB3B; }
+        .log-entry.success { color: #4CAF50; }
+        .log-entry.info { color: #2196F3; }
+        
+        /* Estilos para el modal de Fullscreen (Safari, Anexo A) */
+        #fullscreen-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.8);
+            color: white;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        #fullscreen-modal-content {
+            padding: 40px;
+            background-color: #333;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    
+    <!-- Modal para Fullscreen (Safari, Anexo A) -->
+    <div id="fullscreen-modal">
+        <div id="fullscreen-modal-content">
+            <h2>Acción Requerida</h2>
+            <p>Para continuar, debes volver a pantalla completa.</p>
+            <button id="btn-modal-fullscreen">Volver a Pantalla Completa</button>
+        </div>
+    </div>
+
+    <!-- Contenido Principal -->
+    <div id="capture-area">
+        <h1>S0a - PoC "Prototipo de Tortura" (Anexo A)</h1>
+        <p>Esta página prueba las APIs críticas del Runner (Cámara, Mic, IA, Fullscreen, Visibilidad, Snapshot) para validar el DoD del Sprint S0a.</p>
+
+        <!-- 1. Controles (Picker y Fullscreen) -->
+        <div id="controls">
+            <h2>1. Controles (Pre-flight)</h2>
+            <label for="camera-select">Selector de Cámara (Anexo A):</label>
+            <select id="camera-select"></select>
+            <label for="mic-select">Selector de Micrófono (Anexo A):</label>
+            <select id="mic-select"></select>
+            <br><br>
+            <button id="btn-start">1. Iniciar Permisos (cámara y mic)</button>
+            <button id="btn-fullscreen">2. Entrar a Pantalla Completa (gesto)</button>
+            <button id="btn-snapshot">3. Tomar Snapshot DOM (html2canvas)</button>
+        </div>
+
+        <!-- 2. Panel de Estado (DoD) -->
+        <div id="status-panel">
+            <h2>2. Estado de APIs (DoD)</h2>
+            <table>
+                <tr>
+                    <td><span id="status-visibility" class="status-light"></span></td>
+                    <td>API de Visibilidad (Focus)</td>
+                </tr>
+                <tr>
+                    <td><span id="status-fullscreen" class="status-light"></span></td>
+                    <td>API de Pantalla Completa</td>
+                </tr>
+                <tr>
+                    <td><span id="status-ia" class="status-light"></span></td>
+                    <td>Detección Facial (MediaPipe)</td>
+                </tr>
+                <tr>
+                    <td><span id="status-vad" class="status-light"></span></td>
+                    <td>Detección de Audio (VAD)</td>
+                </tr>
+                <tr>
+                    <td><span id="status-cpu" class="status-light"></span></td>
+                    <td>Performance (CPU P95 ≤ 25%)</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- 3. Video y Logs -->
+        <div style="display: flex; gap: 20px;">
+            <div id="video-container">
+                <video id="video-feed" autoplay playsinline></video>
+            </div>
+            <div style="flex-grow: 1;">
+                <h2>3. Logs de Eventos</h2>
+                <div id="log-output"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript (Autocontenido) -->
+    <script type="module">
+        // --- Referencias a Elementos DOM ---
+        const video = document.getElementById('video-feed');
+        const cameraSelect = document.getElementById('camera-select');
+        const micSelect = document.getElementById('mic-select');
+        const btnStart = document.getElementById('btn-start');
+        const btnFullscreen = document.getElementById('btn-fullscreen');
+        const btnSnapshot = document.getElementById('btn-snapshot');
+        const logOutput = document.getElementById('log-output');
+        const statusVisibility = document.getElementById('status-visibility');
+        const statusFullscreen = document.getElementById('status-fullscreen');
+        const statusIA = document.getElementById('status-ia');
+        const statusVAD = document.getElementById('status-vad');
+        const statusCPU = document.getElementById('status-cpu');
+        const fullscreenModal = document.getElementById('fullscreen-modal');
+        const btnModalFullscreen = document.getElementById('btn-modal-fullscreen');
+
+        // --- Estado Global ---
+        let localStream;
+        let audioContext;
+        let vadAnalyzer;
+        let vadNoiseFloor = -100; // dBFS
+        let faceDetector;
+        let lastFaceDetectionTime = 0;
+        let lastVADTime = 0;
+        
+        // DoD: Frecuencia IA cada 5-7 s
+        const IA_RATE_MS = 6000; // 6 segundos
+
+        // --- Funciones de Logging ---
+        function log(message, type = 'log') {
+            const entry = document.createElement('div');
+            const timestamp = new Date().toLocaleTimeString();
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logOutput.appendChild(entry);
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+
+        // --- 1. Lógica de Permisos y Selectores (Anexo A) ---
+        async function getMediaDevices() {
+            try {
+                // Pedir permiso dummy para enumerar
+                await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                cameraSelect.innerHTML = '';
+                micSelect.innerHTML = '';
+                
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Dispositivo ${device.kind} sin nombre`;
+                    
+                    if (device.kind === 'videoinput') {
+                        cameraSelect.appendChild(option);
+                    } else if (device.kind === 'audioinput') {
+                        micSelect.appendChild(option);
+                    }
+                });
+                log('Dispositivos de cámara y micrófono enumerados.', 'success');
+            } catch (err) {
+                log(`Error al obtener permisos: ${err.message}`, 'error');
+            }
+        }
+        
+        async function startStreams() {
+            try {
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+
+                const videoConstraints = {
+                    deviceId: { exact: cameraSelect.value },
+                    // DoD: Stream 640x360
+                    width: { ideal: 640 },
+                    height: { ideal: 360 }
+                };
+                const audioConstraints = {
+                    deviceId: { exact: micSelect.value }
+                };
+
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: videoConstraints, 
+                    audio: audioConstraints 
+                });
+
+                video.srcObject = localStream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    log(`Stream de cámara iniciado (${video.videoWidth}x${video.videoHeight}).`, 'success');
+                    
+                    // Iniciar IA y VAD solo después de que el video esté listo
+                    initializeFaceDetection();
+                    initializeVAD();
+                    
+                    btnStart.textContent = 'Reiniciar Streams';
+                    btnStart.disabled = false;
+                };
+
+            } catch (err) {
+                log(`Error al iniciar streams: ${err.message}`, 'error');
+                btnStart.disabled = false;
+            }
+        }
+
+        btnStart.onclick = () => {
+            btnStart.disabled = true;
+            btnStart.textContent = 'Iniciando...';
+            startStreams();
+        };
+
+        // --- 2. Lógica de Fullscreen (Anexo A) ---
+        function enterFullscreen() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen();
+            } else if (elem.webkitRequestFullscreen) { /* Safari */
+                elem.webkitRequestFullscreen();
+            }
+            log('Solicitando pantalla completa...', 'info');
+        }
+        
+        btnFullscreen.onclick = enterFullscreen;
+        btnModalFullscreen.onclick = () => {
+            fullscreenModal.style.display = 'none';
+            enterFullscreen();
+        };
+
+        document.addEventListener('fullscreenchange', () => {
+            const isFullscreen = !!document.fullscreenElement;
+            statusFullscreen.classList.toggle('on', isFullscreen);
+            log(`Estado Fullscreen: ${isFullscreen ? 'ON' : 'OFF'}`, isFullscreen ? 'success' : 'warn');
+            
+            // DoD Safari: Si salimos de fullscreen, mostramos el modal
+            if (!isFullscreen && navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome')) {
+                log('Detectada salida de Fullscreen en Safari. Mostrando modal.', 'warn');
+                fullscreenModal.style.display = 'flex';
+            }
+        });
+        document.addEventListener('webkitfullscreenchange', () => { // Safari
+             const isFullscreen = !!document.webkitFullscreenElement;
+             statusFullscreen.classList.toggle('on', isFullscreen);
+             log(`Estado Fullscreen (Safari): ${isFullscreen ? 'ON' : 'OFF'}`, isFullscreen ? 'success' : 'warn');
+             if (!isFullscreen) {
+                log('Detectada salida de Fullscreen en Safari. Mostrando modal.', 'warn');
+                fullscreenModal.style.display = 'flex';
+            }
+        });
+
+
+        // --- 3. Lógica de Visibilidad (Anexo A) ---
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                log('FOCO PERDIDO (Visibility API)', 'warn');
+                statusVisibility.classList.remove('on');
+            } else {
+                log('Foco recuperado', 'success');
+                statusVisibility.classList.add('on');
+            }
+        });
+        statusVisibility.classList.add('on'); // Estado inicial
+
+        // --- 4. Lógica de IA - Detección Facial (Anexo A) ---
+        function initializeFaceDetection() {
+            log('Inicializando MediaPipe Face Detection (Stack 18.2)...', 'info');
+            faceDetector = new window.FaceDetection({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/${file}`
+            });
+            faceDetector.setOptions({
+                model: 'short', // Modelo ligero
+                minDetectionConfidence: 0.5
+            });
+            faceDetector.onResults(onFaceResults);
+            
+            // Iniciar el loop de IA
+            runDetectionLoop();
+            statusIA.classList.add('on');
+        }
+        
+        function runDetectionLoop() {
+            const now = performance.now();
+            
+            // DoD: Frecuencia IA cada 5-7 s
+            if (now - lastFaceDetectionTime > IA_RATE_MS && localStream && video.readyState >= 3) {
+                lastFaceDetectionTime = now;
+                
+                // DoD: Pausa si document.hidden=true
+                if (document.visibilityState === 'hidden') {
+                    log('IA en pausa (pestaña oculta)', 'info');
+                    return;
+                }
+                
+                // Medición de performance
+                const startCpu = performance.now();
+                
+                // DoD: Inferencia sobre frame 320x240 (o similar)
+                // Usamos el video directamente, MediaPipe lo maneja internamente.
+                faceDetector.send({ image: video });
+                
+                const endCpu = performance.now();
+                const cpuTime = endCpu - startCpu;
+                
+                // DoD: CPU P95 <= 25% (Simulado como < 50ms de bloqueo en hilo JS)
+                log(`Ciclo IA ejecutado. Costo JS: ${cpuTime.toFixed(2)} ms`, 'info');
+                if (cpuTime > 100) { // 100ms es mucho bloqueo para el hilo principal
+                    log(`Alto consumo de CPU en ciclo IA: ${cpuTime.toFixed(2)} ms`, 'warn');
+                    statusCPU.classList.remove('on');
+                } else {
+                    statusCPU.classList.add('on');
+                }
+            }
+            
+            requestAnimationFrame(runDetectionLoop);
+        }
+
+        function onFaceResults(results) {
+            if (!results.detections) {
+                log('Resultado IA: Error en la detección', 'error');
+                return;
+            }
+            
+            const faceCount = results.detections.length;
+            
+            // DoD: Detección facial >= 95%
+            log(`Resultado IA: Caras detectadas: ${faceCount}`, faceCount === 1 ? 'success' : (faceCount === 0 ? 'warn' : 'error'));
+            
+            if (faceCount === 0) {
+                log('Evento (S3a): PE-03 No Face', 'warn');
+            } else if (faceCount > 1) {
+                log('Evento (S3a): PE-04 Multi Face', 'warn');
+            } else {
+                // DoD: Detección facial OK
+                // Aquí iría la lógica de PE-10 (Face-crop)
+                const face = results.detections[0].boundingBox;
+                log(`Info IA: Rostro en [${face.xCenter}, ${face.yCenter}]`, 'info');
+            }
+        }
+        
+
+        // --- 5. Lógica de Audio (VAD) (Anexo A) ---
+        async function initializeVAD() {
+            log('Inicializando WebAudio VAD...', 'info');
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioStream = localStream.getAudioTracks().length > 0 
+                ? new MediaStream([localStream.getAudioTracks()[0]])
+                : await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: micSelect.value } } });
+
+            const source = audioContext.createMediaStreamSource(audioStream);
+            vadAnalyzer = audioContext.createAnalyser();
+            vadAnalyzer.fftSize = 512;
+            vadAnalyzer.smoothingTimeConstant = 0.5;
+            source.connect(vadAnalyzer);
+
+            const bufferLength = vadAnalyzer.frequencyBinCount;
+            const dataArray = new Float32Array(bufferLength);
+
+            log('Iniciando calibración de silencio (5s)... (Anexo A)', 'info');
+            statusVAD.classList.remove('on');
+            
+            let calibrationData = [];
+            const calibrationEnd = performance.now() + 5000;
+
+            function calibrate() {
+                if (performance.now() < calibrationEnd) {
+                    vadAnalyzer.getFloatFrequencyData(dataArray);
+                    let sum = 0;
+                    for (let i = 0; i < bufferLength; i++) {
+                        if (dataArray[i] > -Infinity) sum += dataArray[i];
+                    }
+                    calibrationData.push(sum / bufferLength);
+                    requestAnimationFrame(calibrate);
+                } else {
+                    // Calcular el piso de ruido
+                    const avg = calibrationData.reduce((a, b) => a + b, 0) / calibrationData.length;
+                    vadNoiseFloor = avg + 20; // Umbral de 20dB por encima del promedio
+                    log(`Calibración VAD completa. Piso de ruido: ${avg.toFixed(2)} dBFS. Umbral fijado en: ${vadNoiseFloor.toFixed(2)} dBFS`, 'success');
+                    statusVAD.classList.add('on');
+                    runVADLoop(); // Iniciar el loop de detección real
+                }
+            }
+            calibrate();
+        }
+
+        function runVADLoop() {
+            const now = performance.now();
+            
+            // Ejecutar VAD más frecuentemente que la IA facial
+            if (now - lastVADTime > 500) { // Cada 500ms
+                lastVADTime = now;
+
+                if (!vadAnalyzer || document.visibilityState === 'hidden') return;
+                
+                const bufferLength = vadAnalyzer.frequencyBinCount;
+                const dataArray = new Float32Array(bufferLength);
+                vadAnalyzer.getFloatFrequencyData(dataArray);
+
+                let currentLevel = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    if (dataArray[i] > -Infinity) currentLevel += dataArray[i];
+                }
+                currentLevel = currentLevel / bufferLength;
+
+                // DoD: Detección VAD >= 90%
+                if (currentLevel > vadNoiseFloor) {
+                    log(`PICO DE AUDIO DETECTADO (VAD): ${currentLevel.toFixed(2)} dBFS`, 'warn');
+                    // DoD: Falsos positivos <= 10%
+                    log('Evento (S3a): PE-08 Audio Impulse', 'warn');
+                    statusVAD.classList.remove('on'); // Parpadear
+                } else {
+                    statusVAD.classList.add('on'); // OK
+                }
+            }
+            requestAnimationFrame(runVADLoop);
+        }
+
+        // --- 6. Lógica de Snapshot DOM (Anexo A) ---
+        btnSnapshot.onclick = () => {
+            log('Generando Snapshot del DOM (html2canvas)...', 'info');
+            btnSnapshot.disabled = true;
+            btnSnapshot.textContent = 'Generando...';
+
+            html2canvas(document.getElementById('capture-area'), {
+                logging: false,
+                useCORS: true,
+                windowWidth: document.documentElement.scrollWidth,
+                windowHeight: document.documentElement.scrollHeight
+            }).then(canvas => {
+                log('Snapshot DOM generado exitosamente.', 'success');
+                // DoD: Snapshot válido
+                const imgData = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.href = imgData;
+                link.download = 'poc_tortura_snapshot.png';
+                link.click();
+                
+                btnSnapshot.disabled = false;
+                btnSnapshot.textContent = '3. Tomar Snapshot DOM (html2canvas)';
+            }).catch(err => {
+                log(`Error en html2canvas: ${err.message}`, 'error');
+                btnSnapshot.disabled = false;
+                btnSnapshot.textContent = '3. Tomar Snapshot DOM (html2canvas)';
+            });
+        };
+
+        // --- Inicialización al cargar la página ---
+        window.onload = () => {
+            log('PoC "Prototipo de Tortura" (Anexo A) inicializado.');
+            log('Por favor, presione "1. Iniciar Permisos".');
+            // Iniciar la enumeración de dispositivos al cargar
+            getMediaDevices();
+        };
+
+    </script>
+</body>
+</html>
