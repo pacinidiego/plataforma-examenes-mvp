@@ -1,0 +1,16 @@
+Archivos de Git
+.git/
+Documentación (Spec 20.1)
+Esto le dice a Render que NO copie la carpeta _docs/ al servidor.
+_docs/
+PoC (Anexo A) - No debe ir al servidor
+Esto le dice a Render que ignore el HTML de prueba.
+poc-tortura.html
+Archivos de Python (cache)
+pycache/
+*.pyc
+Base de datos local (si la hubiera)
+*.sqlite3
+Archivos de OS
+.DS_Store
+Thumbs.db
