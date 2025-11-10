@@ -74,7 +74,7 @@ services:
     region: oregon
     # --- !! CORRECCIÓN AÑADIDA AQUÍ !! ---
     ipAllowList:
-      - ip: 0.0.0.0/0
+      - cidr: 0.0.0.0/0
         description: "Permitir todas las IPs (MVP)"
 
 # Base de Datos (PostgreSQL)
