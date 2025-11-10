@@ -107,7 +107,11 @@ USE_TZ = True
 # Configuración para WhiteNoise (Render)
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# ---> ¡LÍNEA CONFLICTIVA ELIMINADA! <---
+# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage' 
+# Esta línea causaba el error "mutually exclusive". 
+# La configuración correcta está abajo, dentro de STORAGES.
 
 
 # Default primary key field type
