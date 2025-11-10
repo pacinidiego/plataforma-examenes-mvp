@@ -72,9 +72,9 @@ services:
     name: plataforma-redis
     plan: free
     region: oregon
-    # --- !! CORRECCIÓN AÑADIDA AQUÍ !! ---
+    # --- !! CORRECCIÓN DEFINITIVA AQUÍ !! ---
     ipAllowList:
-      - cidr: 0.0.0.0/0
+      - source: 0.0.0.0/0
         description: "Permitir todas las IPs (MVP)"
 
 # Base de Datos (PostgreSQL)
