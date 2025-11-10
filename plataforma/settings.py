@@ -43,6 +43,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'storages', # Para R2/S3 (Spec 18.2)
     'django_celery_results', # (Spec 18.2)
+
+    # Apps Propias (S0b)
+    'tenancy.apps.TenancyConfig', # <-- ¡ESTA ES LA LÍNEA NUEVA!
 ]
 
 MIDDLEWARE = [
