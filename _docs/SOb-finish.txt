@@ -1,0 +1,67 @@
+Reporte de Cierre de Sprint: S0b
+Proyecto: Plataforma de Exámenes (MVP) Sprint: S0b — Platform SA Console Fechas del Sprint (Planificadas): 24/11/2025 – 05/12/2025 Fecha de Cierre (Real): 10/11/2025 Estado: COMPLETADO (Adelantado)
+
+1. Resumen Ejecutivo
+El Sprint S0b se ha completado con éxito, cumpliendo el Definition of Done (DoD) clave de la Fase 0: "Crear tenant+admin e invitar 1 docente en < 5 min" (Sección 20.2).
+
+Los objetivos principales del sprint se han alcanzado:
+
+Modelos de Datos (S0b): Se crearon, migraron y desplegaron los modelos Tenant y TenantMembership (Sección 4).
+
+Consola de Admin (S0b): El panel de Django Admin (/admin/) ahora permite al Platform SA (Superusuario) gestionar estos modelos.
+
+Flujo de Provisioning (DoD): Se ha validado exitosamente el flujo manual de crear un Tenant, crear un Usuario Admin, y asignarle el rol de "Admin del Tenant" a través del panel.
+
+El Gate-1 (Provisioning OK) se declara SUPERADO. El proyecto está listo para iniciar la Fase 1 (Sprint S1) con la base de datos y la lógica de roles funcional.
+
+2. Pista 1: Modelos de Datos (Sección 4)
+Objetivo: Crear las tablas tenancy_tenant y tenancy_tenantmembership.
+
+Estado: COMPLETADO
+
+Archivos Creados:
+
+tenancy/models.py
+
+tenancy/admin.py
+
+tenancy/apps.py
+
+tenancy/migrations/0001_initial.py
+
+tenancy/migrations/__init__.py
+
+Archivos Modificados:
+
+plataforma/settings.py (para agregar la app tenancy)
+
+Resultado: El despliegue de Render ejecutó la migración 0001_initial.py sin errores, creando las tablas en la base de datos PostgreSQL.
+
+3. Pista 2: Prueba del DoD (Flujo de Provisioning)
+Objetivo: "Crear tenant+admin e invitar 1 docente en < 5 min" (flujo manual).
+
+Estado: COMPLETADO
+
+3.1. Evidencia de Pruebas (Capturas de Pantalla)
+El flujo se completó manualmente en el panel de admin (/admin/) desplegado en producción:
+
+Prueba de Creación de Superusuario (Platform SA): Éxito.
+
+Evidencia: Se accedió al panel de admin (image_869b16.png).
+
+Prueba de Creación de Tenant (S0b): Éxito.
+
+Evidencia: image_87a6b3.png (Muestra el mensaje "Se agregó con éxito Institución (Tenant) 'Universidad de prueba'").
+
+Prueba de Creación de Usuario (Admin del Tenant): Éxito.
+
+Evidencia: image_880377.png (Muestra el mensaje "Se agregó con éxito usuario 'Admin_tenant'").
+
+Prueba de Asignación de Rol (Membership): Éxito.
+
+Evidencia: image_880bee.png (Muestra el mensaje "Se agregó con éxito Membresía de Institución 'Admin_tenant es Admin del Tenant en Universidad de prueba'").
+
+4. Veredicto y Próximos Pasos
+Veredicto Gate-1: SUPERADO.
+
+Próximo Sprint: S1 - Banco de ítems + Constructor (Inicio: 11/11/2025).
