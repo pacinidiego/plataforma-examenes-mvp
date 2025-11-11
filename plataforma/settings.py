@@ -46,6 +46,8 @@ INSTALLED_APPS = [
 
     # Apps Propias (S0b)
     'tenancy.apps.TenancyConfig', # <-- ¡ESTA ES LA LÍNEA NUEVA!
+    # Apps Propias (S1)
+    'exams.apps.ExamsConfig', # <-- ¡AÑADE ESTA LÍNEA!
 ]
 
 MIDDLEWARE = [
