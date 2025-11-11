@@ -43,7 +43,6 @@ class Item(models.Model):
     stem = models.TextField(verbose_name=_("Enunciado (Stem)"))
     
     # Opciones (solo para MC)
-    # Usamos JSON para guardar las opciones: [{"text": "Opcion A", "correct": true}, {"text": "Opcion B", "correct": false}]
     options = models.JSONField(
         blank=True, 
         null=True, 
@@ -69,32 +68,6 @@ class Item(models.Model):
     def __str__(self):
         return f"[{self.get_item_type_display()}] {self.stem[:50]}... ({self.tenant.name})"
 
-# --- ¡CAMBIO DE ORDEN! ---
-# Moviendo ExamItemLink ANTES de Exam y usando un string ('Exam') para
-# romper la referencia circular que causaba el Error 500 en el admin.
-
-class ExamItemLink(models.Model):
-    """
-    Tabla intermedia ('through') que conecta Exámenes con Ítems.
-    Permite definir un orden y puntaje específico para cada ítem DENTRO del examen.
-    """
-    # ¡ESTA ES LA LÍNEA CORREGIDA! 
-    # Usamos 'exams.Exam' (un string) en lugar de Exam (la clase)
-    exam = models.ForeignKey(
-        'exams.Exam', 
-        on_delete=models.CASCADE
-    )
-    item = models.ForeignKey(
-        Item, 
-        on_delete=models.CASCADE
-    )
-    order = models.PositiveSmallIntegerField(default=0, verbose_name=_("Orden"))
-    points = models.PositiveSmallIntegerField(default=1, verbose_name=_("Puntaje"))
-
-    class Meta:
-        ordering = ['order']
-        unique_together = ('exam', 'item')
-
 
 class Exam(models.Model):
     """
@@ -119,7 +92,7 @@ class Exam(models.Model):
     # (Spec S1: Constructor)
     items = models.ManyToManyField(
         Item, 
-        through='ExamItemLink', # Ahora 'ExamItemLink' está definida arriba
+        through='ExamItemLink', # Ahora 'ExamItemLink' está definida abajo
         related_name='exams',
         verbose_name=_("Ítems Incluidos")
     )
@@ -129,12 +102,4 @@ class Exam(models.Model):
     shuffle_items = models.BooleanField(default=True, verbose_name=_("Mezclar orden de preguntas (RA-02)"))
     shuffle_options = models.BooleanField(default=True, verbose_name=_("Mezclar opciones de MC (RA-03)"))
     
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = _("Examen")
-        verbose_name_plural = _("Exámenes")
-
-    def __str__(self):
-        return f"{self.title} ({self.tenant.name})"
+    created_at = models.DateTimeField(auto_now_add
