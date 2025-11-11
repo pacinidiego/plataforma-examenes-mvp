@@ -130,11 +130,11 @@ class ExamItemLink(models.Model):
     # (Solución al Error 500: Usamos un string 'exams.Exam' para evitar importación circular)
     exam = models.ForeignKey(
         'exams.Exam', 
-        on_delete=django.db.models.deletion.CASCADE
+        on_delete=models.CASCADE  # <-- ¡CORREGIDO! (antes 'django.db.models.deletion.CASCADE')
     )
     item = models.ForeignKey(
         Item, 
-        on_delete=django.db.models.deletion.CASCADE
+        on_delete=models.CASCADE  # <-- ¡CORREGIDO! (antes 'django.db.models.deletion.CASCADE')
     )
     order = models.PositiveSmallIntegerField(default=0, verbose_name=_("Orden"))
     points = models.PositiveSmallIntegerField(default=1, verbose_name=_("Puntaje"))
