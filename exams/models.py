@@ -36,7 +36,17 @@ class Item(models.Model):
     )
     
     # (Spec S1: metadatos (dificultad, tags))
-    tags = models.CharField(max_length=255, blank=True, verbose_name=_("Etiquetas (separadas por coma)"))
+    
+    # --- !! ESTA ES LA CORRECCIÓN (Tooltip/Help Text) !! ---
+    # Movimos la instrucción de 'verbose_name' a 'help_text'
+    tags = models.CharField(
+        max_length=255, 
+        blank=True, 
+        verbose_name=_("Etiquetas"),
+        help_text=_("Escribe las etiquetas separadas por coma (ej: algebra, ecuaciones, primer_año)")
+    )
+    # --- !! FIN DE LA CORRECCIÓN !! ---
+
     difficulty = models.PositiveSmallIntegerField(default=1, help_text=_("Nivel de dificultad (1-5)"), verbose_name=_("Dificultad"))
 
     # Contenido de la pregunta
@@ -102,4 +112,33 @@ class Exam(models.Model):
     shuffle_items = models.BooleanField(default=True, verbose_name=_("Mezclar orden de preguntas (RA-02)"))
     shuffle_options = models.BooleanField(default=True, verbose_name=_("Mezclar opciones de MC (RA-03)"))
     
-    created_at = models.DateTimeField(auto_now_add
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Examen")
+        verbose_name_plural = _("Exámenes")
+
+    def __str__(self):
+        return f"{self.title} ({self.tenant.name})"
+
+
+class ExamItemLink(models.Model):
+    """
+    Tabla intermedia ('through') que conecta Exámenes con Ítems.
+    """
+    # (Solución al Error 500: Usamos un string 'exams.Exam' para evitar importación circular)
+    exam = models.ForeignKey(
+        'exams.Exam', 
+        on_delete=django.db.models.deletion.CASCADE
+    )
+    item = models.ForeignKey(
+        Item, 
+        on_delete=django.db.models.deletion.CASCADE
+    )
+    order = models.PositiveSmallIntegerField(default=0, verbose_name=_("Orden"))
+    points = models.PositiveSmallIntegerField(default=1, verbose_name=_("Puntaje"))
+
+    class Meta:
+        ordering = ['order']
+        unique_together = ('exam', 'item')
