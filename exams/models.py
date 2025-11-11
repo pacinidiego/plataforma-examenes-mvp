@@ -69,6 +69,33 @@ class Item(models.Model):
     def __str__(self):
         return f"[{self.get_item_type_display()}] {self.stem[:50]}... ({self.tenant.name})"
 
+# --- ¡CAMBIO DE ORDEN! ---
+# Moviendo ExamItemLink ANTES de Exam y usando un string ('Exam') para
+# romper la referencia circular que causaba el Error 500 en el admin.
+
+class ExamItemLink(models.Model):
+    """
+    Tabla intermedia ('through') que conecta Exámenes con Ítems.
+    Permite definir un orden y puntaje específico para cada ítem DENTRO del examen.
+    """
+    # ¡ESTA ES LA LÍNEA CORREGIDA! 
+    # Usamos 'exams.Exam' (un string) en lugar de Exam (la clase)
+    exam = models.ForeignKey(
+        'exams.Exam', 
+        on_delete=models.CASCADE
+    )
+    item = models.ForeignKey(
+        Item, 
+        on_delete=models.CASCADE
+    )
+    order = models.PositiveSmallIntegerField(default=0, verbose_name=_("Orden"))
+    points = models.PositiveSmallIntegerField(default=1, verbose_name=_("Puntaje"))
+
+    class Meta:
+        ordering = ['order']
+        unique_together = ('exam', 'item')
+
+
 class Exam(models.Model):
     """
     Un Examen, que es una colección ordenada de Items.
@@ -92,7 +119,7 @@ class Exam(models.Model):
     # (Spec S1: Constructor)
     items = models.ManyToManyField(
         Item, 
-        through='ExamItemLink', 
+        through='ExamItemLink', # Ahora 'ExamItemLink' está definida arriba
         related_name='exams',
         verbose_name=_("Ítems Incluidos")
     )
@@ -111,17 +138,3 @@ class Exam(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.tenant.name})"
-
-class ExamItemLink(models.Model):
-    """
-    Tabla intermedia ('through') que conecta Exámenes con Ítems.
-    Permite definir un orden y puntaje específico para cada ítem DENTRO del examen.
-    """
-    exam = models.ForeignKey(Exam, on_delete=models.CASCADE)
-    item = models.ForeignKey(Item, on_delete=models.CASCADE)
-    order = models.PositiveSmallIntegerField(default=0, verbose_name=_("Orden"))
-    points = models.PositiveSmallIntegerField(default=1, verbose_name=_("Puntaje"))
-
-    class Meta:
-        ordering = ['order']
-        unique_together = ('exam', 'item')
