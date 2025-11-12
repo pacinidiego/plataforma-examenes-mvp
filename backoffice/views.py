@@ -14,6 +14,7 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.core.files.storage import default_storage
 from django.http import Http404
+from django.db import IntegrityError # (S1c Bugfix 2) Para atrapar el error de duplicado
 
 import google.generativeai as genai 
 
@@ -32,7 +33,7 @@ def dashboard(request):
     memberships = TenantMembership.objects.filter(user=request.user)
     user_tenants = memberships.values_list('tenant', flat=True)
 
-    # --- !! ESTA ES LA CORRECCIÓN (BUG 3) !! ---
+    # --- !! ESTA ES LA CORRECCIÓN (BUG #1) !! ---
     # (Filtramos Exámenes E Ítems por los tenants del usuario)
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
     item_list = Item.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
@@ -64,6 +65,9 @@ def item_create(request):
         item_type = request.POST.get('item_type')
         stem = request.POST.get('stem')
         difficulty = request.POST.get('difficulty')
+
+        # (S1c Bugfix "casi igual"): Limpiamos el 'stem' (quitamos espacios extra)
+        stem_limpio = " ".join(stem.split())
         
         # (S1c v7) Lógica para Opciones de MC (con o sin IA)
         options_json = None
@@ -81,19 +85,35 @@ def item_create(request):
             options_json = options_list
 
         try:
+            # --- !! CORRECCIÓN (BUG #2) !! ---
+            # (Usamos 'iexact' para chequear duplicados ignorando mayúsculas)
+            existing_item = Item.objects.filter(
+                tenant=current_tenant,
+                stem__iexact=stem_limpio  # 'iexact' = case-insensitive exact match
+            ).first()
+            
+            if existing_item:
+                # Si existe, devolvemos un error y NO creamos el ítem
+                return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe una pregunta con ese enunciado exacto (ignorando mayúsculas).</div>")
+            # --- !! FIN DE LA CORRECCIÓN !! ---
+
+            # Usamos el 'stem_limpio' para guardarlo
             new_item = Item.objects.create(
                 tenant=current_tenant,
                 author=request.user,
                 item_type=item_type,
-                stem=stem,
+                stem=stem_limpio, 
                 difficulty=difficulty,
                 options=options_json
             )
             context = {'item': new_item}
             return render(request, 'backoffice/partials/item_table_row.html', context)
-        except Exception as e:
-            # (S1c Bugfix 4) Si falla por 'unique_together', avisamos al usuario
+        
+        except IntegrityError: # Atrapa el error de la DB (por si acaso)
             return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe una pregunta con ese enunciado.</div>")
+        except Exception as e:
+            # Otro error
+            return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> {e}</div>")
 
 
     # --- Lógica de Mostrar Formulario (GET) ---
