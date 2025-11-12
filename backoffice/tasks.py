@@ -16,8 +16,8 @@ EXPECTED_HEADERS = [
     "respuesta_correcta", "dificultad"
 ]
 
-# 2. Limitamos los reintentos
-@shared_task(bind=True, max_retries=2, default_retry_delay=30)
+# 2. Eliminamos los reintentos automáticos. Si falla, falla.
+@shared_task(bind=True)
 def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
     """
     Lee un archivo Excel desde S3/R2 (subido por el docente),
@@ -46,7 +46,7 @@ def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
             headers_in_file = [cell.value for cell in sheet[1]]
             if headers_in_file != EXPECTED_HEADERS:
                 # Si las cabeceras no coinciden, es un formato incorrecto.
-                # Lanzamos un ValueError, que NO será reintentado.
+                # Lanzamos un ValueError, que será reportado al usuario.
                 raise ValueError(f"Formato de Excel incorrecto. Cabeceras esperadas: {EXPECTED_HEADERS}, pero se encontró: {headers_in_file}")
             # --- !! FIN CORRECCIÓN !! ---
 
@@ -66,8 +66,9 @@ def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
                 respuesta_correcta_num = None
                 if row[7].value is not None:
                     try:
-                        respuesta_correcta_num = int(row[7].value)
-                    except ValueError:
+                        # (Acepta '1' o '1.0')
+                        respuesta_correcta_num = int(float(row[7].value))
+                    except (ValueError, TypeError):
                         # Ignoramos si no es un número
                         pass 
                 
@@ -118,15 +119,10 @@ def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
         return new_exam.id
 
     except Exception as e:
-        # Si algo falla, limpiamos el archivo y lanzamos el error
+        # --- !! CORRECCIÓN (BUG 2: Bucle Infinito) !! ---
+        # Si algo falla (formato, tipo de dato, etc.), limpiamos el archivo
+        # y RE-LANZAMOS el error para que Celery lo marque como 'FAILURE'.
+        # Ya no usamos 'self.retry'.
         if 'temp_file_path' in locals() and default_storage.exists(temp_file_path):
             default_storage.delete(temp_file_path)
-        
-        # --- !! CORRECCIÓN (BUG 2: Bucle Infinito) !! ---
-        # Si el error es un ValueError (como nuestro chequeo de cabeceras),
-        # NO reintentamos, solo fallamos.
-        if isinstance(e, ValueError):
-            raise e # Falla inmediatamente y reporta
-        
-        # Para otros errores (ej. DB caída), reintentamos (máx 2 veces)
-        raise self.retry(exc=e, countdown=30)
+        raise e
