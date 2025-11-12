@@ -3,21 +3,12 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<!-- (S1c) Contenedor del Modal (Ventana Emergente) -->
 <div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-gray-900 bg-opacity-75 p-4" 
      x-show="showModal" 
      x-cloak
-     style="display: none;"> <!-- style="display: none;" es para x-cloak -->
-
-    <!-- El contenido del formulario (cargado por HTMX) irá aquí -->
-    <div id="modal-content" class="w-full max-w-lg" x-on:click.outside="showModal = false">
-        <!-- hx-get cargará 'item_form.html' (el de la IA) aquí -->
-    </div>
+     style="display: none;"> <div id="modal-content" class="w-full max-w-lg" x-on:click.outside="showModal = false">
+        </div>
 </div>
-<!-- Fin del Modal -->
-
-
-<!-- Barra de Navegación del Backoffice -->
 <nav class="bg-gray-800 shadow-md">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
@@ -37,7 +28,6 @@
     </div>
 </nav>
 
-<!-- Contenido Principal -->
 <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <header>
         <h1 class="text-3xl font-bold text-white">
@@ -49,18 +39,19 @@
     </header>
     <main class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        <!-- (S1c) Columna 1: Exámenes -->
         <div class="bg-gray-800 rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-white">Mis Exámenes</h2>
                 
-                <!-- Botón para Crear Examen (próximo sprint) -->
                 <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
-                        disabled
-                        title="(Próximo sprint: S1c-futuro)">
+                        hx-get="{% url 'backoffice:exam_create' %}"
+                        hx-target="#modal-content"
+                        hx-swap="innerHTML"
+                        x-on:click="showModal = true"
+                        title="Crear un nuevo examen (solo título)">
                     + Crear Examen
                 </button>
-            </div>
+                </div>
             
             <div class="overflow-x-auto">
                 <table class="min-w-full text-gray-300">
@@ -77,8 +68,8 @@
                                 <td class="py-3 px-3">{{ exam.title }}</td>
                                 <td class="py-3 px-3">{{ exam.items.count }}</td>
                                 <td class="py-3 px-3">
-                                    <a href="#" class="text-blue-400 hover:text-blue-300">Editar</a>
-                                </td>
+                                    <a href="{% url 'backoffice:exam_constructor' exam.id %}" class="text-blue-400 hover:text-blue-300">Editar</a>
+                                    </td>
                             </tr>
                         {% empty %}
                             <tr id="empty-exam-row">
@@ -92,10 +83,8 @@
             </div>
         </div>
 
-        <!-- (S1c) Columna 2: Banco de Preguntas -->
         <div class="bg-gray-800 rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
-                <!-- --- !! CORRECCIÓN DE TERMINOLOGÍA (Req #4) !! --- -->
                 <h2 class="text-xl font-semibold text-white">Banco de Preguntas</h2>
                 
                 <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
@@ -122,8 +111,14 @@
                                 <td class="py-3 px-3">{{ item.stem|truncatechars:50 }}</td>
                                 <td class="py-3 px-3">{{ item.get_item_type_display }}</td>
                                 <td class="py-3 px-3">
-                                    <a href="#" class="text-blue-400 hover:text-blue-300">Editar</a>
-                                </td>
+                                    <button class="text-blue-400 hover:text-blue-300"
+                                            hx-get="{% url 'backoffice:item_edit' item.id %}"
+                                            hx-target="#modal-content"
+                                            hx-swap="innerHTML"
+                                            x-on:click.prevent="showModal = true">
+                                        Editar
+                                    </button>
+                                    </td>
                             </tr>
                         {% empty %}
                             <tr id="empty-item-row">
