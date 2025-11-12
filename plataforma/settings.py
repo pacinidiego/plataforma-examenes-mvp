@@ -183,6 +183,16 @@ LOGGING = {
             'handlers': ['console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'), 
             'propagate': False,
+            
         },
     },
 }
+# --- 4. Configuración de Login (S1b) ---
+# Le decimos a Django a dónde redirigir al usuario DESPUÉS de un login exitoso.
+LOGIN_REDIRECT_URL = '/backoffice/'
+
+# Le decimos a Django cuál es nuestra página de login (para @login_required)
+LOGIN_URL = '/accounts/login/'
+
+# A dónde ir después de desloguearse
+LOGOUT_REDIRECT_URL = '/'
