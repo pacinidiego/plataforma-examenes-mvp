@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Plataforma de Exámenes{% endblock %}</title>
+    <!-- (Spec 18.2) Cargamos TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos base para HTMX */
+        .htmx-indicator{
+            display:none;
+            opacity: 0;
+            transition: opacity 200ms ease-in;
+        }
+        .htmx-request .htmx-indicator{
+            display:inline;
+            opacity: 1;
+        }
+        .htmx-request.htmx-indicator{
+            display:inline;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans">
+
+    <div id="main-content" class="min-h-screen">
+        {% block content %}
+        <!-- El contenido de otras páginas (login, dashboard) irá aquí -->
+        {% endblock %}
+    </div>
+
+    <!-- (Spec 18.2) Cargamos HTMX y AlpineJS -->
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLNB/cNWww55IFKChRMsUYlMSN9PTtG/B" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
+
+    {% block extra_js %}
+    <!-- Espacio para JS extra si una página lo necesita -->
+    {% endblock %}
+</body>
+</html>
