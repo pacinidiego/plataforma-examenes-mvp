@@ -3,26 +3,16 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<!-- (S1c) Contenedor del Modal (Ventana Emergente) -->
-<!-- 
---- !! ESTA ES LA CORRECCIÓN (S1c) !! ---
-Quitamos 'x-data' de este div. 
-Ahora hereda la variable 'showModal' del <body> (en base.html).
--->
+<!-- (S1c) Contenedor del Modal (para el futuro) -->
 <div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-gray-900 bg-opacity-75 p-4" 
-     x-show="showModal" 
-     x-cloak
-     style="display: none;"> <!-- style="display: none;" es para x-cloak -->
-
-    <!-- El contenido del formulario (cargado por HTMX) irá aquí -->
+     x-show="showModal" x-cloak style="display: none;">
     <div id="modal-content" class="w-full max-w-lg" x-on:click.outside="showModal = false">
-        <!-- hx-get cargará 'item_form.html' aquí -->
+        <!-- El contenido de HTMX (como 'item_form') irá aquí -->
     </div>
 </div>
 <!-- Fin del Modal -->
 
-
-<!-- Barra de Navegación del Backoffice -->
+<!-- Barra de Navegación -->
 <nav class="bg-gray-800 shadow-md">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
@@ -44,26 +34,86 @@ Ahora hereda la variable 'showModal' del <body> (en base.html).
 
 <!-- Contenido Principal -->
 <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    <header>
-        <h1 class="text-3xl font-bold text-white">
-            Dashboard (Sprint S1c)
-        </h1>
-        <p class="mt-2 text-gray-300">
-            ¡Bienvenido, {{ user.username }}! Esta es la página principal del Constructor de Exámenes.
-        </p>
-    </header>
-    <main class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <main class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         
-        <!-- (S1c) Columna 1: Exámenes -->
-        <div class="bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-white">Mis Exámenes</h2>
-                <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
-                        disabled
-                        title="(Próximo sprint)">
-                    + Crear Examen
-                </button>
-            </div>
+        <!-- (S1c) Columna 1: Subir Examen -->
+        <div class="md:col-span-1 bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-2xl font-semibold text-white mb-4">Paso 1: Subir Examen</h2>
+            <p class="text-gray-400 mb-4">
+                Sube un archivo Excel (.xlsx) para crear un nuevo examen y su banco de preguntas asociado.
+            </p>
+            
+            <!-- (Tu Req 1) Link para descargar la plantilla -->
+            <a href="{% url 'backoffice:download_template' %}"
+               class="inline-block mb-6 text-sm text-blue-400 hover:text-blue-300 underline">
+                [Descargar Plantilla Modelo (.xlsx)]
+            </a>
+
+            <!-- 
+                (S1c) Formulario de Subida con HTMX
+                - 'enctype' es VITAL para subir archivos.
+                - '@submit' (Alpine) muestra el spinner.
+                - 'hx-post' envía el formulario.
+                - 'hx-target' define dónde poner la respuesta (el spinner).
+            -->
+            <form x-data="{ isUploading: false }"
+                  @submit="isUploading = true"
+                  hx-encoding="multipart/form-data"
+                  hx-post="{% url 'backoffice:exam_upload' %}"
+                  hx-target="#upload-response"
+                  hx-swap="innerHTML">
+                
+                {% csrf_token %}
+                
+                <div class="space-y-4">
+                    <div>
+                        <label for="exam_title" class="block text-sm font-medium text-gray-300">Título del Examen</label>
+                        <input type="text" name="exam_title" id="exam_title" required
+                               class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label for="excel_file" class="block text-sm font-medium text-gray-300">Archivo Excel (.xlsx)</label>
+                        <input type="file" name="excel_file" id="excel_file" required
+                               accept=".xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                               class="w-full mt-1 text-sm text-gray-300 file:mr-4 file:py-2 file:px-4
+                                      file:rounded-md file:border-0 file:text-sm file:font-semibold
+                                      file:bg-blue-600 file:text-white hover:file:bg-blue-700
+                                      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800">
+                    </div>
+                    
+                    <!-- (Tu Req 3) Botón de Subida y 'Spinner' -->
+                    <div>
+                        <button type="submit"
+                                :disabled="isUploading"
+                                class="w-full px-4 py-3 text-lg font-medium text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 focus:ring-offset-gray-800
+                                       disabled:bg-gray-500 disabled:cursor-not-allowed">
+                            
+                            <!-- El Spinner (HTMX Indicator) -->
+                            <span class="htmx-indicator">
+                                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Procesando... (esto puede tardar 1-2 min)
+                            </span>
+                            
+                            <!-- El texto normal (lo que se ve por defecto) -->
+                            <span x-show="!isUploading">
+                                Subir y Procesar Examen
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+            
+            <!-- (Tu Req 3c) Aquí es donde HTMX pone la respuesta (el 'spinner' o el error) -->
+            <div id="upload-response" class="mt-4"></div>
+
+        </div>
+
+        <!-- (S1c) Columna 2: Lista de Exámenes Creados -->
+        <div class="md:col-span-2 bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-white mb-4">Exámenes Creados Recientemente</h2>
             
             <div class="overflow-x-auto">
                 <table class="min-w-full text-gray-300">
@@ -71,6 +121,7 @@ Ahora hereda la variable 'showModal' del <body> (en base.html).
                         <tr>
                             <th class="py-2 px-3 text-left">Título</th>
                             <th class="py-2 px-3 text-left">Ítems</th>
+                            <th class="py-2 px-3 text-left">Fecha</th>
                             <th class="py-2 px-3 text-left">Acciones</th>
                         </tr>
                     </thead>
@@ -79,65 +130,15 @@ Ahora hereda la variable 'showModal' del <body> (en base.html).
                             <tr>
                                 <td class="py-3 px-3">{{ exam.title }}</td>
                                 <td class="py-3 px-3">{{ exam.items.count }}</td>
+                                <td class="py-3 px-3">{{ exam.created_at|date:"d/m/Y H:i" }}</td>
                                 <td class="py-3 px-3">
-                                    <a href="#" class="text-blue-400 hover:text-blue-300">Editar</a>
+                                    <a href="#" class="text-blue-400 hover:text-blue-300">Ver/Editar</a>
                                 </td>
                             </tr>
                         {% empty %}
                             <tr>
-                                <td colspan="3" class="py-4 px-3 text-center text-gray-500">
-                                    No has creado ningún examen todavía.
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- (S1c) Columna 2: Banco de Ítems -->
-        <div class="bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-white">Banco de Ítems</h2>
-                
-                <!-- --- !! ESTE ES EL BOTÓN QUE AHORA FUNCIONA !! --- -->
-                <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
-                        hx-get="{% url 'backoffice:item_create' %}"
-                        hx-target="#modal-content"
-                        hx-swap="innerHTML"
-                        x-on:click="showModal = true">
-                    + Crear Ítem
-                </button>
-                <!--
-                    hx-get: Carga el formulario desde la URL 'item_create'.
-                    hx-target: Pone el formulario dentro del div '#modal-content'.
-                    x-on:click: Le dice a AlpineJS que muestre el modal.
-                -->
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-gray-300">
-                    <thead class="border-b border-gray-700">
-                        <tr>
-                            <th class="py-2 px-3 text-left">Enunciado (Stem)</th>
-                            <th class="py-2 px-3 text-left">Tipo</th>
-                            <th class="py-2 px-3 text-left">Acciones</th>
-                        </tr>
-                    </thead>
-                    <!-- (S1c) Le damos un ID a la tabla para que HTMX sepa dónde poner la fila nueva -->
-                    <tbody id="item-table-body" class="divide-y divide-gray-700">
-                        {% for item in item_list %}
-                            <tr id="item-row-{{ item.id }}">
-                                <td class="py-3 px-3">{{ item.stem|truncatechars:50 }}</td>
-                                <td class="py-3 px-3">{{ item.get_item_type_display }}</td>
-                                <td class="py-3 px-3">
-                                    <a href="#" class="text-blue-400 hover:text-blue-300">Editar</a>
-                                </td>
-                            </tr>
-                        {% empty %}
-                            <tr id="empty-item-row">
-                                <td colspan="3" class="py-4 px-3 text-center text-gray-500">
-                                    No has creado ningún ítem todavía.
+                                <td colspan="4" class="py-4 px-3 text-center text-gray-500">
+                                    Aún no se ha procesado ningún examen.
                                 </td>
                             </tr>
                         {% endfor %}
