@@ -3,7 +3,7 @@ from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from tenancy.models import Tenant
 
-# (Spec S1: Banco de ítems (MC, corta, caso))
+# (Spec S1: Banco de Preguntas (MC, corta, caso))
 class Item(models.Model):
     class ItemType(models.TextChoices):
         MULTIPLE_CHOICE = 'MC', _('Opción Múltiple (MC)')
@@ -40,6 +40,7 @@ class Item(models.Model):
 
     difficulty = models.PositiveSmallIntegerField(default=1, help_text=_("Nivel de dificultad (1-5)"), verbose_name=_("Dificultad"))
 
+    # (Fix Bug "Casi Igual"): Limpiamos el 'stem' en el 'save()'
     stem = models.TextField(verbose_name=_("Enunciado (Stem)"))
     
     options = models.JSONField(
@@ -60,14 +61,23 @@ class Item(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = _("Ítem de Pregunta")
-        verbose_name_plural = _("Banco de Ítems")
-        # --- !! ESTA ES LA CORRECCIÓN (BUG 2) !! ---
+        verbose_name = _("Pregunta")
+        # --- !! CORRECCIÓN DE TERMINOLOGÍA (Req #4) !! ---
+        verbose_name_plural = _("Banco de Preguntas")
+        
+        # --- !! CORRECCIÓN (BUG #2) !! ---
         # No puede existir el mismo enunciado dos veces EN EL MISMO TENANT
         unique_together = ('tenant', 'stem')
 
     def __str__(self):
         return f"[{self.get_item_type_display()}] {self.stem[:50]}... ({self.tenant.name})"
+    
+    def save(self, *args, **kwargs):
+        # (Fix Bug "Casi Igual"): Limpiamos el 'stem' antes de guardarlo.
+        # Esto no soluciona el "(super usuario)" pero sí " hola " vs "hola"
+        if self.stem:
+            self.stem = " ".join(self.stem.split())
+        super().save(*args, **kwargs)
 
 
 class Exam(models.Model):
