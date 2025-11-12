@@ -1,3 +1,4 @@
+# backoffice/views.py
 import openpyxl
 import uuid
 import json
@@ -30,8 +31,13 @@ def dashboard(request):
     Muestra el Dashboard principal del Docente/Admin.
     """
     # 1. Obtenemos los 'tenants' (universidades) a los que pertenece el usuario
-    memberships = TenantMembership.objects.filter(user=request.user)
-    user_tenants = memberships.values_list('tenant', flat=True)
+    try:
+        memberships = TenantMembership.objects.filter(user=request.user)
+        user_tenants = memberships.values_list('tenant', flat=True)
+    except Exception:
+        # Manejo de error si el usuario no tiene membresía (ej. Superusuario)
+        return HttpResponse("Error: No tiene un tenant asignado.", status=403)
+
 
     # --- !! ESTA ES LA CORRECCIÓN (BUG #1) !! ---
     # (Filtramos Exámenes E Ítems por los tenants del usuario)
@@ -94,6 +100,7 @@ def item_create(request):
             
             if existing_item:
                 # Si existe, devolvemos un error y NO creamos el ítem
+                # (Idealmente, esto se mostraría en el modal, pero es un placeholder de error)
                 return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe una pregunta con ese enunciado exacto (ignorando mayúsculas).</div>")
             # --- !! FIN DE LA CORRECCIÓN !! ---
 
@@ -106,8 +113,11 @@ def item_create(request):
                 difficulty=difficulty,
                 options=options_json
             )
-            context = {'item': new_item}
-            return render(request, 'backoffice/partials/item_table_row.html', context)
+            
+            # --- !! MODIFICACIÓN S1c Tareas !! ---
+            # En lugar de devolver un parcial, redirigimos al dashboard
+            # para recargar la lista completa.
+            return HttpResponse(headers={'HX-Redirect': reverse('backoffice:dashboard')})
         
         except IntegrityError: # Atrapa el error de la DB (por si acaso)
             return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe una pregunta con ese enunciado.</div>")
@@ -121,6 +131,91 @@ def item_create(request):
         'item_types': Item.ItemType.choices
     }
     return render(request, 'backoffice/partials/item_form.html', context)
+
+# --- !! TAREA 2: NUEVA VISTA PARA EDITAR ÍTEM !! ---
+@login_required
+@require_http_methods(["GET", "POST"])
+def item_edit(request, pk):
+    """
+    Maneja la edición de un Ítem (Pregunta) existente.
+    """
+    membership = TenantMembership.objects.filter(user=request.user).first()
+    if not membership:
+        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
+    current_tenant = membership.tenant
+    
+    # Buscamos el ítem, asegurándonos que pertenezca al tenant del usuario
+    item = get_object_or_404(Item, pk=pk, tenant=current_tenant)
+
+    if request.method == "POST":
+        # --- Lógica POST (Guardar cambios) ---
+        item_type = request.POST.get('item_type')
+        stem = request.POST.get('stem')
+        difficulty = request.POST.get('difficulty')
+        stem_limpio = " ".join(stem.split())
+
+        # Revisamos duplicados (Bug #2), excluyendo el ítem actual
+        existing_item = Item.objects.filter(
+            tenant=current_tenant,
+            stem__iexact=stem_limpio
+        ).exclude(pk=pk).first()
+
+        if existing_item:
+            return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe OTRA pregunta con ese enunciado exacto.</div>")
+
+        # Actualizamos el objeto
+        item.item_type = item_type
+        item.stem = stem_limpio
+        item.difficulty = difficulty
+        
+        # Re-construimos el JSON de opciones
+        options_json = None
+        if item_type == 'MC':
+            correct_answer = request.POST.get('correct_answer')
+            distractors = request.POST.getlist('distractors')
+            
+            options_list = []
+            if correct_answer:
+                options_list.append({"text": correct_answer, "correct": True})
+            for d in distractors:
+                if d: 
+                    options_list.append({"text": d, "correct": False})
+            options_json = options_list
+        
+        item.options = options_json
+        item.save()
+
+        # Redirigimos al dashboard para ver los cambios
+        return HttpResponse(headers={'HX-Redirect': reverse('backoffice:dashboard')})
+
+    # --- Lógica GET (Mostrar formulario pre-rellenado) ---
+    correct_answer_text = ""
+    distractors_list = ["", "", ""]
+
+    if item.options and item.item_type == 'MC':
+        try:
+            # Extraemos la respuesta correcta
+            correct_answer_text = next(
+                (opt['text'] for opt in item.options if opt.get('correct')), 
+                ''
+            )
+            # Extraemos los distractores
+            distractors = [opt['text'] for opt in item.options if not opt.get('correct')]
+            # Rellenamos la lista para que siempre tenga 3 elementos
+            distractors_list = (distractors + ["", "", ""])[:3]
+        except (TypeError, KeyError):
+            # Si el JSON está malformado, lo dejamos en blanco
+            pass 
+
+    context = {
+        'item': item,
+        'item_types': Item.ItemType.choices,
+        'correct_answer_text': correct_answer_text,
+        'distractors_list': distractors_list
+    }
+    return render(request, 'backoffice/partials/item_form.html', context)
+# --- !! FIN TAREA 2 !! ---
+
 
 # --- VISTA DE IA (S1c - v7) ---
 @login_required
@@ -194,12 +289,39 @@ def download_excel_template_view(request):
 def exam_constructor_view(request, exam_id):
     # (Placeholder - Próximo sprint)
     try:
+        # Aseguramos que el examen pertenezca al tenant del usuario
         exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     except:
         raise Http404("Examen no encontrado o no le pertenece.")
-    return HttpResponse(f"<h1>Placeholder (S1c-futuro)</h1><p>Esta será la página del Constructor para el Examen: '{exam.title}'.</p><br><a href='{reverse('backoffice:dashboard')}'>Volver al Dashboard</a>")
+    return HttpResponse(f"<h1>Placeholder (S2)</h1><p>Esta será la página del Constructor para el Examen: '{exam.title}'.</p><br><a href='{reverse('backoffice:dashboard')}'>Volver al Dashboard</a>")
 
+# --- !! TAREA 1: IMPLEMENTACIÓN DE EXAM_CREATE !! ---
 @login_required
+@require_http_methods(["GET", "POST"])
 def exam_create(request):
-    # (Placeholder - Próximo sprint)
-    return HttpResponse("Página 'exam_create' (POST) (Próximo Sprint)")
+    """
+    Maneja la creación de un nuevo Examen (solo título).
+    GET: Muestra el modal.
+    POST: Crea el examen y redirige al constructor.
+    """
+    membership = TenantMembership.objects.filter(user=request.user).first()
+    if not membership:
+        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
+    current_tenant = membership.tenant
+
+    if request.method == "POST":
+        title = request.POST.get('title', 'Examen sin título').strip()
+        
+        exam = Exam.objects.create(
+            tenant=current_tenant,
+            author=request.user,
+            title=title
+        )
+        
+        # Tarea 1: Redirigimos al constructor (S2)
+        redirect_url = reverse('backoffice:exam_constructor', args=[exam.id])
+        return HttpResponse(headers={'HX-Redirect': redirect_url})
+
+    # Si es GET, solo mostramos el modal nuevo
+    return render(request, 'backoffice/partials/exam_form.html')
+# --- !! FIN TAREA 1 !! ---
