@@ -1,70 +1,60 @@
 """
 Configuración de Django para el proyecto Plataforma.
-Sprint S1b: Setup de Backoffice HTMX
+Sprint S1c (v7): Integración de IA (Gemini)
 """
 
 import os
 from pathlib import Path
 import dj_database_url # Render usa esto
 import importlib # Para el logging
+import google.generativeai as genai # (S1c) Importamos la librería de IA
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Clave secreta - ¡NO SUBIR A GIT PUBLICO CON LA CLAVE REAL!
-# Render la sobrescribirá con una variable de entorno.
+# Clave secreta
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-placeholder-key-s0a')
 
-# DEBUG se debe poner en 'False' en producción
+# DEBUG
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 
-# Hosts permitidos. Render maneja esto.
+# Hosts
 ALLOWED_HOSTS = []
 RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
-# CSRF (Protección) - Necesario para que Render funcione
+# CSRF
 CSRF_TRUSTED_ORIGINS = [f"https://{RENDER_EXTERNAL_HOSTNAME}"] if RENDER_EXTERNAL_HOSTNAME else []
 
 
 # Application definition
-# (Spec 18.2)
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles', # Para WhiteNoise
-    
-    # Apps de Terceros (S0a)
+    'django.contrib.staticfiles',
     'rest_framework',
-    'storages', # Para R2/S3 (Spec 18.2)
-    'django_celery_results', # (Spec 18.2)
-    'django_htmx', # (S1b)
-
-    # Apps Propias (S0b)
+    'storages',
+    'django_celery_results',
+    'django_htmx',
     'tenancy.apps.TenancyConfig', 
-
-    # Apps Propias (S1)
     'exams.apps.ExamsConfig',
-
-    # Apps Propias (S1b)
-    'backoffice.apps.BackofficeConfig', # <-- ¡AÑADIDA!
+    'backoffice.apps.BackofficeConfig',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware', # Sirve estáticos en Render
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django_htmx.middleware.HtmxMiddleware', # (S1b)
+    'django_htmx.middleware.HtmxMiddleware',
 ]
 
 ROOT_URLCONF = 'plataforma.urls'
@@ -72,8 +62,6 @@ ROOT_URLCONF = 'plataforma.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        # --- !! ESTA ES LA MODIFICACIÓN (S1b) !! ---
-        # Le decimos a Django que busque templates en la raíz
         'DIRS': [BASE_DIR / 'templates'], 
         'APP_DIRS': True,
         'OPTIONS': {
@@ -90,11 +78,11 @@ TEMPLATES = [
 WSGI_APPLICATION = 'plataforma.wsgi.application'
 
 
-# Database (Spec C4-4)
+# Database
 DATABASES = {
     'default': dj_database_url.config(
         conn_max_age=600,
-        ssl_require=True # Requerido por Render/Neon
+        ssl_require=True 
     )
 }
 
@@ -115,7 +103,7 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
+# Static files
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
@@ -123,7 +111,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# --- 1. Configuración de Celery (S0a / C4-4) ---
+# --- 1. Configuración de Celery ---
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') 
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_ACCEPT_CONTENT = ['json']
@@ -131,7 +119,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
-# --- 2. Configuración de Storage (S0a / R2 - C4-4) ---
+# --- 2. Configuración de Storage (R2) ---
 CLOUDFLARE_R2_ACCOUNT_ID = os.environ.get('CLOUDFLARE_R2_ACCOUNT_ID')
 CLOUDFLARE_R2_ACCESS_KEY_ID = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY_ID')
 CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY')
@@ -165,7 +153,7 @@ else:
         },
     }
 
-# --- 3. Configuración de Logging (Para ver Errores 500 en Render) ---
+# --- 3. Configuración de Logging ---
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -183,16 +171,20 @@ LOGGING = {
             'handlers': ['console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'), 
             'propagate': False,
-            
         },
     },
 }
+
 # --- 4. Configuración de Login (S1b) ---
-# Le decimos a Django a dónde redirigir al usuario DESPUÉS de un login exitoso.
 LOGIN_REDIRECT_URL = '/backoffice/'
-
-# Le decimos a Django cuál es nuestra página de login (para @login_required)
 LOGIN_URL = '/accounts/login/'
-
-# A dónde ir después de desloguearse
 LOGOUT_REDIRECT_URL = '/'
+
+# --- 5. Configuración de IA (S1c - v7) ---
+# Leemos la clave que pusiste en Render
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+    except Exception as e:
+        print(f"Error al configurar la API de Gemini: {e}")
