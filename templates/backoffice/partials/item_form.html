@@ -1,17 +1,17 @@
 <!-- 
-(S1c) Este es un "template parcial" (un pedazo de HTML).
-No tiene <html> ni <body>. HTMX lo cargará dentro del modal. 
+(S1c v7) Este es el "Modal Inteligente"
+Incluye el flujo de IA para generar distractores.
+-->
+
+<!-- 
+El formulario principal (hx-post) sigue siendo el mismo:
+envía TODOS los campos a 'item_create' cuando hacemos clic en 'Guardar Ítem'.
 -->
 <form hx-post="{% url 'backoffice:item_create' %}"
       hx-target="#item-table-body"
       hx-swap="afterbegin"
-      hx-on::after-request="this.closest('.modal').remove()"> 
-      <!-- 
-        hx-post: Envía los datos a la URL 'item_create' (la vista POST).
-        hx-target: El resultado (la nueva fila) lo pone en el cuerpo de la tabla '#item-table-body'.
-        hx-swap: Pone la fila nueva 'afterbegin' (arriba de todo).
-        hx-on::after-request: Cierra el modal cuando termina.
-      -->
+      hx-on::after-request="this.closest('.modal').remove()"
+      x-data="{ itemType: 'MC' }"> <!-- AlpineJS: guardamos el tipo de ítem seleccionado -->
 
     <div class="p-6 bg-gray-800 rounded-lg shadow-xl w-full max-w-lg">
         <h3 class="text-2xl font-semibold text-white mb-4">Crear Nuevo Ítem (Pregunta)</h3>
@@ -19,9 +19,15 @@ No tiene <html> ni <body>. HTMX lo cargará dentro del modal.
         {% csrf_token %}
 
         <!-- Campo: Tipo de Ítem -->
+        <!-- 
+            Usamos 'x-model' de AlpineJS para que la variable 'itemType'
+            se actualice automáticamente cuando el usuario cambia el dropdown.
+        -->
         <div class="mb-4">
             <label for="id_item_type" class="block text-sm font-medium text-gray-300">Tipo de Ítem</label>
-            <select name="item_type" id="id_item_type" class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+            <select name="item_type" id="id_item_type" 
+                    x-model="itemType"
+                    class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                 {% for value, label in item_types %}
                 <option value="{{ value }}">{{ label }}</option>
                 {% endfor %}
@@ -35,8 +41,64 @@ No tiene <html> ni <body>. HTMX lo cargará dentro del modal.
                       class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"></textarea>
         </div>
 
-        <!-- Campo: Dificultad -->
-        <div class="mb-4">
+        <!-- 
+            ==============================================
+            BLOQUE "INTELIGENTE" (SOLO PARA OPCIÓN MÚLTIPLE)
+            (Usamos 'x-show' de AlpineJS para mostrar/ocultar)
+            ==============================================
+        -->
+        <div x-show="itemType === 'MC'" class="space-y-4 p-4 border border-gray-700 rounded-md">
+            
+            <p class="text-sm text-yellow-300">
+                <i class="fas fa-lightbulb mr-1"></i> Escribe la respuesta correcta y presiona "Generar Distractores" para que la IA te ayude.
+            </p>
+            
+            <!-- 1. Respuesta Correcta -->
+            <div>
+                <label for="id_correct_answer" class="block text-sm font-medium text-green-400">Respuesta Correcta</label>
+                <input type="text" name="correct_answer" id="id_correct_answer"
+                       class="w-full mt-1 bg-gray-700 text-white border-green-500 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500">
+            </div>
+
+            <!-- 2. Botón de IA (HTMX) -->
+            <div>
+                <button type="button" 
+                        class="w-full px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md shadow-sm hover:bg-purple-700 focus:outline-none"
+                        hx-post="{% url 'backoffice:ai_generate_distractors' %}"
+                        hx-include="[name='stem'], [name='correct_answer']"
+                        hx-target="#distractors-list"
+                        hx-swap="innerHTML"
+                        hx-indicator="#ai-spinner">
+                    
+                    <span class="htmx-indicator" id="ai-spinner">
+                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Generando...
+                    </span>
+                    <span class="no-indicator">
+                        ✨ Generar Distractores (IA)
+                    </span>
+                </button>
+            </div>
+            
+            <!-- 3. Contenedor de Distractores -->
+            <!-- Aquí es donde HTMX pondrá el resultado de la IA -->
+            <div id="distractors-list" class="space-y-2">
+                <!-- El template 'distractors.html' irá aquí -->
+                <label class="block text-sm font-medium text-red-400">Opciones Incorrectas (Distractores)</label>
+                <input type="text" name="distractors" class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                <input type="text" name="distractors" class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                <input type="text" name="distractors" class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+            </div>
+
+        </div>
+        <!-- Fin del Bloque "Inteligente" -->
+
+
+        <!-- Campo: Dificultad (visible para todos) -->
+        <div class="mb-4 mt-4">
             <label for="id_difficulty" class="block text-sm font-medium text-gray-300">Dificultad (1-5)</label>
             <input type="number" name="difficulty" id="id_difficulty" value="1" min="1" max="5"
                    class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
