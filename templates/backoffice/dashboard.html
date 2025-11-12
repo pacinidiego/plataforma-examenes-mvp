@@ -28,24 +28,92 @@
 <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <header>
         <h1 class="text-3xl font-bold text-white">
-            Dashboard (Sprint S1b)
+            Dashboard (Sprint S1c)
         </h1>
+        <p class="mt-2 text-gray-300">
+            ¡Bienvenido, {{ user.username }}! Esta es la página principal del Constructor de Exámenes.
+        </p>
     </header>
-    <main class="mt-6">
-        <div class="p-6 bg-gray-800 rounded-lg shadow">
-            <h2 class="text-xl font-semibold text-white">¡Bienvenido, {{ user.username }}!</h2>
-            <p class="mt-2 text-gray-300">
-                Esta es la página principal del backoffice (Constructor de Exámenes).
-            </p>
-            <p class="mt-4 text-gray-400">
-                Próximos pasos (Sprints futuros):
-            </p>
-            <ul class="list-disc list-inside mt-2 text-gray-400">
-                <li>(S1b-futuro) Mostrar lista de 'Tenants' a los que perteneces.</li>
-                <li>(S1b-futuro) Mostrar panel para crear/editar Exámenes e Ítems (el "Constructor").</li>
-                <li>(S2) Construir el "Runner" del alumno.</li>
-            </ul>
+    <main class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- (S1c) Columna 1: Exámenes -->
+        <div class="bg-gray-800 rounded-lg shadow p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-white">Mis Exámenes</h2>
+                <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm">
+                    + Crear Examen
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-gray-300">
+                    <thead class="border-b border-gray-700">
+                        <tr>
+                            <th class="py-2 px-3 text-left">Título</th>
+                            <th class="py-2 px-3 text-left">Ítems</th>
+                            <th class="py-2 px-3 text-left">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        {% for exam in exam_list %}
+                            <tr>
+                                <td class="py-3 px-3">{{ exam.title }}</td>
+                                <td class="py-3 px-3">{{ exam.items.count }}</td>
+                                <td class="py-3 px-3">
+                                    <a href="#" class="text-blue-400 hover:text-blue-300">Editar</a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="3" class="py-4 px-3 text-center text-gray-500">
+                                    No has creado ningún examen todavía.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
+
+        <!-- (S1c) Columna 2: Banco de Ítems -->
+        <div class="bg-gray-800 rounded-lg shadow p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-white">Banco de Ítems</h2>
+                <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm">
+                    + Crear Ítem
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-gray-300">
+                    <thead class="border-b border-gray-700">
+                        <tr>
+                            <th class="py-2 px-3 text-left">Enunciado (Stem)</th>
+                            <th class="py-2 px-3 text-left">Tipo</th>
+                            <th class="py-2 px-3 text-left">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        {% for item in item_list %}
+                            <tr>
+                                <td class="py-3 px-3">{{ item.stem|truncatechars:50 }}</td>
+                                <td class="py-3 px-3">{{ item.get_item_type_display }}</td>
+                                <td class="py-3 px-3">
+                                    <a href="#" class="text-blue-400 hover:text-blue-300">Editar</a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="3" class="py-4 px-3 text-center text-gray-500">
+                                    No has creado ningún ítem todavía.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
     </main>
 </div>
 {% endblock %}
