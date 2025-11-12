@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Barra de Navegación del Backoffice -->
+<nav class="bg-gray-800 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+            <div class="flex items-center">
+                <span class="font-bold text-xl text-white">Plataforma (Backoffice)</span>
+            </div>
+            <div class="flex items-center">
+                <span class="text-gray-300 mr-4">Hola, {{ user.username }}</span>
+                <!-- (S1b) Formulario de Logout -->
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700">
+                        Cerrar Sesión
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- Contenido Principal -->
+<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <header>
+        <h1 class="text-3xl font-bold text-white">
+            Dashboard (Sprint S1b)
+        </h1>
+    </header>
+    <main class="mt-6">
+        <div class="p-6 bg-gray-800 rounded-lg shadow">
+            <h2 class="text-xl font-semibold text-white">¡Bienvenido, {{ user.username }}!</h2>
+            <p class="mt-2 text-gray-300">
+                Esta es la página principal del backoffice (Constructor de Exámenes).
+            </p>
+            <p class="mt-4 text-gray-400">
+                Próximos pasos (Sprints futuros):
+            </p>
+            <ul class="list-disc list-inside mt-2 text-gray-400">
+                <li>(S1b-futuro) Mostrar lista de 'Tenants' a los que perteneces.</li>
+                <li>(S1b-futuro) Mostrar panel para crear/editar Exámenes e Ítems (el "Constructor").</li>
+                <li>(S2) Construir el "Runner" del alumno.</li>
+            </ul>
+        </div>
+    </main>
+</div>
+{% endblock %}
