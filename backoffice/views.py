@@ -15,21 +15,34 @@ from django.urls import reverse
 from django.core.files.storage import default_storage
 from django.http import Http404
 
-import google.generativeai as genai # (S1c) Importamos la librería de IA
+import google.generativeai as genai 
 
 from exams.models import Exam, Item
 from tenancy.models import TenantMembership
-from .tasks import process_exam_excel
+# (Sacamos la importación de 'tasks' porque abandonamos el Excel)
+# from .tasks import process_exam_excel 
 
-# (S1c) Vista del Dashboard (Formulario de subida)
+# (S1c) Vista del Dashboard
 @login_required
 def dashboard(request):
+    """
+    Muestra el Dashboard principal del Docente/Admin.
+    """
+    # 1. Obtenemos los 'tenants' (universidades) a los que pertenece el usuario
     memberships = TenantMembership.objects.filter(user=request.user)
-    exam_list = Exam.objects.filter(tenant__in=memberships.values_list('tenant', flat=True)).order_by('-created_at')[:20]
+    user_tenants = memberships.values_list('tenant', flat=True)
+
+    # --- !! ESTA ES LA CORRECCIÓN (BUG 3) !! ---
+    # (Filtramos Exámenes E Ítems por los tenants del usuario)
+    exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
+    item_list = Item.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
+    # --- !! FIN DE LA CORRECCIÓN !! ---
 
     context = {
         'user': request.user,
+        'memberships': memberships,
         'exam_list': exam_list,
+        'item_list': item_list,
     }
     
     return render(request, 'backoffice/dashboard.html', context)
@@ -40,18 +53,14 @@ def dashboard(request):
 def item_create(request):
     """
     Maneja la creación de un nuevo Ítem (Pregunta).
-    - Si es GET, devuelve el formulario (parcial de HTMX).
-    - Si es POST, guarda el ítem y devuelve la fila de la tabla (parcial de HTMX).
     """
     
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        # TODO: Mejorar este manejo de error
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
 
     if request.method == "POST":
-        # --- Lógica de GUARDADO (POST) ---
         item_type = request.POST.get('item_type')
         stem = request.POST.get('stem')
         difficulty = request.POST.get('difficulty')
@@ -60,30 +69,32 @@ def item_create(request):
         options_json = None
         if item_type == 'MC':
             correct_answer = request.POST.get('correct_answer')
-            distractors = request.POST.getlist('distractors') # Obtiene una lista
+            distractors = request.POST.getlist('distractors')
             
             options_list = []
-            # Agregamos la respuesta correcta
             if correct_answer:
                 options_list.append({"text": correct_answer, "correct": True})
-            # Agregamos los distractores (incorrectos)
             for d in distractors:
-                if d: # Nos aseguramos de que no esté vacío
+                if d: 
                     options_list.append({"text": d, "correct": False})
             
             options_json = options_list
 
-        new_item = Item.objects.create(
-            tenant=current_tenant,
-            author=request.user,
-            item_type=item_type,
-            stem=stem,
-            difficulty=difficulty,
-            options=options_json
-        )
-        
-        context = {'item': new_item}
-        return render(request, 'backoffice/partials/item_table_row.html', context)
+        try:
+            new_item = Item.objects.create(
+                tenant=current_tenant,
+                author=request.user,
+                item_type=item_type,
+                stem=stem,
+                difficulty=difficulty,
+                options=options_json
+            )
+            context = {'item': new_item}
+            return render(request, 'backoffice/partials/item_table_row.html', context)
+        except Exception as e:
+            # (S1c Bugfix 4) Si falla por 'unique_together', avisamos al usuario
+            return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe una pregunta con ese enunciado.</div>")
+
 
     # --- Lógica de Mostrar Formulario (GET) ---
     context = {
@@ -97,8 +108,6 @@ def item_create(request):
 def ai_generate_distractors(request):
     """
     Llamado por HTMX desde el modal de 'Crear Ítem'.
-    Recibe el enunciado y la respuesta correcta, y devuelve
-    un parcial de HTML con los 3 distractores generados por IA.
     """
     stem = request.POST.get('stem')
     correct_answer = request.POST.get('correct_answer')
@@ -109,8 +118,6 @@ def ai_generate_distractors(request):
     try:
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
-        # --- !! ESTA ES LA CORRECCIÓN (S1c - v7.1) !! ---
-        # (Mejoramos el prompt para manejar ambigüedades como TCP/UDP)
         prompt = (
             "Eres un asistente de educación experto en crear exámenes de nivel universitario.\n"
             "Tu tarea es generar 3 opciones **inequívocamente incorrectas** (distractores) para una pregunta de opción múltiple.\n"
@@ -126,7 +133,6 @@ def ai_generate_distractors(request):
             "Genera 3 distractores **inequívocamente incorrectos**. Devuelve ÚNICAMENTE un array JSON de strings, sin nada más.\n"
             "Ejemplo de salida (para el contexto 'TCP'): [\"IP\", \"HTTP\", \"FTP\"]"
         )
-        # --- !! FIN DE LA CORRECCIÓN !! ---
         
         response = model.generate_content(
             prompt,
@@ -135,116 +141,45 @@ def ai_generate_distractors(request):
             )
         )
         
-        # Parseamos la respuesta JSON de Gemini
         distractors = json.loads(response.text)
         
-        # Nos aseguramos de que sean 3
         if len(distractors) < 3:
-            distractors.extend(["", ""]) # Rellenamos si faltan
+            distractors.extend(["", ""]) 
         
-        context = {'distractors': distractors[:3]} # Tomamos solo 3
+        context = {'distractors': distractors[:3]} 
         return render(request, 'backoffice/partials/distractors.html', context)
 
     except Exception as e:
-        # Esto ahora mostrará el error de la IA (como el 404)
         return HttpResponse(f"<p class='text-red-500'>Error de IA: {e}</p>")
 
 
-# --- VISTAS DE UPLOAD DE EXCEL (S1c) ---
+# --- VISTAS DE UPLOAD DE EXCEL (S1c - Abandonadas) ---
+# (Dejamos estas funciones pero las 'apagamos' para no romper las URLs)
+
 @login_required
-@require_http_methods(["POST"])
 def exam_upload_view(request):
-    membership = TenantMembership.objects.filter(user=request.user).first()
-    if not membership:
-        return HttpResponse("<p class='text-red-500'>Error: Usuario no tiene un tenant asignado.</p>", status=403)
-    
-    excel_file = request.FILES.get('excel_file')
-    exam_title = request.POST.get('exam_title')
-
-    if not excel_file or not exam_title:
-        return HttpResponse("<p class='text-red-500'>Error: Faltan el título o el archivo.</p>", status=400)
-
-    if not excel_file.name.endswith('.xlsx'):
-        return HttpResponse(f"<p class='text-red-500'>Error: El archivo debe ser .xlsx. (Subiste: {excel_file.name})</p>", status=400)
-
-    temp_file_name = f"temp/{uuid.uuid4()}.xlsx"
-    temp_file_path = default_storage.save(temp_file_name, excel_file)
-
-    task = process_exam_excel.delay(
-        tenant_id=membership.tenant.id,
-        user_id=request.user.id,
-        exam_title=exam_title,
-        temp_file_path=temp_file_path
-    )
-    context = {'task_id': task.id}
-    return render(request, 'backoffice/partials/polling_spinner.html', context)
-
+    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
 
 @login_required
 def poll_task_status_view(request, task_id):
-    task = AsyncResult(task_id)
-    if task.state == 'SUCCESS':
-        exam_id = task.result 
-        redirect_url = reverse('backoffice:exam_constructor', args=[exam_id])
-        response = HttpResponse(status=200)
-        response['HX-Redirect'] = redirect_url
-        return response
-    elif task.state == 'FAILURE':
-        error_message = str(task.info) 
-        return HttpResponse(f"<div class='p-4 bg-red-800 border border-red-600 text-red-100 rounded-md'><p class='font-bold'>Error al procesar el archivo.</p><p class='text-sm mt-2'>{error_message}</p><p class='text-sm mt-2'>Por favor, revise el formato del Excel e intente de nuevo.</p></div>")
-    return HttpResponse(status=200)
+    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
 
+@login_required
+def download_excel_template_view(request):
+    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
+
+# --- VISTAS DEL CONSTRUCTOR DE EXÁMENES (S1c-v7) ---
 
 @login_required
 def exam_constructor_view(request, exam_id):
+    # (Placeholder - Próximo sprint)
     try:
         exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     except:
         raise Http404("Examen no encontrado o no le pertenece.")
-    context = {
-        'exam': exam,
-        'items': exam.items.all().order_by('examitemlink__order')
-    }
-    items_html = "<ul>"
-    for item in context['items']:
-        items_html += f"<li>{item.stem}</li>"
-    items_html += "</ul>"
-    return HttpResponse(f"<h1>¡Éxito! (S1c)</h1><p>Examen '{exam.title}' creado con {exam.items.count()} ítems.</p>{items_html}<br><a href='{reverse('backoffice:dashboard')}'>Volver al Dashboard</a>")
+    return HttpResponse(f"<h1>Placeholder (S1c-futuro)</h1><p>Esta será la página del Constructor para el Examen: '{exam.title}'.</p><br><a href='{reverse('backoffice:dashboard')}'>Volver al Dashboard</a>")
 
-
-@login_required
-def download_excel_template_view(request):
-    workbook = openpyxl.Workbook()
-    sheet = workbook.active
-    sheet.title = "Plantilla de Examen"
-    headers = [
-        "tipo", "enunciado", "contenido_caso", 
-        "opcion_1", "opcion_2", "opcion_3", "opcion_4", 
-        "respuesta_correcta", "dificultad"
-    ]
-    sheet.append(headers)
-    tipo_validation = DataValidation(type="list", formula1='"MC,SHORT,CASE"', allow_blank=True)
-    tipo_validation.add('A2:A1000') 
-    sheet.add_data_validation(tipo_validation)
-    green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
-    rule_mc = Rule(type="expression", formula=[f'$A2="MC"'], stopIfTrue=False)
-    rule_mc.fill = green_fill
-    sheet.conditional_formatting.add('D2:H1000', rule_mc)
-    rule_case = Rule(type="expression", formula=[f'$A2="CASE"'], stopIfTrue=False)
-    rule_case.fill = green_fill
-    sheet.conditional_formatting.add('C2:C1000', rule_case)
-    buffer = BytesIO()
-    workbook.save(buffer)
-    buffer.seek(0)
-    response = HttpResponse(
-        buffer,
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    response['Content-Disposition'] = 'attachment; filename="plantilla_examen_plataforma.xlsx"'
-    return response
-
-# --- !! ESTAS VISTAS ESTÁN VACÍAS POR AHORA, PERO LAS NECESITAMOS !! ---
 @login_required
 def exam_create(request):
-    # Placeholder - Lo haremos en el próximo sprint
+    # (Placeholder - Próximo sprint)
     return HttpResponse("Página 'exam_create' (POST) (Próximo Sprint)")
