@@ -23,7 +23,12 @@
         }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans">
+<!-- --- !! ESTA ES LA CORRECCIÓN (S1c) !! --- -->
+<!-- 
+Añadimos 'x-data' al body. 
+Ahora la variable 'showModal' es global para AlpineJS. 
+-->
+<body class="bg-gray-900 text-gray-100 font-sans" x-data="{ showModal: false }">
 
     <div id="main-content" class="min-h-screen">
         {% block content %}
