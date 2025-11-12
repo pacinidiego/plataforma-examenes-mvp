@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Iniciar Sesión{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-center min-h-screen bg-gray-900">
+    <div class="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-lg shadow-lg">
+        <h2 class="text-3xl font-bold text-center text-white">
+            Plataforma de Exámenes
+        </h2>
+        <p class="text-center text-gray-400">Inicio de sesión (S1b)</p>
+        
+        <!-- (Spec S1b) Formulario de Login -->
+        <form method="post" class="space-y-6">
+            {% csrf_token %}
+            
+            {% if form.errors %}
+            <div class="p-3 bg-red-800 border border-red-600 text-red-100 rounded-md">
+                <p>Tu nombre de usuario o contraseña son incorrectos. Por favor, inténtalo de nuevo.</p>
+            </div>
+            {% endif %}
+
+            <div>
+                <label for="id_username" class="block text-sm font-medium text-gray-300">Nombre de usuario</label>
+                <input type="text" name="username" autofocus autocapitalize="none" autocomplete="username" maxlength="150" required id="id_username"
+                       class="w-full px-3 py-2 mt-1 text-gray-100 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            </div>
+
+            <div>
+                <label for="id_password" class="block text-sm font-medium text-gray-300">Contraseña</label>
+                <input type="password" name="password" autocomplete="current-password" required id="id_password"
+                       class="w-full px-3 py-2 mt-1 text-gray-100 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            </div>
+
+            <input type="hidden" name="next" value="{{ next|default:'/backoffice/' }}">
+
+            <div>
+                <button type="submit"
+                        class="w-full px-4 py-2 text-lg font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-gray-800">
+                    Ingresar
+                </button>
+            </div>
+        </form>
+        
+        <p class="text-xs text-center text-gray-500">
+            (Este es el backoffice para Docentes y Admins. Los Alumnos ingresarán por el LMS o un link directo).
+        </p>
+    </div>
+</div>
+{% endblock %}
