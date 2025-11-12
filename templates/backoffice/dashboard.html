@@ -4,10 +4,6 @@
 
 {% block content %}
 <!-- (S1c) Contenedor del Modal (Ventana Emergente) -->
-<!-- 
-Quitamos 'x-data' de este div. 
-Ahora hereda la variable 'showModal' del <body> (en base.html).
--->
 <div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-gray-900 bg-opacity-75 p-4" 
      x-show="showModal" 
      x-cloak
@@ -71,13 +67,13 @@ Ahora hereda la variable 'showModal' del <body> (en base.html).
                     <thead class="border-b border-gray-700">
                         <tr>
                             <th class="py-2 px-3 text-left">Título</th>
-                            <th class="py-2 px-3 text-left">Ítems</th>
+                            <th class="py-2 px-3 text-left">Preguntas</th>
                             <th class="py-2 px-3 text-left">Acciones</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-700">
                         {% for exam in exam_list %}
-                            <tr>
+                            <tr id="exam-row-{{ exam.id }}">
                                 <td class="py-3 px-3">{{ exam.title }}</td>
                                 <td class="py-3 px-3">{{ exam.items.count }}</td>
                                 <td class="py-3 px-3">
@@ -85,7 +81,7 @@ Ahora hereda la variable 'showModal' del <body> (en base.html).
                                 </td>
                             </tr>
                         {% empty %}
-                            <tr>
+                            <tr id="empty-exam-row">
                                 <td colspan="3" class="py-4 px-3 text-center text-gray-500">
                                     No has creado ningún examen todavía.
                                 </td>
@@ -96,24 +92,19 @@ Ahora hereda la variable 'showModal' del <body> (en base.html).
             </div>
         </div>
 
-        <!-- (S1c) Columna 2: Banco de Ítems -->
+        <!-- (S1c) Columna 2: Banco de Preguntas -->
         <div class="bg-gray-800 rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-white">Banco de Ítems</h2>
+                <!-- --- !! CORRECCIÓN DE TERMINOLOGÍA (Req #4) !! --- -->
+                <h2 class="text-xl font-semibold text-white">Banco de Preguntas</h2>
                 
-                <!-- --- !! ESTE ES EL BOTÓN QUE AHORA FUNCIONA !! --- -->
                 <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
                         hx-get="{% url 'backoffice:item_create' %}"
                         hx-target="#modal-content"
                         hx-swap="innerHTML"
                         x-on:click="showModal = true">
-                    + Crear Ítem (con IA ✨)
+                    + Crear Pregunta (con IA ✨)
                 </button>
-                <!--
-                    hx-get: Carga el formulario desde la URL 'item_create'.
-                    hx-target: Pone el formulario dentro del div '#modal-content'.
-                    x-on:click: Le dice a AlpineJS que muestre el modal.
-                -->
             </div>
 
             <div class="overflow-x-auto">
@@ -125,7 +116,6 @@ Ahora hereda la variable 'showModal' del <body> (en base.html).
                             <th class="py-2 px-3 text-left">Acciones</th>
                         </tr>
                     </thead>
-                    <!-- (S1c) Le damos un ID a la tabla para que HTMX sepa dónde poner la fila nueva -->
                     <tbody id="item-table-body" class="divide-y divide-gray-700">
                         {% for item in item_list %}
                             <tr id="item-row-{{ item.id }}">
@@ -138,7 +128,7 @@ Ahora hereda la variable 'showModal' del <body> (en base.html).
                         {% empty %}
                             <tr id="empty-item-row">
                                 <td colspan="3" class="py-4 px-3 text-center text-gray-500">
-                                    No has creado ningún ítem todavía.
+                                    No has creado ninguna pregunta todavía.
                                 </td>
                             </tr>
                         {% endfor %}
