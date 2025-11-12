@@ -1,0 +1,12 @@
+<!-- 
+(S1c) Este es el template que devuelve la vista POST.
+Es solo la fila de la tabla (<tr>) con los datos del ítem que acabamos de crear.
+HTMX lo insertará en la tabla del dashboard.
+-->
+<tr id="item-row-{{ item.id }}">
+    <td class="py-3 px-3">{{ item.stem|truncatechars:50 }}</td>
+    <td class="py-3 px-3">{{ item.get_item_type_display }}</td>
+    <td class="py-3 px-3">
+        <a href="#" class="text-blue-400 hover:text-blue-300">Editar</a>
+    </td>
+</tr>
