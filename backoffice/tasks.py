@@ -8,8 +8,16 @@ from exams.models import Exam, Item, ExamItemLink
 
 User = get_user_model()
 
-# (S1c) Esta es la tarea asíncrona (el "worker") que procesará el Excel
-@shared_task(bind=True)
+# --- !! CORRECCIÓN (BUG 2: Bucle Infinito) !! ---
+# 1. Definimos las cabeceras esperadas
+EXPECTED_HEADERS = [
+    "tipo", "enunciado", "contenido_caso", 
+    "opcion_1", "opcion_2", "opcion_3", "opcion_4", 
+    "respuesta_correcta", "dificultad"
+]
+
+# 2. Limitamos los reintentos
+@shared_task(bind=True, max_retries=2, default_retry_delay=30)
 def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
     """
     Lee un archivo Excel desde S3/R2 (subido por el docente),
@@ -34,11 +42,19 @@ def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
             workbook = openpyxl.load_workbook(f)
             sheet = workbook.active
 
+            # --- !! CORRECCIÓN (BUG 2: Validar Cabeceras) !! ---
+            headers_in_file = [cell.value for cell in sheet[1]]
+            if headers_in_file != EXPECTED_HEADERS:
+                # Si las cabeceras no coinciden, es un formato incorrecto.
+                # Lanzamos un ValueError, que NO será reintentado.
+                raise ValueError(f"Formato de Excel incorrecto. Cabeceras esperadas: {EXPECTED_HEADERS}, pero se encontró: {headers_in_file}")
+            # --- !! FIN CORRECCIÓN !! ---
+
             items_creados = []
             
             # 4. Leer el Excel fila por fila (saltando la cabecera 'min_row=2')
             for index, row in enumerate(sheet.iter_rows(min_row=2)):
-                # Mapeo de columnas (basado en nuestra plantilla)
+                # Mapeo de columnas
                 tipo = str(row[0].value).strip() if row[0].value else None
                 enunciado = str(row[1].value).strip() if row[1].value else None
                 contenido_caso = str(row[2].value).strip() if row[2].value else None
@@ -46,18 +62,24 @@ def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
                 opcion_2 = str(row[4].value).strip() if row[4].value else None
                 opcion_3 = str(row[5].value).strip() if row[5].value else None
                 opcion_4 = str(row[6].value).strip() if row[6].value else None
-                respuesta_correcta_num = row[7].value
+                
+                respuesta_correcta_num = None
+                if row[7].value is not None:
+                    try:
+                        respuesta_correcta_num = int(row[7].value)
+                    except ValueError:
+                        # Ignoramos si no es un número
+                        pass 
+                
                 dificultad = int(row[8].value) if row[8].value else 1
 
-                # Si no hay enunciado o tipo, saltamos la fila
                 if not tipo or not enunciado:
                     continue
 
-                # 5. Lógica de Conversión a JSON (Tu idea de UX)
+                # 5. Lógica de Conversión a JSON
                 options_json = None
                 if tipo == 'MC':
                     options_list = []
-                    # (Convertimos las columnas planas al JSON que espera la DB)
                     if opcion_1:
                         options_list.append({"text": opcion_1, "correct": (respuesta_correcta_num == 1)})
                     if opcion_2:
@@ -86,7 +108,7 @@ def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
                     exam=new_exam,
                     item=item,
                     order=order,
-                    points=1 # (Default 1 punto)
+                    points=1
                 )
 
         # 8. Limpiar el archivo temporal de S3/R2
@@ -99,5 +121,12 @@ def process_exam_excel(self, tenant_id, user_id, exam_title, temp_file_path):
         # Si algo falla, limpiamos el archivo y lanzamos el error
         if 'temp_file_path' in locals() and default_storage.exists(temp_file_path):
             default_storage.delete(temp_file_path)
-        # Celery registrará este error
-        raise self.retry(exc=e, countdown=60)
+        
+        # --- !! CORRECCIÓN (BUG 2: Bucle Infinito) !! ---
+        # Si el error es un ValueError (como nuestro chequeo de cabeceras),
+        # NO reintentamos, solo fallamos.
+        if isinstance(e, ValueError):
+            raise e # Falla inmediatamente y reporta
+        
+        # Para otros errores (ej. DB caída), reintentamos (máx 2 veces)
+        raise self.retry(exc=e, countdown=30)
