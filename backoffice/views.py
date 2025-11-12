@@ -1,10 +1,11 @@
 import openpyxl
 import uuid
 from io import BytesIO
-# --- !! CORRECCIÓN (BUG 1: Error 500) !! ---
-# (Faltaban estas importaciones para la plantilla "inteligente")
+# --- !! CORRECCIÓN (BUG 1: Error 500 de 'formula') !! ---
+# Importamos las clases correctas
 from openpyxl.styles import PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.formatting.rule import Rule # <-- Esta faltaba
 # --- !! FIN CORRECCIÓN !! ---
 
 from celery.result import AsyncResult
@@ -55,11 +56,9 @@ def exam_upload_view(request):
     if not excel_file or not exam_title:
         return HttpResponse("<p class='text-red-500'>Error: Faltan el título o el archivo.</p>", status=400)
 
-    # --- !! CORRECCIÓN (BUG 2: Validación de archivo) !! ---
-    # Revisamos la extensión del archivo ANTES de subirlo
+    # (Arreglo Bug: Validación de archivo)
     if not excel_file.name.endswith('.xlsx'):
         return HttpResponse(f"<p class='text-red-500'>Error: El archivo debe ser .xlsx. (Subiste: {excel_file.name})</p>", status=400)
-    # --- !! FIN CORRECCIÓN !! ---
 
     # 1. Guardar el archivo temporalmente en S3/R2
     temp_file_name = f"temp/{uuid.uuid4()}.xlsx"
@@ -98,12 +97,12 @@ def poll_task_status_view(request, task_id):
         return response
         
     elif task.state == 'FAILURE':
-        # --- !! CORRECCIÓN (BUG 2: Mostrar error) !! ---
+        # (Arreglo Bug 2: Mostrar error)
         # Si Celery falló (ej. Excel corrupto), mostramos el error
-        task_info = task.info # Obtenemos el traceback del error
-        return HttpResponse(f"<div class='p-4 bg-red-800 border border-red-600 text-red-100 rounded-md'><p class='font-bold'>Error al procesar el archivo.</p><p class='text-sm mt-2'>{task_info}</p><p class='text-sm mt-2'>Por favor, revise el formato del Excel e intente de nuevo.</p></div>")
+        error_message = str(task.info) # Obtenemos el traceback del error
+        return HttpResponse(f"<div class='p-4 bg-red-800 border border-red-600 text-red-100 rounded-md'><p class='font-bold'>Error al procesar el archivo.</p><p class='text-sm mt-2'>{error_message}</p><p class='text-sm mt-2'>Por favor, revise el formato del Excel e intente de nuevo.</p></div>")
 
-    # Tarea aún en progreso (PENDING o STARTED)
+    # Tarea aún en progreso (PENDING o RETRY)
     # Devolvemos un 200 OK vacío. HTMX seguirá preguntando.
     return HttpResponse(status=200)
 
@@ -113,7 +112,6 @@ def exam_constructor_view(request, exam_id):
     """
     (Paso E)
     La página de "versión subida pero no grabada".
-    (Por ahora, solo es un placeholder).
     """
     try:
         exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
@@ -124,9 +122,6 @@ def exam_constructor_view(request, exam_id):
         'exam': exam,
         'items': exam.items.all().order_by('examitemlink__order')
     }
-    
-    # TODO: Crear este template
-    # return render(request, 'backoffice/exam_constructor.html', context)
     
     # Placeholder temporal:
     items_html = "<ul>"
@@ -162,15 +157,16 @@ def download_excel_template_view(request):
     sheet.add_data_validation(tipo_validation)
 
     # 4. Formato Condicional (Colores)
+    # --- !! CORRECCIÓN (BUG 1: Error 500 de 'formula') !! ---
+    # (Sintaxis corregida para openpyxl)
     green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
     
-    # Si A2="MC", pinta D2:H2 (Opciones y Respuesta)
-    sheet.conditional_formatting.add('D2:H1000', 
-        formula=[f'$A2="MC"'], stopIfTrue=False, fill=green_fill)
+    rule_mc = Rule(type="expression", formula=[f'$A2="MC"'], stopIfTrue=False, fill=green_fill)
+    sheet.conditional_formatting.add('D2:H1000', rule_mc)
         
-    # Si A2="CASE", pinta C2 (Contenido del Caso)
-    sheet.conditional_formatting.add('C2:C1000', 
-        formula=[f'$A2="CASE"'], stopIfTrue=False, fill=green_fill)
+    rule_case = Rule(type="expression", formula=[f'$A2="CASE"'], stopIfTrue=False, fill=green_fill)
+    sheet.conditional_formatting.add('C2:C1000', rule_case)
+    # --- !! FIN CORRECCIÓN !! ---
     
     # 5. Guardar en un buffer de memoria
     buffer = BytesIO()
