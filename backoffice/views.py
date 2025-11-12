@@ -91,7 +91,7 @@ def item_create(request):
     }
     return render(request, 'backoffice/partials/item_form.html', context)
 
-# --- ¡NUEVO! VISTA DE IA (S1c - v7) ---
+# --- VISTA DE IA (S1c - v7) ---
 @login_required
 @require_http_methods(["POST"])
 def ai_generate_distractors(request):
@@ -107,21 +107,26 @@ def ai_generate_distractors(request):
         return HttpResponse("<p class='text-red-500'>Por favor, escribe el enunciado y la respuesta correcta primero.</p>")
 
     try:
-        # --- !! ESTA ES LA LÍNEA CORREGIDA !! ---
-        # (Cambiamos el nombre del modelo al correcto: gemini-2.5-flash-preview-09-2025)
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
+        # --- !! ESTA ES LA CORRECCIÓN (S1c - v7.1) !! ---
+        # (Mejoramos el prompt para manejar ambigüedades como TCP/UDP)
         prompt = (
             "Eres un asistente de educación experto en crear exámenes de nivel universitario.\n"
-            "Tu tarea es generar 3 opciones incorrectas (distractores) para una pregunta de opción múltiple.\n"
-            "Los distractores deben ser plausibles, sutiles y estar relacionados con el tema, evitando opciones obviamente incorrectas.\n"
+            "Tu tarea es generar 3 opciones **inequívocamente incorrectas** (distractores) para una pregunta de opción múltiple.\n"
+            "Los distractores deben ser plausibles y estar relacionados con el tema, pero ser claramente erróneos.\n"
+            "**REGLA CRÍTICA:** No sugieras distractores que sean sinónimos o ejemplos alternativos que *también* sean correctos.\n"
+            "**Ejemplo de REGLA CRÍTICA:** Si la pregunta es 'un protocolo de capa 4' y la respuesta correcta es 'TCP', NO debes sugerir 'UDP' como distractor, ya que 'UDP' también es una respuesta correcta de capa 4.\n"
+            "\n"
             "--- CONTEXTO ---\n"
             f"PREGUNTA (ENUNCIADO): \"{stem}\"\n"
             f"RESPUESTA CORRECTA: \"{correct_answer}\"\n"
+            "\n"
             "--- TAREA ---\n"
-            "Genera 3 distractores. Devuelve ÚNICAMENTE un array JSON de strings, sin nada más.\n"
-            "Ejemplo de salida: [\"Distractor 1\", \"Distractor 2\", \"Distractor 3\"]"
+            "Genera 3 distractores **inequívocamente incorrectos**. Devuelve ÚNICAMENTE un array JSON de strings, sin nada más.\n"
+            "Ejemplo de salida (para el contexto 'TCP'): [\"IP\", \"HTTP\", \"FTP\"]"
         )
+        # --- !! FIN DE LA CORRECCIÓN !! ---
         
         response = model.generate_content(
             prompt,
