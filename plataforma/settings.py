@@ -7,6 +7,7 @@ Especificación: 18.2, 18.3, C4-4
 import os
 from pathlib import Path
 import dj_database_url # Render usa esto
+import importlib # Para el logging
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -18,7 +19,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-placeholder-ke
 # DEBUG se debe poner en 'False' en producción
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 
-# Hosts permitidos. Render maneja esto, '*' es inseguro pero simple para el MVP.
+# Hosts permitidos. Render maneja esto.
 ALLOWED_HOSTS = []
 RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if RENDER_EXTERNAL_HOSTNAME:
@@ -45,9 +46,10 @@ INSTALLED_APPS = [
     'django_celery_results', # (Spec 18.2)
 
     # Apps Propias (S0b)
-    'tenancy.apps.TenancyConfig', # <-- ¡ESTA ES LA LÍNEA NUEVA!
+    'tenancy.apps.TenancyConfig', 
+
     # Apps Propias (S1)
-    'exams.apps.ExamsConfig', # <-- ¡AÑADE ESTA LÍNEA!
+    'exams.apps.ExamsConfig',
 ]
 
 MIDDLEWARE = [
@@ -113,11 +115,8 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# ---> ¡LÍNEA CONFLICTIVA ELIMINADA! <---
+# (Este setting conflictivo ya fue eliminado)
 # STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage' 
-# Esta línea causaba el error "mutually exclusive". 
-# La configuración correcta está abajo, dentro de STORAGES.
-
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -145,14 +144,11 @@ if CLOUDFLARE_R2_ACCOUNT_ID:
     AWS_STORAGE_BUCKET_NAME = CLOUDFLARE_R2_BUCKET_NAME
     AWS_S3_ENDPOINT_URL = f"https://{CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
     
-    # (Spec 14: Evidencias cifradas, pero R2 lo maneja server-side)
-    AWS_DEFAULT_ACL = 'private' # (Spec 14: Privacidad)
-    AWS_S3_FILE_OVERWRITE = False # (Spec 7: Resiliencia)
+    AWS_DEFAULT_ACL = 'private' 
+    AWS_S3_FILE_OVERWRITE = False 
     AWS_S3_SIGNATURE_VERSION = 's3v4'
-    AWS_S3_REGION_NAME = 'auto' # R2 usa 'auto'
+    AWS_S3_REGION_NAME = 'auto' 
 
-    # Storage por defecto para todos los FileFields (Spec 18.2)
-    # Todos los archivos subidos (ej. Evidencias) van a R2.
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3.S3Storage",
@@ -171,3 +167,27 @@ else:
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+
+# --- 3. Configuración de Logging (Para ver Errores 500 en Render) ---
+# Esto le dice a Django que envíe los errores a la consola (logs de Render)
+# incluso cuando DEBUG = False.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING', # Muestra WARNING, ERROR, CRITICAL
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'), # Muestra INFO de Django
+            'propagate': False,
+        },
+    },
+}
