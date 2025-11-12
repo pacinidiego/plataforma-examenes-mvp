@@ -1,0 +1,58 @@
+<!-- 
+(S1c) Este es un "template parcial" (un pedazo de HTML).
+No tiene <html> ni <body>. HTMX lo cargará dentro del modal. 
+-->
+<form hx-post="{% url 'backoffice:item_create' %}"
+      hx-target="#item-table-body"
+      hx-swap="afterbegin"
+      hx-on::after-request="this.closest('.modal').remove()"> 
+      <!-- 
+        hx-post: Envía los datos a la URL 'item_create' (la vista POST).
+        hx-target: El resultado (la nueva fila) lo pone en el cuerpo de la tabla '#item-table-body'.
+        hx-swap: Pone la fila nueva 'afterbegin' (arriba de todo).
+        hx-on::after-request: Cierra el modal cuando termina.
+      -->
+
+    <div class="p-6 bg-gray-800 rounded-lg shadow-xl w-full max-w-lg">
+        <h3 class="text-2xl font-semibold text-white mb-4">Crear Nuevo Ítem (Pregunta)</h3>
+        
+        {% csrf_token %}
+
+        <!-- Campo: Tipo de Ítem -->
+        <div class="mb-4">
+            <label for="id_item_type" class="block text-sm font-medium text-gray-300">Tipo de Ítem</label>
+            <select name="item_type" id="id_item_type" class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                {% for value, label in item_types %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Campo: Enunciado (Stem) -->
+        <div class="mb-4">
+            <label for="id_stem" class="block text-sm font-medium text-gray-300">Enunciado (Stem)</label>
+            <textarea name="stem" id="id_stem" rows="4" required
+                      class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"></textarea>
+        </div>
+
+        <!-- Campo: Dificultad -->
+        <div class="mb-4">
+            <label for="id_difficulty" class="block text-sm font-medium text-gray-300">Dificultad (1-5)</label>
+            <input type="number" name="difficulty" id="id_difficulty" value="1" min="1" max="5"
+                   class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+        </div>
+
+        <!-- Botones de Acción -->
+        <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" 
+                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"
+                    x-on:click="showModal = false"> <!-- AlpineJS para cerrar el modal -->
+                Cancelar
+            </button>
+            <button type="submit"
+                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
+                Guardar Ítem
+            </button>
+        </div>
+    </div>
+</form>
