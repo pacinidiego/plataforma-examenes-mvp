@@ -1,8 +1,12 @@
 import openpyxl
 import uuid
 from io import BytesIO
+# --- !! CORRECCIÓN (BUG 1: Error 500) !! ---
+# (Faltaban estas importaciones para la plantilla "inteligente")
 from openpyxl.styles import PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
+# --- !! FIN CORRECCIÓN !! ---
+
 from celery.result import AsyncResult
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -15,17 +19,13 @@ from django.http import Http404
 # (S1/S1c) Importamos los modelos
 from exams.models import Exam, Item
 from tenancy.models import TenantMembership
-from .tasks import process_exam_excel # ¡Importamos el worker!
+from .tasks import process_exam_excel # Importamos el worker
 
-# (S1c) Vista del Dashboard (Ahora es el formulario de subida)
+# (S1c) Vista del Dashboard (Formulario de subida)
 @login_required
 def dashboard(request):
-    """
-    Muestra el Dashboard principal del Docente/Admin.
-    (S1c): Ahora es el formulario para subir exámenes de Excel.
-    """
-    # TODO: Filtrar por Tenant
-    exam_list = Exam.objects.all().order_by('-created_at')[:20]
+    memberships = TenantMembership.objects.filter(user=request.user)
+    exam_list = Exam.objects.filter(tenant__in=memberships.values_list('tenant', flat=True)).order_by('-created_at')[:20]
 
     context = {
         'user': request.user,
@@ -34,7 +34,7 @@ def dashboard(request):
     
     return render(request, 'backoffice/dashboard.html', context)
 
-# --- ¡NUEVO! VISTAS DE UPLOAD DE EXCEL (S1c) ---
+# --- VISTAS DE UPLOAD DE EXCEL (S1c) ---
 
 @login_required
 @require_http_methods(["POST"])
@@ -47,17 +47,21 @@ def exam_upload_view(request):
     """
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
+        return HttpResponse("<p class='text-red-500'>Error: Usuario no tiene un tenant asignado.</p>", status=403)
     
     excel_file = request.FILES.get('excel_file')
     exam_title = request.POST.get('exam_title')
 
     if not excel_file or not exam_title:
-        # TODO: Mejorar manejo de error
-        return HttpResponse("Error: Faltan datos.", status=400)
+        return HttpResponse("<p class='text-red-500'>Error: Faltan el título o el archivo.</p>", status=400)
 
-    # 1. Guardar el archivo temporalmente en S3/R2 (en una carpeta 'temp')
-    # (Usamos un UUID para un nombre único)
+    # --- !! CORRECCIÓN (BUG 2: Validación de archivo) !! ---
+    # Revisamos la extensión del archivo ANTES de subirlo
+    if not excel_file.name.endswith('.xlsx'):
+        return HttpResponse(f"<p class='text-red-500'>Error: El archivo debe ser .xlsx. (Subiste: {excel_file.name})</p>", status=400)
+    # --- !! FIN CORRECCIÓN !! ---
+
+    # 1. Guardar el archivo temporalmente en S3/R2
     temp_file_name = f"temp/{uuid.uuid4()}.xlsx"
     temp_file_path = default_storage.save(temp_file_name, excel_file)
 
@@ -70,7 +74,6 @@ def exam_upload_view(request):
     )
 
     # 3. Devolver el 'spinner' de polling (Paso C)
-    # Este HTML le dice a HTMX que empiece a preguntar a la URL de 'poll_task_status'
     context = {'task_id': task.id}
     return render(request, 'backoffice/partials/polling_spinner.html', context)
 
@@ -86,7 +89,7 @@ def poll_task_status_view(request, task_id):
     
     if task.state == 'SUCCESS':
         # ¡TAREA COMPLETA! (Paso D)
-        exam_id = task.result # El worker nos devuelve el ID del examen
+        exam_id = task.result 
         
         # Le decimos a HTMX que redirija al usuario
         redirect_url = reverse('backoffice:exam_constructor', args=[exam_id])
@@ -95,8 +98,10 @@ def poll_task_status_view(request, task_id):
         return response
         
     elif task.state == 'FAILURE':
-        # TODO: Manejar el error
-        return HttpResponse(f"<p class='text-red-500'>Error al procesar el archivo. Por favor, revise el formato e intente de nuevo.</p>")
+        # --- !! CORRECCIÓN (BUG 2: Mostrar error) !! ---
+        # Si Celery falló (ej. Excel corrupto), mostramos el error
+        task_info = task.info # Obtenemos el traceback del error
+        return HttpResponse(f"<div class='p-4 bg-red-800 border border-red-600 text-red-100 rounded-md'><p class='font-bold'>Error al procesar el archivo.</p><p class='text-sm mt-2'>{task_info}</p><p class='text-sm mt-2'>Por favor, revise el formato del Excel e intente de nuevo.</p></div>")
 
     # Tarea aún en progreso (PENDING o STARTED)
     # Devolvemos un 200 OK vacío. HTMX seguirá preguntando.
@@ -110,7 +115,10 @@ def exam_constructor_view(request, exam_id):
     La página de "versión subida pero no grabada".
     (Por ahora, solo es un placeholder).
     """
-    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    try:
+        exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    except:
+        raise Http404("Examen no encontrado o no le pertenece.")
     
     context = {
         'exam': exam,
@@ -119,7 +127,14 @@ def exam_constructor_view(request, exam_id):
     
     # TODO: Crear este template
     # return render(request, 'backoffice/exam_constructor.html', context)
-    return HttpResponse(f"<h1>¡Éxito! (S1c)</h1><p>Examen '{exam.title}' creado con {exam.items.count()} ítems.</p><a href='{reverse('backoffice:dashboard')}'>Volver al Dashboard</a>")
+    
+    # Placeholder temporal:
+    items_html = "<ul>"
+    for item in context['items']:
+        items_html += f"<li>{item.stem}</li>"
+    items_html += "</ul>"
+    
+    return HttpResponse(f"<h1>¡Éxito! (S1c)</h1><p>Examen '{exam.title}' creado con {exam.items.count()} ítems.</p>{items_html}<br><a href='{reverse('backoffice:dashboard')}'>Volver al Dashboard</a>")
 
 
 @login_required
@@ -127,7 +142,6 @@ def download_excel_template_view(request):
     """
     (Tu Req 1)
     Genera y sirve la plantilla de Excel "inteligente"
-    con validación de datos (dropdown) y formato condicional (colores).
     """
     # 1. Crear un workbook en memoria
     workbook = openpyxl.Workbook()
@@ -148,7 +162,6 @@ def download_excel_template_view(request):
     sheet.add_data_validation(tipo_validation)
 
     # 4. Formato Condicional (Colores)
-    # (Esta es tu idea, pintamos según el tipo)
     green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
     
     # Si A2="MC", pinta D2:H2 (Opciones y Respuesta)
