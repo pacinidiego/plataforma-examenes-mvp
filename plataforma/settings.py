@@ -1,7 +1,6 @@
 """
 Configuración de Django para el proyecto Plataforma.
-Sprint S0a: Setup de Arquitectura Core (Celery/Redis, R2)
-Especificación: 18.2, 18.3, C4-4
+Sprint S1b: Setup de Backoffice HTMX
 """
 
 import os
@@ -44,12 +43,16 @@ INSTALLED_APPS = [
     'rest_framework',
     'storages', # Para R2/S3 (Spec 18.2)
     'django_celery_results', # (Spec 18.2)
+    'django_htmx', # (S1b)
 
     # Apps Propias (S0b)
     'tenancy.apps.TenancyConfig', 
 
     # Apps Propias (S1)
     'exams.apps.ExamsConfig',
+
+    # Apps Propias (S1b)
+    'backoffice.apps.BackofficeConfig', # <-- ¡AÑADIDA!
 ]
 
 MIDDLEWARE = [
@@ -61,6 +64,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django_htmx.middleware.HtmxMiddleware', # (S1b)
 ]
 
 ROOT_URLCONF = 'plataforma.urls'
@@ -68,7 +72,9 @@ ROOT_URLCONF = 'plataforma.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # --- !! ESTA ES LA MODIFICACIÓN (S1b) !! ---
+        # Le decimos a Django que busque templates en la raíz
+        'DIRS': [BASE_DIR / 'templates'], 
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -85,7 +91,6 @@ WSGI_APPLICATION = 'plataforma.wsgi.application'
 
 
 # Database (Spec C4-4)
-# Render nos da una DATABASE_URL
 DATABASES = {
     'default': dj_database_url.config(
         conn_max_age=600,
@@ -111,39 +116,32 @@ USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images)
-# Configuración para WhiteNoise (Render)
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# (Este setting conflictivo ya fue eliminado)
-# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage' 
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- 1. Configuración de Celery (S0a / C4-4) ---
-# (Spec 18.2)
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') # Viene de render.yaml
-CELERY_RESULT_BACKEND = 'django-db' # Guarda resultados en la DB de Django (Postgres)
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') 
+CELERY_RESULT_BACKEND = 'django-db'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
 # --- 2. Configuración de Storage (S0a / R2 - C4-4) ---
-# (Spec 18.2) Usamos Cloudflare R2 (compatible S3)
 CLOUDFLARE_R2_ACCOUNT_ID = os.environ.get('CLOUDFLARE_R2_ACCOUNT_ID')
 CLOUDFLARE_R2_ACCESS_KEY_ID = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY_ID')
 CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY')
 CLOUDFLARE_R2_BUCKET_NAME = os.environ.get('CLOUDFLARE_R2_BUCKET_NAME')
 
 if CLOUDFLARE_R2_ACCOUNT_ID:
-    # Configuración de S3 (para Cloudflare R2)
     AWS_ACCESS_KEY_ID = CLOUDFLARE_R2_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY = CLOUDFLARE_R2_SECRET_ACCESS_KEY
     AWS_STORAGE_BUCKET_NAME = CLOUDFLARE_R2_BUCKET_NAME
     AWS_S3_ENDPOINT_URL = f"https://{CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-    
     AWS_DEFAULT_ACL = 'private' 
     AWS_S3_FILE_OVERWRITE = False 
     AWS_S3_SIGNATURE_VERSION = 's3v4'
@@ -158,7 +156,6 @@ if CLOUDFLARE_R2_ACCOUNT_ID:
         },
     }
 else:
-    # Fallback si R2 no está configurado (desarrollo local)
     STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -169,8 +166,6 @@ else:
     }
 
 # --- 3. Configuración de Logging (Para ver Errores 500 en Render) ---
-# Esto le dice a Django que envíe los errores a la consola (logs de Render)
-# incluso cuando DEBUG = False.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -181,12 +176,12 @@ LOGGING = {
     },
     'root': {
         'handlers': ['console'],
-        'level': 'WARNING', # Muestra WARNING, ERROR, CRITICAL
+        'level': 'WARNING', 
     },
     'loggers': {
         'django': {
             'handlers': ['console'],
-            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'), # Muestra INFO de Django
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'), 
             'propagate': False,
         },
     },
