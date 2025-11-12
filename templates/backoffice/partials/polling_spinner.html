@@ -1,0 +1,30 @@
+<!--
+(S1c / Req 3c)
+Este es el "spinner de polling".
+La vista 'exam_upload_view' devuelve esto.
+HTMX lo carga, y este 'div' se encarga de preguntar al servidor
+cada 2 segundos si la tarea de Celery terminó.
+-->
+<div class="mt-4 p-4 bg-yellow-900 border border-yellow-700 text-yellow-100 rounded-lg"
+     hx-get="{% url 'backoffice:poll_task_status' task_id=task_id %}"
+     hx-trigger="load delay:2s" 
+     hx-swap="outerHTML">
+    <!-- 
+        hx-get: Llama a la URL de polling.
+        hx-trigger: Se dispara 'al cargar' (load) y 'cada 2 segundos' (delay:2s).
+        hx-swap: Cuando la URL devuelva algo (el redirect o el error),
+                 reemplazará este 'div' completo.
+    -->
+    <p class="font-semibold">
+        <span class="htmx-indicator">
+            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        </span>
+        ¡Archivo subido! Procesando el Excel...
+    </p>
+    <p class="text-sm text-yellow-200">
+        Esto puede tardar 1 o 2 minutos. Serás redirigido automáticamente.
+    </p>
+</div>
