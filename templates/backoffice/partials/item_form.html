@@ -1,28 +1,18 @@
-<!-- 
-(S1c v7) Este es el "Modal Inteligente"
-Incluye el flujo de IA para generar distractores.
--->
-
-<!-- 
-El formulario principal (hx-post) sigue siendo el mismo:
-envía TODOS los campos a 'item_create' cuando hacemos clic en 'Guardar Ítem'.
--->
-<form hx-post="{% url 'backoffice:item_create' %}"
-      hx-target="#item-table-body"
-      hx-swap="afterbegin"
-      hx-on::after-request="this.closest('.modal').remove()"
-      x-data="{ itemType: 'MC' }"> <!-- AlpineJS: guardamos el tipo de ítem seleccionado -->
+<form hx-post="{% if item %}{% url 'backoffice:item_edit' item.pk %}{% else %}{% url 'backoffice:item_create' %}{% endif %}"
+      x-data="{ itemType: '{{ item.item_type|default:'MC' }}' }">
 
     <div class="p-6 bg-gray-800 rounded-lg shadow-xl w-full max-w-lg">
-        <h3 class="text-2xl font-semibold text-white mb-4">Crear Nuevo Ítem (Pregunta)</h3>
+        
+        <h3 class="text-2xl font-semibold text-white mb-4">
+            {% if item %}
+                Editar Ítem (Pregunta)
+            {% else %}
+                Crear Nuevo Ítem (Pregunta)
+            {% endif %}
+        </h3>
         
         {% csrf_token %}
 
-        <!-- Campo: Tipo de Ítem -->
-        <!-- 
-            Usamos 'x-model' de AlpineJS para que la variable 'itemType'
-            se actualice automáticamente cuando el usuario cambia el dropdown.
-        -->
         <div class="mb-4">
             <label for="id_item_type" class="block text-sm font-medium text-gray-300">Tipo de Ítem</label>
             <select name="item_type" id="id_item_type" 
@@ -34,40 +24,29 @@ envía TODOS los campos a 'item_create' cuando hacemos clic en 'Guardar Ítem'.
             </select>
         </div>
 
-        <!-- Campo: Enunciado (Stem) -->
         <div class="mb-4">
             <label for="id_stem" class="block text-sm font-medium text-gray-300">Enunciado (Stem)</label>
             <textarea name="stem" id="id_stem" rows="4" required
-                      class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"></textarea>
+                      class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">{{ item.stem|default:'' }}</textarea>
         </div>
 
-        <!-- 
-            ==============================================
-            BLOQUE "INTELIGENTE" (SOLO PARA OPCIÓN MÚLTIPLE)
-            (Usamos 'x-show' de AlpineJS para mostrar/ocultar)
-            ==============================================
-        -->
         <div x-show="itemType === 'MC'" class="space-y-4 p-4 border border-gray-700 rounded-md">
             
+            {% if not item %}
             <p class="text-sm text-yellow-300">
                 <i class="fas fa-lightbulb mr-1"></i> Escribe la respuesta correcta y presiona "Generar Distractores" para que la IA te ayude.
             </p>
+            {% endif %}
             
-            <!-- 1. Respuesta Correcta -->
             <div>
                 <label for="id_correct_answer" class="block text-sm font-medium text-green-400">Respuesta Correcta</label>
                 <input type="text" name="correct_answer" id="id_correct_answer"
+                       value="{{ correct_answer_text|default:'' }}"
                        class="w-full mt-1 bg-gray-700 text-white border-green-500 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500">
             </div>
 
-            <!-- 2. Botón de IA (HTMX) -->
+            {% if not item %}
             <div>
-                <!-- --- !! ESTA ES LA CORRECCIÓN (S1c - v7.2) !! --- -->
-                <!-- 
-                Añadimos 'hx-on:htmx:afterRequest="event.stopPropagation()"'.
-                Esto detiene el "burbujeo" del evento y evita que
-                la lógica de "Cerrar Modal" del formulario se active.
-                -->
                 <button type="button" 
                         class="w-full px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md shadow-sm hover:bg-purple-700 focus:outline-none"
                         hx-post="{% url 'backoffice:ai_generate_distractors' %}"
@@ -89,38 +68,40 @@ envía TODOS los campos a 'item_create' cuando hacemos clic en 'Guardar Ítem'.
                     </span>
                 </button>
             </div>
+            {% endif %}
             
-            <!-- 3. Contenedor de Distractores -->
-            <!-- Aquí es donde HTMX pondrá el resultado de la IA -->
             <div id="distractors-list" class="space-y-2">
-                <!-- El template 'distractors.html' irá aquí -->
                 <label class="block text-sm font-medium text-red-400">Opciones Incorrectas (Distractores)</label>
-                <input type="text" name="distractors" class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                <input type="text" name="distractors" class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                <input type="text" name="distractors" class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                
+                {% for distractor in distractors_list %}
+                <input type="text" name="distractors" 
+                       value="{{ distractor|default:'' }}"
+                       class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                {% endfor %}
+
             </div>
 
         </div>
-        <!-- Fin del Bloque "Inteligente" -->
-
-
-        <!-- Campo: Dificultad (visible para todos) -->
         <div class="mb-4 mt-4">
             <label for="id_difficulty" class="block text-sm font-medium text-gray-300">Dificultad (1-5)</label>
-            <input type="number" name="difficulty" id="id_difficulty" value="1" min="1" max="5"
+            <input type="number" name="difficulty" id="id_difficulty" 
+                   value="{{ item.difficulty|default:1 }}" 
+                   min="1" max="5"
                    class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
         </div>
 
-        <!-- Botones de Acción -->
         <div class="flex justify-end space-x-3 mt-6">
             <button type="button" 
                     class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"
-                    x-on:click="showModal = false"> <!-- AlpineJS para cerrar el modal -->
-                Cancelar
+                    x-on:click="showModal = false"> Cancelar
             </button>
             <button type="submit"
                     class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
-                Guardar Ítem
+                {% if item %}
+                    Guardar Cambios
+                {% else %}
+                    Guardar Ítem
+                {% endif %}
             </button>
         </div>
     </div>
