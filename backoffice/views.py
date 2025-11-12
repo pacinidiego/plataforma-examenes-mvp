@@ -161,10 +161,13 @@ def download_excel_template_view(request):
     # (Sintaxis corregida para openpyxl)
     green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
     
-    rule_mc = Rule(type="expression", formula=[f'$A2="MC"'], stopIfTrue=False, fill=green_fill)
+    # Creamos la regla (Rule) y LUEGO le asignamos el 'fill'
+    rule_mc = Rule(type="expression", formula=[f'$A2="MC"'], stopIfTrue=False)
+    rule_mc.fill = green_fill
     sheet.conditional_formatting.add('D2:H1000', rule_mc)
         
-    rule_case = Rule(type="expression", formula=[f'$A2="CASE"'], stopIfTrue=False, fill=green_fill)
+    rule_case = Rule(type="expression", formula=[f'$A2="CASE"'], stopIfTrue=False)
+    rule_case.fill = green_fill
     sheet.conditional_formatting.add('C2:C1000', rule_case)
     # --- !! FIN CORRECCIÓN !! ---
     
