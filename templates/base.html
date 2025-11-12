@@ -23,7 +23,11 @@
         }
     </style>
 </head>
-<!-- (S1c) 'x-data' global para que los modales funcionen -->
+<!-- --- !! CORRECCIÓN (S1c) !! --- -->
+<!-- 
+Añadimos 'x-data' al body. 
+Ahora la variable 'showModal' es global para AlpineJS. 
+-->
 <body class="bg-gray-900 text-gray-100 font-sans" x-data="{ showModal: false }">
 
     <div id="main-content" class="min-h-screen">
@@ -34,8 +38,8 @@
 
     <!-- (Spec 18.2) Cargamos HTMX y AlpineJS -->
     
-    <!-- --- !! ESTA ES LA LÍNEA CORREGIDA !! --- -->
-    <!-- Quitamos el 'integrity' y 'crossorigin' que estaban rotos y bloqueando HTMX -->
+    <!-- --- !! CORRECCIÓN (S1c) !! --- -->
+    <!-- Quitamos el 'integrity' que estaba roto y bloqueando HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     
     <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
