@@ -46,6 +46,7 @@ def item_create(request):
     
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
+        # TODO: Mejorar este manejo de error
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
 
@@ -106,8 +107,10 @@ def ai_generate_distractors(request):
         return HttpResponse("<p class='text-red-500'>Por favor, escribe el enunciado y la respuesta correcta primero.</p>")
 
     try:
-        # (Spec AI-04) Creamos el prompt para Gemini
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # --- !! ESTA ES LA LÍNEA CORREGIDA !! ---
+        # (Cambiamos el nombre del modelo al correcto: gemini-2.5-flash-preview-09-2025)
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
+        
         prompt = (
             "Eres un asistente de educación experto en crear exámenes de nivel universitario.\n"
             "Tu tarea es generar 3 opciones incorrectas (distractores) para una pregunta de opción múltiple.\n"
@@ -138,6 +141,7 @@ def ai_generate_distractors(request):
         return render(request, 'backoffice/partials/distractors.html', context)
 
     except Exception as e:
+        # Esto ahora mostrará el error de la IA (como el 404)
         return HttpResponse(f"<p class='text-red-500'>Error de IA: {e}</p>")
 
 
