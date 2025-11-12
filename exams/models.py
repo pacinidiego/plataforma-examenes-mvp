@@ -5,10 +5,6 @@ from tenancy.models import Tenant
 
 # (Spec S1: Banco de ítems (MC, corta, caso))
 class Item(models.Model):
-    """
-    Una única pregunta (Item) en un banco de preguntas.
-    Pertenece a un Tenant y es creada por un Docente.
-    """
     class ItemType(models.TextChoices):
         MULTIPLE_CHOICE = 'MC', _('Opción Múltiple (MC)')
         SHORT_ANSWER = 'SHORT', _('Respuesta Corta')
@@ -35,24 +31,17 @@ class Item(models.Model):
         verbose_name=_("Tipo de Ítem")
     )
     
-    # (Spec S1: metadatos (dificultad, tags))
-    
-    # --- !! ESTA ES LA CORRECCIÓN (Tooltip/Help Text) !! ---
-    # Movimos la instrucción de 'verbose_name' a 'help_text'
     tags = models.CharField(
         max_length=255, 
         blank=True, 
         verbose_name=_("Etiquetas"),
         help_text=_("Escribe las etiquetas separadas por coma (ej: algebra, ecuaciones, primer_año)")
     )
-    # --- !! FIN DE LA CORRECCIÓN !! ---
 
     difficulty = models.PositiveSmallIntegerField(default=1, help_text=_("Nivel de dificultad (1-5)"), verbose_name=_("Dificultad"))
 
-    # Contenido de la pregunta
     stem = models.TextField(verbose_name=_("Enunciado (Stem)"))
     
-    # Opciones (solo para MC)
     options = models.JSONField(
         blank=True, 
         null=True, 
@@ -60,7 +49,6 @@ class Item(models.Model):
         help_text=_("Formato JSON: [{'text': 'Opción A', 'correct': True}, ...]")
     )
 
-    # (Spec IT-05: Ítem de caso largo)
     case_content = models.TextField(
         blank=True, 
         null=True, 
@@ -74,16 +62,15 @@ class Item(models.Model):
     class Meta:
         verbose_name = _("Ítem de Pregunta")
         verbose_name_plural = _("Banco de Ítems")
+        # --- !! ESTA ES LA CORRECCIÓN (BUG 2) !! ---
+        # No puede existir el mismo enunciado dos veces EN EL MISMO TENANT
+        unique_together = ('tenant', 'stem')
 
     def __str__(self):
         return f"[{self.get_item_type_display()}] {self.stem[:50]}... ({self.tenant.name})"
 
 
 class Exam(models.Model):
-    """
-    Un Examen, que es una colección ordenada de Items.
-    (Spec S1: Constructor)
-    """
     tenant = models.ForeignKey(
         Tenant, 
         on_delete=models.CASCADE, 
@@ -99,16 +86,13 @@ class Exam(models.Model):
     )
     title = models.CharField(max_length=255, verbose_name=_("Título del Examen"))
     
-    # (Spec S1: Constructor)
     items = models.ManyToManyField(
         Item, 
-        through='ExamItemLink', # Ahora 'ExamItemLink' está definida abajo
+        through='ExamItemLink',
         related_name='exams',
         verbose_name=_("Ítems Incluidos")
     )
     
-    # (Spec S1: seed/shuffle)
-    # (Spec G: Randomización)
     shuffle_items = models.BooleanField(default=True, verbose_name=_("Mezclar orden de preguntas (RA-02)"))
     shuffle_options = models.BooleanField(default=True, verbose_name=_("Mezclar opciones de MC (RA-03)"))
     
@@ -124,17 +108,13 @@ class Exam(models.Model):
 
 
 class ExamItemLink(models.Model):
-    """
-    Tabla intermedia ('through') que conecta Exámenes con Ítems.
-    """
-    # (Solución al Error 500: Usamos un string 'exams.Exam' para evitar importación circular)
     exam = models.ForeignKey(
         'exams.Exam', 
-        on_delete=models.CASCADE  # <-- ¡CORREGIDO! (antes 'django.db.models.deletion.CASCADE')
+        on_delete=models.CASCADE
     )
     item = models.ForeignKey(
         Item, 
-        on_delete=models.CASCADE  # <-- ¡CORREGIDO! (antes 'django.db.models.deletion.CASCADE')
+        on_delete=models.CASCADE
     )
     order = models.PositiveSmallIntegerField(default=0, verbose_name=_("Orden"))
     points = models.PositiveSmallIntegerField(default=1, verbose_name=_("Puntaje"))
