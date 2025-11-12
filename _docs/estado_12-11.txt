@@ -1,0 +1,107 @@
+1. Visión General del Proyecto
+•	Proyecto: Plataforma de Exámenes MVP (MVP para Demo).
+•	Diferencial Clave (Definido por el Usuario): Usabilidad superior, flujo de trabajo inteligente (IA) y facilidad de uso por encima de la competencia (Moodle, Google Forms).
+•	Stack Tecnológico (S0a): Python 3.12, Django, PostgreSQL (Neon), Celery (Render Worker), Redis (Render), S3-compatible (Cloudflare R2), HTMX, AlpineJS.
+•	IA (S1c): Google Gemini (gemini-2.5-flash-preview-09-2025) para asistencia en la creación de contenido (Generación de Distractores).
+•	Hosting (S0a): Render (2 servicios "Starter" de pago, 2 "Free").
+2. Estado Actual del Proyecto (Sprint S1c - EN PROGRESO)
+Hemos completado las Fases 0 y 1 de la base de datos y la interfaz. Estamos a mitad de camino de terminar el "Constructor de Preguntas".
+•	S0a (Infra): 100% COMPLETADO.
+o	Render está "Live". plataforma-web y plataforma-worker se despliegan.
+o	PostgreSQL y Redis están conectados.
+o	Cloudflare R2 está conectado (claves en Render OK).
+o	El "PoC Tortura" (Anexo A) fue exitoso.
+•	S0b (Roles): 100% COMPLETADO.
+o	Modelos Tenant y TenantMembership están en la base de datos (migración tenancy/0001_initial OK).
+o	Se creó el Superusuario (pacinidiego) y se validó el flujo de creación de Admin_tenant y Tenant desde /admin/.
+•	S1 (Modelos): 100% COMPLETADO.
+o	Modelos Item (Pregunta) y Exam están en la base de datos.
+o	Se aplicó la migración exams/0001_initial.
+•	S1b (Backoffice UI): 100% COMPLETADO.
+o	Se creó la app backoffice y se instaló django-htmx.
+o	Se creó la página de /accounts/login/ (con templates/registration/login.html).
+o	Se creó el base.html (con HTMX/AlpineJS y el fix de x-data en el <body>).
+o	Se creó el Dashboard (/backoffice/) y el flujo de login funciona (los usuarios con "Es staff" pueden entrar).
+•	S1c (Constructor UI - v7): EN PROGRESO.
+o	Completado: Se pivotó (descartó) la idea del "Upload de Excel" (v4).
+o	Completado: Se adoptó el flujo "Constructor Unificado con IA" (v7).
+o	Completado: El Dashboard (dashboard.html) muestra las dos tablas ("Mis Exámenes" y "Banco de Preguntas").
+o	Completado: El botón + Crear Pregunta (con IA ✨) funciona.
+o	Completado: El modal (item_form.html) se abre.
+o	Completado: El Asistente de IA (ai_generate_distractors) funciona:
+	Llama a Gemini con la API Key (GEMINI_API_KEY).
+	Usa el prompt "tuneado" (v7.1) para evitar el bug de "TCP/UDP".
+	Autocompleta los 3 distractores.
+o	Completado: El bug del "modal que se cierra solo" está arreglado (v7.2, event.stopPropagation()).
+o	Completado: El bug "no veo mis preguntas" está arreglado (Bug #3, views.py ahora filtra por tenant).
+o	Completado: El bug "duplicados literales" está arreglado (Bug #2, models.py tiene unique_together y views.py usa iexact).
+o	Completado: La terminología "Banco de Ítems" se cambió a "Banco de Preguntas" (Req #4).
+•	S2 (Runner Core): PENDIENTE. (Bloqueado hasta que terminemos el S1c).
+3. Tareas Pendientes Inmediatas (Lo que falta del S1c)
+Estas son las tareas que el usuario acaba de identificar y que faltan para terminar el S1c:
+1.	Programar el botón + Crear Examen (azul):
+o	Actualmente está disabled.
+o	Debe abrir un modal (similar al de "Crear Pregunta").
+o	El modal debe pedir solo el Título del Examen.
+o	Al guardar, debe crear el Exam en la DB y redirigir al "Constructor" (/backoffice/exam/1/constructor/).
+2.	Programar el botón Editar (en Banco de Preguntas):
+o	Actualmente es un link # muerto.
+o	Debe abrir el mismo modal item_form.html (que ya usamos para "Crear").
+o	El modal debe venir precargado con los datos de la pregunta seleccionada (el stem, las opciones, etc.).
+o	El formulario debe enviarse a una URL de edición (.../item/1/edit/) en lugar de .../item/create/.
+3.	Programar el botón Editar (en Mis Exámenes):
+o	Actualmente es un link # muerto.
+o	Debe redirigir a la página del "Constructor" (ej. /backoffice/exam/1/constructor/) para ese examen.
+4. Estado Final de Archivos en GitHub
+Este es el estado actual del código en el repositorio plataforma-examenes-mvp.
+•	render.yaml:
+o	Configurado para 4 servicios (web, worker, db, redis) y 2 planes (Starter, Free).
+o	Usa pythonVersion: "3.12.4" (manual) y el buildCommand optimizado.
+•	requirements.txt (El Rápido):
+o	Contiene solo las 13 librerías esenciales (Django, Celery, R2, HTMX, IA).
+o	(El archivo requirements-full.txt existe como backup de las librerías pesadas).
+•	plataforma/settings.py:
+o	Configurado para R2 (Storage), Celery, django_htmx, whitenoise.
+o	Configurado para LOGGING (para ver errores 500).
+o	Configurado para GEMINI_API_KEY (S1c v7).
+o	INSTALLED_APPS incluye tenancy, exams, y backoffice.
+o	TEMPLATES apunta a la carpeta templates/ raíz.
+•	plataforma/urls.py:
+o	Incluye las rutas de admin, health, accounts (login) y backoffice.
+•	tenancy/models.py:
+o	Define Tenant y TenantMembership. (S0b).
+•	tenancy/migrations/0001_initial.py:
+o	La migración que crea esas tablas. (S0b).
+•	exams/models.py:
+o	Define Item (Pregunta), Exam, y ExamItemLink.
+o	Incluye el fix de terminología (verbose_name_plural = "Banco de Preguntas").
+o	Incluye el fix de duplicados (unique_together = ('tenant', 'stem')).
+•	exams/migrations/0001_initial.py:
+o	Migración que crea las tablas de exams. (S1).
+•	exams/migrations/0002_unique_item_stem.py:
+o	Migración que aplica el unique_together y el fix de terminología. (S1c - Bugfix).
+•	backoffice/views.py:
+o	Contiene la lógica de dashboard (que filtra por tenant, Bug #3).
+o	Contiene item_create (que chequea duplicados con iexact, Bug #2).
+o	Contiene ai_generate_distractors (que usa el prompt v7.1).
+o	Las vistas de Excel (exam_upload_view, etc.) están "apagadas" (devuelven error 403).
+•	backoffice/urls.py:
+o	Define las rutas dashboard, item_create, y ai_generate_distractors.
+o	Las rutas de "Excel" y "Constructor" son placeholders.
+•	templates/base.html:
+o	Carga HTMX (con el integrity corregido) y AlpineJS.
+o	Define el x-data="{ showModal: false }" en el <body> (Bug "grisa la pantalla" corregido).
+•	templates/registration/login.html:
+o	El formulario de login (Terminado en S1b).
+•	templates/backoffice/dashboard.html:
+o	El dashboard v7. Muestra las dos tablas ("Mis Exámenes" y "Banco de Preguntas").
+o	Tiene el botón + Crear Pregunta (con IA ✨) que sí funciona.
+o	Tiene los botones + Crear Examen y Editar que no funcionan (son placeholders).
+•	templates/backoffice/partials/item_form.html:
+o	El modal "inteligente" (v7.2).
+o	Tiene el flujo de x-show para MC.
+o	Tiene el botón de IA ✨ Generar Distractores (IA).
+o	Tiene el fix event.stopPropagation() para que el modal no se cierre solo.
+•	templates/backoffice/partials/distractors.html:
+o	El parcial de HTML que devuelve la IA.
+
