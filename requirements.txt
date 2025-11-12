@@ -1,0 +1,34 @@
+# === ARQUITECTURA CORE (RÁPIDA) ===
+# (Para S0, S1, S2)
+
+# Core
+Django==5.0.6
+gunicorn==22.0.0
+djangorestframework==3.15.1
+dj-database-url==2.1.0
+psycopg==3.1.19
+whitenoise==6.7.0
+
+# Arquitectura Asíncrona (S0a)
+celery==5.4.0
+redis==5.0.4
+django-celery-results==2.5.1
+
+# Storage (S0a / R2)
+django-storages[boto3]==1.14.3
+boto3==1.34.113
+
+# === LIBRERÍAS PESADAS (COMENTADAS HASTA SU SPRINT) ===
+# (Activaremos esto cuando lleguemos a S3b/S5/S7)
+
+# PDF (S5a)
+# WeasyPrint==62.1
+
+# Anti-Leak (S3b / S7)
+# opencv-python-headless==4.10.0.82
+# pyzbar==0.1.9
+# reedsolo==1.7.0
+# Pillow==10.3.0
+
+# LTI (S5b)
+# pylti1p3==2.0.0
