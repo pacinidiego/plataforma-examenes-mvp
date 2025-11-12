@@ -3,6 +3,25 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
+<!-- (S1c) Contenedor del Modal (Ventana Emergente) -->
+<!-- 
+--- !! ESTA ES LA CORRECCIÓN (S1c) !! ---
+Quitamos 'x-data' de este div. 
+Ahora hereda la variable 'showModal' del <body> (en base.html).
+-->
+<div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-gray-900 bg-opacity-75 p-4" 
+     x-show="showModal" 
+     x-cloak
+     style="display: none;"> <!-- style="display: none;" es para x-cloak -->
+
+    <!-- El contenido del formulario (cargado por HTMX) irá aquí -->
+    <div id="modal-content" class="w-full max-w-lg" x-on:click.outside="showModal = false">
+        <!-- hx-get cargará 'item_form.html' aquí -->
+    </div>
+</div>
+<!-- Fin del Modal -->
+
+
 <!-- Barra de Navegación del Backoffice -->
 <nav class="bg-gray-800 shadow-md">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -12,7 +31,6 @@
             </div>
             <div class="flex items-center">
                 <span class="text-gray-300 mr-4">Hola, {{ user.username }}</span>
-                <!-- (S1b) Formulario de Logout -->
                 <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
                     <button type="submit" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700">
@@ -40,7 +58,9 @@
         <div class="bg-gray-800 rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-white">Mis Exámenes</h2>
-                <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm">
+                <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
+                        disabled
+                        title="(Próximo sprint)">
                     + Crear Examen
                 </button>
             </div>
@@ -79,9 +99,20 @@
         <div class="bg-gray-800 rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-white">Banco de Ítems</h2>
-                <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm">
+                
+                <!-- --- !! ESTE ES EL BOTÓN QUE AHORA FUNCIONA !! --- -->
+                <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
+                        hx-get="{% url 'backoffice:item_create' %}"
+                        hx-target="#modal-content"
+                        hx-swap="innerHTML"
+                        x-on:click="showModal = true">
                     + Crear Ítem
                 </button>
+                <!--
+                    hx-get: Carga el formulario desde la URL 'item_create'.
+                    hx-target: Pone el formulario dentro del div '#modal-content'.
+                    x-on:click: Le dice a AlpineJS que muestre el modal.
+                -->
             </div>
 
             <div class="overflow-x-auto">
@@ -93,9 +124,10 @@
                             <th class="py-2 px-3 text-left">Acciones</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-700">
+                    <!-- (S1c) Le damos un ID a la tabla para que HTMX sepa dónde poner la fila nueva -->
+                    <tbody id="item-table-body" class="divide-y divide-gray-700">
                         {% for item in item_list %}
-                            <tr>
+                            <tr id="item-row-{{ item.id }}">
                                 <td class="py-3 px-3">{{ item.stem|truncatechars:50 }}</td>
                                 <td class="py-3 px-3">{{ item.get_item_type_display }}</td>
                                 <td class="py-3 px-3">
@@ -103,7 +135,7 @@
                                 </td>
                             </tr>
                         {% empty %}
-                            <tr>
+                            <tr id="empty-item-row">
                                 <td colspan="3" class="py-4 px-3 text-center text-gray-500">
                                     No has creado ningún ítem todavía.
                                 </td>
