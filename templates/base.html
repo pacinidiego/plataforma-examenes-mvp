@@ -25,6 +25,7 @@
 <body class="bg-gray-900 text-gray-100 font-sans" x-data="{ showModal: false }">
 
     {% csrf_token %}
+
     <div id="main-content" class="min-h-screen">
         {% block content %}
         {% endblock %}
@@ -37,18 +38,30 @@
     {% block extra_js %}
     
     <script>
-        // 1. Obtenemos el token que Django renderizó en la página
-        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-
-        // 2. Configura HTMX para que envíe el token en todas las solicitudes
-        document.body.addEventListener('htmx:configRequest', function(event) {
-            // Solo necesitamos el token para métodos que modifican datos
-            if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(event.detail.verb)) {
-                event.detail.headers['X-CSRFToken'] = csrftoken;
+        // !! LA LÍNEA CLAVE !!
+        // Esperamos a que el DOM esté completamente cargado
+        // antes de intentar buscar el token.
+        document.addEventListener("DOMContentLoaded", function() { 
+        
+            // 1. Buscamos el token (ahora SÍ existe)
+            const csrftokenInput = document.querySelector('[name=csrfmiddlewaretoken]');
+            
+            if (csrftokenInput) {
+                const csrftoken = csrftokenInput.value;
+        
+                // 2. Configura HTMX para que envíe el token
+                document.body.addEventListener('htmx:configRequest', function(event) {
+                    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(event.detail.verb)) {
+                        event.detail.headers['X-CSRFToken'] = csrftoken;
+                    }
+                });
+            } else {
+                // Si esto aparece, algo sigue muy mal
+                console.error("¡Error de CSRF! No se encontró el input del token.");
             }
         });
     </script>
     {% endblock %}
-    
-    </body>
+
+</body>
 </html>
