@@ -36,24 +36,11 @@
     {% block extra_js %}
     
     <script>
-        // Función para obtener el cookie de CSRF
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-        const csrftoken = getCookie('csrftoken');
+        // 1. Obtenemos el token que Django renderizó en la página
+        // (Esto es mucho más robusto que leer la cookie)
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
-        // Configura HTMX para que envíe el token en todas las solicitudes
+        // 2. Configura HTMX para que envíe el token en todas las solicitudes
         document.body.addEventListener('htmx:configRequest', function(event) {
             // Solo necesitamos el token para métodos que modifican datos
             if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(event.detail.verb)) {
@@ -62,5 +49,7 @@
         });
     </script>
     {% endblock %}
+    
+    {% csrf_token %}
 </body>
 </html>
