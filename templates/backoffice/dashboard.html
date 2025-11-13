@@ -72,6 +72,7 @@
                                     
                                     <button class="text-red-400 hover:text-red-300"
                                             hx-post="{% url 'backoffice:exam_delete' exam.pk %}"
+                                            hx-include="[name='csrfmiddlewaretoken']"
                                             hx-target="closest tr"
                                             hx-swap="outerHTML"
                                             hx-confirm="¿Estás seguro de que quieres borrar el examen '{{ exam.title }}'? Esta acción no se puede deshacer.">
@@ -129,6 +130,7 @@
                                     
                                     <button class="text-red-400 hover:text-red-300"
                                             hx-post="{% url 'backoffice:item_delete' item.pk %}"
+                                            hx-include="[name='csrfmiddlewaretoken']"
                                             hx-target="closest tr"
                                             hx-swap="outerHTML"
                                             hx-confirm="¿Estás seguro de que quieres borrar esta pregunta del banco? Será eliminada de cualquier examen que la esté usando.">
