@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Plataforma de Exámenes{% endblock %}</title>
-    <!-- (Spec 18.2) Cargamos TailwindCSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Estilos base para HTMX */
@@ -23,29 +22,45 @@
         }
     </style>
 </head>
-<!-- --- !! CORRECCIÓN (S1c) !! --- -->
-<!-- 
-Añadimos 'x-data' al body. 
-Ahora la variable 'showModal' es global para AlpineJS. 
--->
 <body class="bg-gray-900 text-gray-100 font-sans" x-data="{ showModal: false }">
 
     <div id="main-content" class="min-h-screen">
         {% block content %}
-        <!-- El contenido de otras páginas (login, dashboard) irá aquí -->
         {% endblock %}
     </div>
 
-    <!-- (Spec 18.2) Cargamos HTMX y AlpineJS -->
-    
-    <!-- --- !! CORRECCIÓN (S1c) !! --- -->
-    <!-- Quitamos el 'integrity' que estaba roto y bloqueando HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     
     <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
 
     {% block extra_js %}
-    <!-- Espacio para JS extra si una página lo necesita -->
+    
+    <script>
+        // Función para obtener el cookie de CSRF
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+
+        // Configura HTMX para que envíe el token en todas las solicitudes
+        document.body.addEventListener('htmx:configRequest', function(event) {
+            // Solo necesitamos el token para métodos que modifican datos
+            if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(event.detail.verb)) {
+                event.detail.headers['X-CSRFToken'] = csrftoken;
+            }
+        });
+    </script>
     {% endblock %}
 </body>
 </html>
