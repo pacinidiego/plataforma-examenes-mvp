@@ -16,12 +16,13 @@ from django.urls import reverse
 from django.core.files.storage import default_storage
 from django.http import Http404
 from django.db import IntegrityError # (S1c Bugfix 2) Para atrapar el error de duplicado
+# --- !! INICIO S1d (Paso 3: IA y Filtros) !! ---
+from django.db.models import Count, Q
+# --- !! FIN S1d (Paso 3: IA y Filtros) !! ---
 
 import google.generativeai as genai 
 
-# --- !! INICIO SPRINT S1d !! ---
 from exams.models import Exam, Item, ExamItemLink
-# --- !! FIN SPRINT S1d !! ---
 from tenancy.models import TenantMembership
 
 # (S1c) Vista del Dashboard
@@ -37,7 +38,13 @@ def dashboard(request):
         return HttpResponse("Error: No tiene un tenant asignado.", status=403)
 
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
-    item_list = Item.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
+    
+    # --- !! INICIO S1d (Paso 3: Filtro) !! ---
+    # Anotamos cada ítem con el número de exámenes que lo usan
+    item_list = Item.objects.filter(tenant__in=user_tenants)\
+                            .annotate(in_use_count=Count('exams'))\
+                            .order_by('-created_at')[:20]
+    # --- !! FIN S1d (Paso 3: Filtro) !! ---
 
     context = {
         'user': request.user,
@@ -347,9 +354,6 @@ def exam_create(request):
     return render(request, 'backoffice/partials/exam_form.html')
 
 # --- !! INICIO SPRINT S1d (Paso 2: Gestión) !! ---
-
-# --- !! CORRECCIÓN DEL BUG DE BORRADO !! ---
-# Cambiamos @require_http_methods(["DELETE"]) por ["POST"]
 @login_required
 @require_http_methods(["POST"])
 def exam_delete(request, pk):
@@ -357,16 +361,12 @@ def exam_delete(request, pk):
     Vista HTMX para BORRAR un examen.
     """
     try:
-        # Aseguramos que el examen pertenece al tenant del usuario
         exam = get_object_or_404(Exam, pk=pk, tenant__memberships__user=request.user)
         exam.delete()
-        # Devolvemos una respuesta vacía, HTMX se encarga de quitar la fila
         return HttpResponse("", status=200)
     except Http404:
         return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
 
-# --- !! CORRECCIÓN DEL BUG DE BORRADO !! ---
-# Cambiamos @require_http_methods(["DELETE"]) por ["POST"]
 @login_required
 @require_http_methods(["POST"])
 def item_delete(request, pk):
@@ -374,11 +374,128 @@ def item_delete(request, pk):
     Vista HTMX para BORRAR una pregunta del banco.
     """
     try:
-        # Aseguramos que el item pertenece al tenant del usuario
         item = get_object_or_404(Item, pk=pk, tenant__memberships__user=request.user)
         item.delete()
-        # Devolvemos una respuesta vacía, HTMX se encarga de quitar la fila
         return HttpResponse("", status=200)
     except Http404:
         return HttpResponse("Ítem no encontrado o no le pertenece.", status=404)
 # --- !! FIN SPRINT S1d (Paso 2) !! ---
+
+
+# --- !! INICIO SPRINT S1d (Paso 3: IA y Filtros) !! ---
+@login_required
+@require_http_methods(["GET"])
+def filter_items(request):
+    """
+    Vista HTMX para filtrar el Banco de Preguntas en el Dashboard.
+    """
+    try:
+        memberships = TenantMembership.objects.filter(user=request.user)
+        user_tenants = memberships.values_list('tenant', flat=True)
+    except Exception:
+        return HttpResponse("Error: No tiene un tenant asignado.", status=403)
+
+    filter_type = request.GET.get('filter', 'all')
+    
+    # Query base
+    base_query = Item.objects.filter(tenant__in=user_tenants)
+    
+    if filter_type == 'in_use':
+        # Filtra ítems que están en al menos 1 examen
+        base_query = base_query.annotate(in_use_count=Count('exams')).filter(in_use_count__gt=0)
+    elif filter_type == 'not_in_use':
+        # Filtra ítems que no están en ningún examen
+        base_query = base_query.annotate(in_use_count=Count('exams')).filter(in_use_count=0)
+    else:
+        # 'all' - solo anota
+        base_query = base_query.annotate(in_use_count=Count('exams'))
+
+    item_list = base_query.order_by('-created_at')
+
+    context = {
+        'item_list': item_list,
+    }
+    # Devolvemos solo el parcial de la tabla
+    return render(request, 'backoffice/partials/_item_table_body.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ai_suggest_items(request, exam_id):
+    """
+    Vista HTMX para el Asistente de IA en el Constructor.
+    """
+    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    user_prompt = request.POST.get('ai_prompt')
+
+    if not user_prompt:
+        # Si no hay prompt, solo recargamos (no hacemos nada)
+        context = _get_constructor_context(request, exam_id)
+        return render(request, 'backoffice/partials/_constructor_body.html', context)
+    
+    # 1. Obtenemos las preguntas disponibles (las que están en el banco)
+    context = _get_constructor_context(request, exam_id)
+    bank_items = context['bank_items']
+    
+    # 2. Preparamos los datos para la IA
+    # Convertimos las preguntas a un formato simple
+    available_items_data = []
+    for item in bank_items:
+        available_items_data.append({
+            "id": item.id,
+            "stem": item.stem,
+            "tags": item.tags
+        })
+
+    if not available_items_data:
+        # No hay preguntas en el banco para sugerir
+        context = _get_constructor_context(request, exam_id)
+        return render(request, 'backoffice/partials/_constructor_body.html', context)
+
+    # 3. Creamos el Prompt para Gemini
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
+        
+        prompt = (
+            "Eres un asistente de profesor experto en construir exámenes.\n"
+            "Tu tarea es seleccionar preguntas de una lista de preguntas disponibles en un 'Banco de Preguntas', basándote en la petición de un usuario.\n"
+            "\n"
+            "--- PETICIÓN DEL USUARIO ---\n"
+            f"\"{user_prompt}\"\n"
+            "\n"
+            "--- PREGUNTAS DISPONIBLES EN EL BANCO (formato: [id, enunciado, etiquetas]) ---\n"
+            f"{json.dumps(available_items_data)}\n"
+            "\n"
+            "--- TAREA ---\n"
+            "Analiza la petición del usuario y compárala con las preguntas disponibles. Devuelve ÚNICAMENTE un array JSON de los IDs de las preguntas que mejor coinciden.\n"
+            "Ejemplo de salida: [15, 22, 43]"
+        )
+        
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",
+            )
+        )
+        
+        suggested_ids = json.loads(response.text)
+        
+        # 4. Añadimos las preguntas sugeridas al examen
+        if suggested_ids:
+            items_to_add = Item.objects.filter(
+                id__in=suggested_ids, 
+                tenant=exam.tenant # Aseguramos que solo añadimos del tenant
+            )
+            for item in items_to_add:
+                # Usamos get_or_create para evitar duplicados si la IA sugiere algo ya añadido
+                ExamItemLink.objects.get_or_create(exam=exam, item=item)
+
+    except Exception as e:
+        # Si la IA falla, no rompemos la página, solo logueamos y recargamos
+        print(f"Error de IA en ai_suggest_items: {e}")
+        # (Idealmente, aquí podríamos enviar un mensaje de error al usuario con hx-swap)
+
+    # 5. Devolvemos el cuerpo del constructor actualizado
+    updated_context = _get_constructor_context(request, exam_id)
+    return render(request, 'backoffice/partials/_constructor_body.html', updated_context)
+# --- !! FIN SPRINT S1d (Paso 3: IA y Filtros) !! ---
