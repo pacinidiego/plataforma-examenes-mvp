@@ -38,6 +38,16 @@ urlpatterns = [
          name='item_delete'),
     # --- !! FIN SPRINT S1d (Paso 2) !! ---
 
+    # --- !! INICIO SPRINT S1d (Paso 3: IA y Filtros) !! ---
+    path('items/filter/', 
+         views.filter_items, 
+         name='filter_items'),
+         
+    path('exam/<int:exam_id>/ai-suggest/', 
+         views.ai_suggest_items, 
+         name='ai_suggest_items'),
+    # --- !! FIN SPRINT S1d (Paso 3) !! ---
+
     # --- Tareas Asíncronas (Abandonadas) ---
     path('exam/upload/', views.exam_upload_view, name='exam_upload'),
     path('exam/poll-task/<str:task_id>/', views.poll_task_status_view, name='poll_task_status'),
