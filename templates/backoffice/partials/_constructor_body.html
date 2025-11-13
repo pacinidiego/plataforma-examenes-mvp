@@ -8,15 +8,17 @@
         
         <div class="overflow-y-auto max-h-[600px] space-y-3 pr-2">
             {% for item in bank_items %}
-                <div class_alias="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
                     <span class="text-gray-300">{{ item.stem|truncatechars:60 }}</span>
-                    <button class_alias="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-lg text-sm"
+                    
+                    <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-lg text-sm"
                             hx-post="{% url 'backoffice:add_item_to_exam' exam.id item.id %}"
+                            hx-include="[name='csrfmiddlewaretoken']"
                             hx-target="#constructor-body"
                             hx-swap="innerHTML">
                         + Añadir
                     </button>
-                </div>
+                    </div>
             {% empty %}
                 <p class="text-gray-500">No hay más preguntas disponibles en el banco.</p>
             {% endfor %}
@@ -31,15 +33,17 @@
 
         <div class="overflow-y-auto max-h-[600px] space-y-3 pr-2">
             {% for item in exam_items %}
-                <div class_alias="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
+                <div class="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
                     <span class="text-gray-300">{{ item.stem|truncatechars:60 }}</span>
-                    <button class_alias="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm"
+                    
+                    <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm"
                             hx-post="{% url 'backoffice:remove_item_from_exam' exam.id item.id %}"
+                            hx-include="[name='csrfmiddlewaretoken']"
                             hx-target="#constructor-body"
                             hx-swap="innerHTML">
                         Quitar
                     </button>
-                </div>
+                    </div>
             {% empty %}
                 <p class="text-gray-500">Aún no has añadido preguntas a este examen.</p>
             {% endfor %}
