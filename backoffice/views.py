@@ -16,9 +16,7 @@ from django.urls import reverse
 from django.core.files.storage import default_storage
 from django.http import Http404
 from django.db import IntegrityError # (S1c Bugfix 2) Para atrapar el error de duplicado
-# --- !! INICIO S1d (Paso 3: IA y Filtros) !! ---
 from django.db.models import Count, Q
-# --- !! FIN S1d (Paso 3: IA y Filtros) !! ---
 
 import google.generativeai as genai 
 
@@ -39,12 +37,9 @@ def dashboard(request):
 
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
     
-    # --- !! INICIO S1d (Paso 3: Filtro) !! ---
-    # Anotamos cada ítem con el número de exámenes que lo usan
     item_list = Item.objects.filter(tenant__in=user_tenants)\
                             .annotate(in_use_count=Count('exams'))\
                             .order_by('-created_at')[:20]
-    # --- !! FIN S1d (Paso 3: Filtro) !! ---
 
     context = {
         'user': request.user,
@@ -429,16 +424,12 @@ def ai_suggest_items(request, exam_id):
     user_prompt = request.POST.get('ai_prompt')
 
     if not user_prompt:
-        # Si no hay prompt, solo recargamos (no hacemos nada)
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/partials/_constructor_body.html', context)
     
-    # 1. Obtenemos las preguntas disponibles (las que están en el banco)
     context = _get_constructor_context(request, exam_id)
     bank_items = context['bank_items']
     
-    # 2. Preparamos los datos para la IA
-    # Convertimos las preguntas a un formato simple
     available_items_data = []
     for item in bank_items:
         available_items_data.append({
@@ -448,7 +439,6 @@ def ai_suggest_items(request, exam_id):
         })
 
     if not available_items_data:
-        # No hay preguntas en el banco para sugerir
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/partials/_constructor_body.html', context)
 
@@ -480,22 +470,30 @@ def ai_suggest_items(request, exam_id):
         
         suggested_ids = json.loads(response.text)
         
-        # 4. Añadimos las preguntas sugeridas al examen
         if suggested_ids:
             items_to_add = Item.objects.filter(
                 id__in=suggested_ids, 
-                tenant=exam.tenant # Aseguramos que solo añadimos del tenant
+                tenant=exam.tenant
             )
             for item in items_to_add:
-                # Usamos get_or_create para evitar duplicados si la IA sugiere algo ya añadido
                 ExamItemLink.objects.get_or_create(exam=exam, item=item)
-
+    
+    # --- !! INICIO S1d (Debug IA) !! ---
     except Exception as e:
-        # Si la IA falla, no rompemos la página, solo logueamos y recargamos
-        print(f"Error de IA en ai_suggest_items: {e}")
-        # (Idealmente, aquí podríamos enviar un mensaje de error al usuario con hx-swap)
+        # En lugar de fallar silenciosamente, devolvemos el error al usuario
+        # para que podamos ver qué está fallando (ej. mal JSON de la IA).
+        error_html = f"""
+        <div class="p-4 bg-red-800 text-red-100 rounded-lg col-span-2">
+            <h3 class="font-bold">Error al contactar la IA</h3>
+            <p>La IA falló al procesar tu petición. Esto suele pasar si el prompt es muy complejo o si la IA no devuelve un formato JSON válido.</p>
+            <p class="mt-2 font-mono text-sm"><strong>Error:</strong> {e}</p>
+        </div>
+        """
+        # Devolvemos el error, que reemplazará el constructor-body
+        return HttpResponse(error_html)
+    # --- !! FIN S1d (Debug IA) !! ---
 
-    # 5. Devolvemos el cuerpo del constructor actualizado
+    # Si el 'try' tuvo éxito, devolvemos el cuerpo actualizado
     updated_context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_body.html', updated_context)
-# --- !! FIN SPRINT S1d (Paso 3: IA y Filtros) !! ---
+# --- !! FIN SL1d (Paso 3: IA y Filtros) !! ---
