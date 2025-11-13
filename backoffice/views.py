@@ -288,4 +288,76 @@ def exam_constructor_view(request, exam_id):
     Vista principal del Constructor. 
     Reemplaza el 'Placeholder (S2)'.
     """
+    # --- !! CORRECCIÓN DE INDENTACIÓN !! ---
+    # (Asegúrate de que estas líneas tengan la sangría correcta)
     try:
+        context = _get_constructor_context(request, exam_id)
+        return render(request, 'backoffice/constructor.html', context)
+    except Http404:
+        # --- !! CORRECCIÓN DE SINTAXIS !! ---
+        return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
+    except Exception as e:
+        # --- !! CORRECCIÓN DE SINTAXIS !! ---
+        return HttpResponse(f"Error: {e}", status=500)
+    # --- !! FIN CORRECCIÓN DE INDENTACIÓN !! ---
+
+
+@login_required
+@require_http_methods(["POST"])
+def add_item_to_exam(request, exam_id, item_id):
+    """
+    Vista HTMX para AÑADIR un ítem al examen.
+    """
+    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    item = get_object_or_404(Item, id=item_id, tenant=exam.tenant)
+    
+    # Creamos el vínculo
+    ExamItemLink.objects.get_or_create(exam=exam, item=item)
+    
+    # Devolvemos el parcial de las listas actualizado
+    context = _get_constructor_context(request, exam_id)
+    return render(request, 'backoffice/partials/_constructor_body.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def remove_item_from_exam(request, exam_id, item_id):
+    """
+Vistas HTMX para QUITAR un ítem del examen.
+"""
+    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    
+    # Borramos el vínculo
+    ExamItemLink.objects.filter(exam=exam, item_id=item_id).delete()
+    
+    # Devolvemos el parcial de las listas actualizado
+    context = _get_constructor_context(request, exam_id)
+    return render(request, 'backoffice/partials/_constructor_body.html', context)
+# --- !! FIN SPRINT S1d !! ---
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def exam_create(request):
+    """
+    Maneja la creación de un nuevo Examen (solo título).
+    """
+    membership = TenantMembership.objects.filter(user=request.user).first()
+    if not membership:
+        # --- !! CORRECCIÓN DE SINTAXIS !! ---
+        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
+    current_tenant = membership.tenant
+
+    if request.method == "POST":
+        title = request.POST.get('title', 'Examen sin título').strip()
+        
+        exam = Exam.objects.create(
+            tenant=current_tenant,
+            author=request.user,
+            title=title
+        )
+        
+        redirect_url = reverse('backoffice:exam_constructor', args=[exam.id])
+        return HttpResponse(headers={'HX-Redirect': redirect_url})
+
+    return render(request, 'backoffice/partials/exam_form.html')
