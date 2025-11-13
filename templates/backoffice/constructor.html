@@ -1,64 +1,53 @@
-{% extends "base.html" %}
+<div id="constructor-body" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-{% block title %}Constructor: {{ exam.title }}{% endblock %}
-
-{% block content %}
-<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    
-    <header class="mb-6">
-        <h1 class="text-3xl font-bold text-white">
-            Constructor de Examen
-        </h1>
-        <p class="mt-2 text-2xl text-gray-300">
-            {{ exam.title }}
-        </p>
-        <a href="{% url 'backoffice:dashboard' %}" class="mt-4 inline-block text-blue-400 hover:text-blue-300">
-            &larr; Volver al Dashboard
-        </a>
-    </header>
-
-    <div class="bg-gray-800 rounded-lg shadow p-6 mb-6">
+    <div class="bg-gray-800 rounded-lg shadow p-6">
         <h2 class="text-xl font-semibold text-white mb-4">
-            ✨ Asistente de IA (AI-04)
+            Banco de Preguntas
+            <span class="text-sm font-normal text-gray-400">({{ bank_items_count }})</span>
         </h2>
         
-        <form hx-post="{% url 'backoffice:ai_suggest_items' exam.id %}"
-              hx-target="#constructor-body"
-              hx-swap="innerHTML"
-              hx-indicator="#ai-spinner"
-              class="space-y-4">
-            {% csrf_token %}
-            
-            <div>
-                <label for="ai_prompt" class="block text-sm font-medium text-gray-300">
-                    Pídele a la IA que seleccione preguntas del banco por ti:
-                </label>
-                <textarea name="ai_prompt" id="ai_prompt" rows="3"
-                          class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Ej. 'Añade 5 preguntas sobre Modelo OSI y 3 sobre TCP/IP con dificultad media'"></textarea>
-            </div>
-            
-            <div class="flex items-center space-x-4">
-                <button type="submit"
-                        class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">
-                    <span class="htmx-indicator" id="ai-spinner">
-                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Buscando...
-                    </span>
-                    <span class="no-indicator">
-                        Pedir a la IA
-                    </span>
-                </button>
-                <p id="ai-status" class="text-sm text-gray-400"></p>
-            </div>
-        </form>
+        <div class="overflow-y-auto max-h-[600px] space-y-3 pr-2">
+            {% for item in bank_items %}
+                <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                    <span class="text-gray-300">{{ item.stem|truncatechars:60 }}</span>
+                    
+                    <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-lg text-sm"
+                            hx-post="{% url 'backoffice:add_item_to_exam' exam.id item.id %}"
+                            hx-include="[name='csrfmiddlewaretoken']"
+                            hx-target="#constructor-body"
+                            hx-swap="innerHTML">
+                        + Añadir
+                    </button>
+                    </div>
+            {% empty %}
+                <p class="text-gray-500">No hay más preguntas disponibles en el banco.</p>
+            {% endfor %}
+        </div>
     </div>
-    <div id="constructor-body">
-        {% include "backoffice/partials/_constructor_body.html" %}
+
+    <div class="bg-gray-800 rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">
+            Preguntas en "{{ exam.title }}"
+            <span class="text-sm font-normal text-gray-400">({{ exam_items_count }})</span>
+        </h2>
+
+        <div class="overflow-y-auto max-h-[600px] space-y-3 pr-2">
+            {% for item in exam_items %}
+                <div class="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
+                    <span class="text-gray-300">{{ item.stem|truncatechars:60 }}</span>
+                    
+                    <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm"
+                            hx-post="{% url 'backoffice:remove_item_from_exam' exam.id item.id %}"
+                            hx-include="[name='csrfmiddlewaretoken']"
+                            hx-target="#constructor-body"
+                            hx-swap="innerHTML">
+                        Quitar
+                    </button>
+                    </div>
+            {% empty %}
+                <p class="text-gray-500">Aún no has añadido preguntas a este examen.</p>
+            {% endfor %}
+        </div>
     </div>
 
 </div>
-{% endblock %}
