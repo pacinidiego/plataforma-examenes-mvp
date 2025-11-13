@@ -225,7 +225,6 @@ def download_excel_template_view(request):
 
 # --- CONSTRUCTOR DE EXÁMENES ---
 
-# [MODIFICADO] Helper actualizado para aceptar highlight_map
 def _get_constructor_context(request, exam_id, highlight_map=None):
     """
     highlight_map: Diccionario {item_id: 'generated' | 'found'}
@@ -340,13 +339,13 @@ def filter_items(request):
     return render(request, 'backoffice/partials/_item_table_body.html', context)
 
 
-# --- [MODIFICADO] VISTA HÍBRIDA (Buscar + Generar) ---
+# --- VISTA HÍBRIDA (SIN DIFICULTAD DE IA) ---
 @login_required
 @require_http_methods(["POST"])
 def ai_suggest_items(request, exam_id):
     """
-    Estrategia Híbrida: Busca en el banco Y genera contenido nuevo.
-    Identifica el origen visualmente.
+    Estrategia Híbrida: Busca + Genera.
+    CORRECCIÓN: Ignora 'difficulty' de la IA y usa default=2 (Media).
     """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     user_prompt = request.POST.get('ai_prompt')
@@ -361,7 +360,7 @@ def ai_suggest_items(request, exam_id):
     gen_count = 0
 
     try:
-        # --- FASE 1: BÚSQUEDA EN EL BANCO (Simple) ---
+        # --- FASE 1: BÚSQUEDA EN EL BANCO ---
         existing_matches = Item.objects.filter(
             tenant=exam.tenant,
             stem__icontains=user_prompt 
@@ -372,9 +371,10 @@ def ai_suggest_items(request, exam_id):
             highlight_map[item.id] = 'found' 
             found_count += 1
 
-        # --- FASE 2: GENERACIÓN CON IA ---
+        # --- FASE 2: GENERACIÓN CON IA (Sin pedir dificultad) ---
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
+        # Prompt simplificado: Eliminamos la petición de "difficulty"
         prompt = (
             "Eres un experto en evaluación académica.\n"
             f"El usuario necesita preguntas sobre: \"{user_prompt}\".\n"
@@ -383,7 +383,7 @@ def ai_suggest_items(request, exam_id):
             "\n"
             "--- FORMATO DE SALIDA ---\n"
             "Devuelve ÚNICAMENTE un JSON Array válido:\n"
-            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\", \"...\"], \"difficulty\": \"M\"}]"
+            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\", \"...\"]}]"
         )
         
         response = model.generate_content(
@@ -399,6 +399,7 @@ def ai_suggest_items(request, exam_id):
                 for dist in data.get('distractors', []):
                     options_list.append({"text": dist, "correct": False})
                 
+                # Creamos la pregunta
                 item, created = Item.objects.get_or_create(
                     tenant=exam.tenant,
                     stem__iexact=data['stem'].strip(),
@@ -406,7 +407,7 @@ def ai_suggest_items(request, exam_id):
                         'author': request.user,
                         'item_type': 'MC',
                         'stem': data['stem'].strip(),
-                        'difficulty': data.get('difficulty', 'M'),
+                        'difficulty': 2, # <--- [CORRECCIÓN] Forzamos 2 (Media) siempre
                         'options': options_list,
                         'tags': ['IA-Gen'] 
                     }
@@ -414,7 +415,6 @@ def ai_suggest_items(request, exam_id):
                 
                 ExamItemLink.objects.get_or_create(exam=exam, item=item)
                 
-                # Priorizamos 'generated' si es nueva, sino 'found'
                 tag = 'generated' if created else 'found'
                 if item.id not in highlight_map:
                     highlight_map[item.id] = tag
@@ -426,7 +426,7 @@ def ai_suggest_items(request, exam_id):
         # --- FEEDBACK ---
         total = found_count + gen_count
         if total > 0:
-            msg = f"¡Listo! {found_count} preguntas encontradas en tu banco y {gen_count} generadas por la IA."
+            msg = f"¡Listo! {found_count} encontradas en tu banco y {gen_count} generadas por la IA."
             messages.success(request, msg)
         else:
             messages.warning(request, "No se encontraron coincidencias ni se pudieron generar preguntas válidas.")
