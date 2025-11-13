@@ -1,108 +1,118 @@
+{% load i18n %}
 <form hx-post="{% if item %}{% url 'backoffice:item_edit' item.pk %}{% else %}{% url 'backoffice:item_create' %}{% endif %}"
-      x-data="{ itemType: '{{ item.item_type|default:'MC' }}' }">
+      hx-target="this" 
+      hx-swap="outerHTML"
+      class="space-y-4">
+    {% csrf_token %}
 
-    <div class="p-6 bg-gray-800 rounded-lg shadow-xl w-full max-w-lg">
-        
-        <h3 class="text-2xl font-semibold text-white mb-4">
-            {% if item %}
-                Editar Ítem (Pregunta)
-            {% else %}
-                Crear Nuevo Ítem (Pregunta)
-            {% endif %}
+    <div class="p-6 pb-12"> <h3 class="text-xl font-semibold text-gray-900 mb-4">
+            {% if item %}Editar Pregunta{% else %}Crear Nueva Pregunta{% endif %}
         </h3>
-        
-        {% csrf_token %}
 
-        <div class="mb-4">
-            <label for="id_item_type" class="block text-sm font-medium text-gray-300">Tipo de Ítem</label>
-            <select name="item_type" id="id_item_type" 
-                    x-model="itemType"
-                    class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                {% for value, label in item_types %}
-                <option value="{{ value }}">{{ label }}</option>
-                {% endfor %}
-            </select>
-        </div>
-
-        <div class="mb-4">
-            <label for="id_stem" class="block text-sm font-medium text-gray-300">Enunciado (Stem)</label>
-            <textarea name="stem" id="id_stem" rows="4" required
-                      class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">{{ item.stem|default:'' }}</textarea>
-        </div>
-
-        <div x-show="itemType === 'MC'" class="space-y-4 p-4 border border-gray-700 rounded-md">
-            
-            {% if not item %}
-            <p class="text-sm text-yellow-300">
-                <i class="fas fa-lightbulb mr-1"></i> Escribe la respuesta correcta y presiona "Generar Distractores" para que la IA te ayude.
-            </p>
-            {% endif %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label for="id_item_type" class="block text-sm font-medium text-gray-700">
+                    Tipo de Pregunta
+                </label>
+                <select name="item_type" id="id_item_type"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    {% for value, text in item_types %}
+                        <option value="{{ value }}" {% if item.item_type == value %}selected{% endif %}>{{ text }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             
             <div>
-                <label for="id_correct_answer" class="block text-sm font-medium text-green-400">Respuesta Correcta</label>
+                <label for="id_difficulty" class="block text-sm font-medium text-gray-700">
+                    Dificultad
+                </label>
+                <select name="difficulty" id="id_difficulty"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="1" {% if item.difficulty == 1 %}selected{% endif %}>Fácil</option>
+                    <option value="2" {% if item.difficulty == 2 %}selected{% endif %}>Media</option>
+                    <option value="3" {% if item.difficulty == 3 %}selected{% endif %}>Difícil</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <label for="id_stem" class="block text-sm font-medium text-gray-700">
+                Enunciado (Pregunta)
+            </label>
+            <textarea name="stem" id="id_stem" rows="4"
+                      class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                      required>{{ item.stem|default_if_none:'' }}</textarea>
+        </div>
+
+        <div id="mc_options_container" class="space-y-3 pt-4 border-t mt-4">
+            <h4 class="font-medium text-gray-800">Opciones (Múltiple Choice)</h4>
+            <div>
+                <label for="id_correct_answer" class="block text-sm font-medium text-green-700">
+                    Respuesta Correcta
+                </label>
                 <input type="text" name="correct_answer" id="id_correct_answer"
-                       value="{{ correct_answer_text|default:'' }}"
-                       class="w-full mt-1 bg-gray-700 text-white border-green-500 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500">
+                       value="{{ correct_answer_text|default_if_none:'' }}"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm">
             </div>
 
-            {% if not item %}
             <div>
-                <button type="button" 
-                        class="w-full px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md shadow-sm hover:bg-purple-700 focus:outline-none"
-                        hx-post="{% url 'backoffice:ai_generate_distractors' %}"
-                        hx-include="[name='stem'], [name='correct_answer']"
-                        hx-target="#distractors-list"
-                        hx-swap="innerHTML"
-                        hx-indicator="#ai-spinner"
-                        hx-on:htmx:afterRequest="event.stopPropagation()">
-                    
-                    <span class="htmx-indicator" id="ai-spinner">
-                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Generando...
-                    </span>
-                    <span class="no-indicator">
-                        ✨ Generar Distractores (IA)
-                    </span>
-                </button>
-            </div>
-            {% endif %}
-            
-            <div id="distractors-list" class="space-y-2">
-                <label class="block text-sm font-medium text-red-400">Opciones Incorrectas (Distractores)</label>
+                <label class="block text-sm font-medium text-red-700">
+                    Distractores (Incorrectas)
+                </label>
                 
-                {% for distractor in distractors_list %}
-                <input type="text" name="distractors" 
-                       value="{{ distractor|default:'' }}"
-                       class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                {% endfor %}
-
+                <div class="space-y-2 mt-1" id="distractors-list">
+                    {% for distractor in distractors_list %}
+                    <input type="text" name="distractors" value="{{ distractor }}"
+                           class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                           placeholder="Distractor {{ forloop.counter }}">
+                    {% endfor %}
+                </div>
             </div>
 
-        </div>
-        <div class="mb-4 mt-4">
-            <label for="id_difficulty" class="block text-sm font-medium text-gray-300">Dificultad (1-5)</label>
-            <input type="number" name="difficulty" id="id_difficulty" 
-                   value="{{ item.difficulty|default:1 }}" 
-                   min="1" max="5"
-                   class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+            <div id="ai-distractors-feedback"></div>
+            <button type="button" 
+                    hx-post="{% url 'backoffice:ai_generate_distractors' %}"
+                    hx-include="closest form"
+                    hx-target="#distractors-list"
+                    hx-swap="innerHTML"
+                    class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none">
+                Generar Distractores con IA ✨
+            </button>
         </div>
 
-        <div class="flex justify-end space-x-3 mt-6">
-            <button type="button" 
-                    class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"
-                    x-on:click="showModal = false"> Cancelar
-            </button>
-            <button type="submit"
-                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
-                {% if item %}
-                    Guardar Cambios
-                {% else %}
-                    Guardar Ítem
-                {% endif %}
-            </button>
-        </div>
+    </div>
+
+    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+        <button type="submit"
+                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
+            Guardar
+        </button>
+        <button type="button" 
+                hx-get="{% url 'backoffice:dashboard' %}" 
+                hx-target="#modal-backdrop" 
+                hx-swap="innerHTML"
+                class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm">
+            Cancelar
+        </button>
     </div>
 </form>
+
+<script>
+    (function() {
+        var itemTypeSelect = document.getElementById('id_item_type');
+        var mcOptionsContainer = document.getElementById('mc_options_container');
+
+        function toggleMcOptions() {
+            if (itemTypeSelect.value === 'MC') {
+                mcOptionsContainer.style.display = 'block';
+            } else {
+                mcOptionsContainer.style.display = 'none';
+            }
+        }
+
+        // Ejecutar al cargar
+        toggleMcOptions();
+
+        // Ejecutar al cambiar
+        itemTypeSelect.addEventListener('change', toggleMcOptions);
+    })();
+</script>
