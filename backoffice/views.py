@@ -234,15 +234,15 @@ def _get_constructor_context(request, exam_id, highlight_map=None):
     current_tenant = exam.tenant
     
     exam_items = exam.items.all().order_by('examitemlink__order')
-    
-    # Inyectamos la info del origen visualmente
-    if highlight_map:
-        for item in exam_items:
-            item.source_tag = highlight_map.get(item.id, None)
 
     bank_items = Item.objects.filter(tenant=current_tenant)\
                              .exclude(id__in=exam_items.values_list('id', flat=True))\
                              .order_by('-created_at')
+    
+    # Inyectamos la info del origen visualmente en el BANCO
+    if highlight_map:
+        for item in bank_items:
+            item.source_tag = highlight_map.get(item.id, None)
                              
     return {
         'exam': exam,
@@ -339,42 +339,50 @@ def filter_items(request):
     return render(request, 'backoffice/partials/_item_table_body.html', context)
 
 
-# --- VISTA HÍBRIDA (SIN DIFICULTAD DE IA) ---
+# --- [NUEVA VISTA] DETALLE DE PREGUNTA (MODAL) ---
+@login_required
+def item_detail_view(request, item_id):
+    """
+    Devuelve el HTML parcial con el detalle completo de una pregunta
+    (Enunciado completo + Opciones).
+    """
+    try:
+        item = get_object_or_404(Item, id=item_id, tenant__memberships__user=request.user)
+        
+        # Preparamos las opciones para visualizarlas fácil
+        options = item.options if isinstance(item.options, list) else []
+        
+        return render(request, 'backoffice/partials/item_detail_modal_content.html', {
+            'item': item,
+            'options': options
+        })
+    except Exception as e:
+        return HttpResponse(f"<div class='text-red-500'>Error cargando detalle: {e}</div>")
+
+
+# --- [MODIFICADO] VISTA IA: Solo genera al Banco ---
 @login_required
 @require_http_methods(["POST"])
 def ai_suggest_items(request, exam_id):
     """
-    Estrategia Híbrida: Busca + Genera.
-    CORRECCIÓN: Ignora 'difficulty' de la IA y usa default=2 (Media).
+    Genera preguntas y las pone en el BANCO (Derecha), no en el examen.
     """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     user_prompt = request.POST.get('ai_prompt')
     
     if not user_prompt:
-        messages.warning(request, "Escribe un tema para buscar o generar.")
+        messages.warning(request, "Escribe un tema para generar preguntas.")
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/partials/_constructor_body.html', context)
 
     highlight_map = {} 
-    found_count = 0
     gen_count = 0
+    found_count = 0 # Contará las encontradas
 
     try:
-        # --- FASE 1: BÚSQUEDA EN EL BANCO ---
-        existing_matches = Item.objects.filter(
-            tenant=exam.tenant,
-            stem__icontains=user_prompt 
-        ).exclude(id__in=exam.items.values_list('id', flat=True))[:5] 
-
-        for item in existing_matches:
-            ExamItemLink.objects.get_or_create(exam=exam, item=item)
-            highlight_map[item.id] = 'found' 
-            found_count += 1
-
-        # --- FASE 2: GENERACIÓN CON IA (Sin pedir dificultad) ---
+        # 1. GENERACIÓN CON IA (Prioridad)
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
-        # Prompt simplificado: Eliminamos la petición de "difficulty"
         prompt = (
             "Eres un experto en evaluación académica.\n"
             f"El usuario necesita preguntas sobre: \"{user_prompt}\".\n"
@@ -399,7 +407,7 @@ def ai_suggest_items(request, exam_id):
                 for dist in data.get('distractors', []):
                     options_list.append({"text": dist, "correct": False})
                 
-                # Creamos la pregunta
+                # Creamos la pregunta en el BANCO
                 item, created = Item.objects.get_or_create(
                     tenant=exam.tenant,
                     stem__iexact=data['stem'].strip(),
@@ -407,32 +415,40 @@ def ai_suggest_items(request, exam_id):
                         'author': request.user,
                         'item_type': 'MC',
                         'stem': data['stem'].strip(),
-                        'difficulty': 2, # <--- [CORRECCIÓN] Forzamos 2 (Media) siempre
+                        'difficulty': 2, # Media por defecto
                         'options': options_list,
                         'tags': ['IA-Gen'] 
                     }
                 )
                 
-                ExamItemLink.objects.get_or_create(exam=exam, item=item)
-                
+                # [CAMBIO CLAVE] NO hacemos ExamItemLink. Solo marcamos para resaltar.
                 tag = 'generated' if created else 'found'
-                if item.id not in highlight_map:
-                    highlight_map[item.id] = tag
-                    if tag == 'generated':
-                        gen_count += 1
-                    else:
-                        found_count += 1
+                highlight_map[item.id] = tag
+                if created:
+                    gen_count += 1
+
+        # 2. BÚSQUEDA EN EL BANCO (Secundario: Resaltar lo que ya existe sobre el tema)
+        existing_matches = Item.objects.filter(
+            tenant=exam.tenant,
+            stem__icontains=user_prompt 
+        ).exclude(id__in=exam.items.values_list('id', flat=True))[:5]
+
+        for item in existing_matches:
+            if item.id not in highlight_map:
+                highlight_map[item.id] = 'found'
+                found_count += 1 # Contamos solo las que no acabamos de generar
 
         # --- FEEDBACK ---
-        total = found_count + gen_count
-        if total > 0:
-            msg = f"¡Listo! {found_count} encontradas en tu banco y {gen_count} generadas por la IA."
-            messages.success(request, msg)
+        if gen_count > 0:
+            messages.success(request, f"Se generaron {gen_count} preguntas nuevas en el BANCO (columna derecha).")
+        elif found_count > 0:
+            messages.info(request, f"Se encontraron {found_count} preguntas existentes relacionadas en tu banco.")
         else:
-            messages.warning(request, "No se encontraron coincidencias ni se pudieron generar preguntas válidas.")
+            messages.warning(request, "No se generaron preguntas nuevas (posible duplicado o error IA).")
 
     except Exception as e:
         messages.error(request, f"Error procesando la solicitud: {e}")
 
+    # Renderizamos
     updated_context = _get_constructor_context(request, exam_id, highlight_map=highlight_map)
     return render(request, 'backoffice/partials/_constructor_body.html', updated_context)
