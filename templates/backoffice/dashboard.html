@@ -47,8 +47,7 @@
                         hx-get="{% url 'backoffice:exam_create' %}"
                         hx-target="#modal-content"
                         hx-swap="innerHTML"
-                        x-on:click="showModal = true"
-                        title="Crear un nuevo examen (solo título)">
+                        x-on:click.prevent="showModal = true"  title="Crear un nuevo examen (solo título)">
                     + Crear Examen
                 </button>
                 </div>
