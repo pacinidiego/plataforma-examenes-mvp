@@ -34,7 +34,6 @@ def dashboard(request):
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
     except Exception:
-        # --- !! CORRECCIÓN DE SINTAXIS !! ---
         return HttpResponse("Error: No tiene un tenant asignado.", status=403)
 
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
@@ -59,7 +58,6 @@ def item_create(request):
     
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        # --- !! CORRECCIÓN DE SINTAXIS !! ---
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
 
@@ -122,7 +120,6 @@ def item_edit(request, pk):
     """
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        # --- !! CORRECCIÓN DE SINTAXIS !! ---
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
     
@@ -241,22 +238,19 @@ def ai_generate_distractors(request):
 # --- VISTAS DE UPLOAD DE EXCEL (S1c - Abandonadas) ---
 @login_required
 def exam_upload_view(request):
-    # --- !! CORRECCIÓN DE SINTAXIS !! ---
     return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
 
 @login_required
 def poll_task_status_view(request, task_id):
-    # --- !! CORRECCIÓN DE SINTAXIS !! ---
     return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
 
 @login_required
 def download_excel_template_view(request):
-    # --- !! CORRECCIÓN DE SINTAXIS !! ---
     return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
 
 # --- VISTAS DEL CONSTRUCTOR DE EXÁMENES (S1c-v7) ---
 
-# --- !! INICIO SPRINT S1d !! ---
+# --- !! INICIO SPRINT S1d (Paso 1) !! ---
 # (Helper para obtener el contexto del constructor)
 def _get_constructor_context(request, exam_id):
     """
@@ -288,18 +282,13 @@ def exam_constructor_view(request, exam_id):
     Vista principal del Constructor. 
     Reemplaza el 'Placeholder (S2)'.
     """
-    # --- !! CORRECCIÓN DE INDENTACIÓN !! ---
-    # (Asegúrate de que estas líneas tengan la sangría correcta)
     try:
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/constructor.html', context)
     except Http404:
-        # --- !! CORRECCIÓN DE SINTAXIS !! ---
         return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
     except Exception as e:
-        # --- !! CORRECCIÓN DE SINTAXIS !! ---
         return HttpResponse(f"Error: {e}", status=500)
-    # --- !! FIN CORRECCIÓN DE INDENTACIÓN !! ---
 
 
 @login_required
@@ -311,10 +300,8 @@ def add_item_to_exam(request, exam_id, item_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     item = get_object_or_404(Item, id=item_id, tenant=exam.tenant)
     
-    # Creamos el vínculo
     ExamItemLink.objects.get_or_create(exam=exam, item=item)
     
-    # Devolvemos el parcial de las listas actualizado
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_body.html', context)
 
@@ -323,17 +310,15 @@ def add_item_to_exam(request, exam_id, item_id):
 @require_http_methods(["POST"])
 def remove_item_from_exam(request, exam_id, item_id):
     """
-Vistas HTMX para QUITAR un ítem del examen.
-"""
+    Vista HTMX para QUITAR un ítem del examen.
+    """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    # Borramos el vínculo
     ExamItemLink.objects.filter(exam=exam, item_id=item_id).delete()
     
-    # Devolvemos el parcial de las listas actualizado
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_body.html', context)
-# --- !! FIN SPRINT S1d !! ---
+# --- !! FIN SPRINT S1d (Paso 1) !! ---
 
 
 @login_required
@@ -344,7 +329,6 @@ def exam_create(request):
     """
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        # --- !! CORRECCIÓN DE SINTAXIS !! ---
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
 
@@ -361,3 +345,35 @@ def exam_create(request):
         return HttpResponse(headers={'HX-Redirect': redirect_url})
 
     return render(request, 'backoffice/partials/exam_form.html')
+
+# --- !! INICIO SPRINT S1d (Paso 2: Gestión) !! ---
+@login_required
+@require_http_methods(["DELETE"])
+def exam_delete(request, pk):
+    """
+    Vista HTMX para BORRAR un examen.
+    """
+    try:
+        # Aseguramos que el examen pertenece al tenant del usuario
+        exam = get_object_or_404(Exam, pk=pk, tenant__memberships__user=request.user)
+        exam.delete()
+        # Devolvemos una respuesta vacía, HTMX se encarga de quitar la fila
+        return HttpResponse("", status=200)
+    except Http404:
+        return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
+
+@login_required
+@require_http_methods(["DELETE"])
+def item_delete(request, pk):
+    """
+    Vista HTMX para BORRAR una pregunta del banco.
+    """
+    try:
+        # Aseguramos que el item pertenece al tenant del usuario
+        item = get_object_or_404(Item, pk=pk, tenant__memberships__user=request.user)
+        item.delete()
+        # Devolvemos una respuesta vacía, HTMX se encarga de quitar la fila
+        return HttpResponse("", status=200)
+    except Http404:
+        return HttpResponse("Ítem no encontrado o no le pertenece.", status=404)
+# --- !! FIN SPRINT S1d (Paso 2) !! ---
