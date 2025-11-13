@@ -1,0 +1,31 @@
+<div>
+    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Detalle de Pregunta</h3>
+    <div class="mt-2">
+        <p class="text-sm text-gray-500 font-bold mb-1">Enunciado:</p>
+        <div class="text-sm text-gray-800 bg-gray-100 p-3 rounded mb-4 max-h-40 overflow-y-auto">
+            {{ item.stem|linebreaksbr }}
+        </div>
+
+        <p class="text-sm text-gray-500 font-bold mb-1">Opciones:</p>
+        <ul class="space-y-2">
+            {% for opt in options %}
+                <li class="text-sm p-2 rounded border 
+                           {% if opt.correct %} bg-green-50 border-green-200 text-green-800 {% else %} bg-white border-gray-200 text-gray-600 {% endif %}">
+                    <span class="font-bold mr-2">
+                        {% if opt.correct %} ✅ Correcta: {% else %} ⚪ Distractor: {% endif %}
+                    </span>
+                    {{ opt.text }}
+                </li>
+            {% empty %}
+                 <li class="text-sm p-2 rounded border bg-gray-50 border-gray-200 text-gray-500">
+                    Esta pregunta (ej. Abierta) no tiene opciones predefinidas.
+                 </li>
+            {% endfor %}
+        </ul>
+        
+        <div class="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-400 flex justify-between">
+            <span>Dificultad: {{ item.get_difficulty_display }}</span>
+            <span>ID: {{ item.id }}</span>
+        </div>
+    </div>
+</div>
