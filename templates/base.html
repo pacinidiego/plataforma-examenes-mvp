@@ -24,6 +24,7 @@
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans" x-data="{ showModal: false }">
 
+    {% csrf_token %}
     <div id="main-content" class="min-h-screen">
         {% block content %}
         {% endblock %}
@@ -37,7 +38,6 @@
     
     <script>
         // 1. Obtenemos el token que Django renderizó en la página
-        // (Esto es mucho más robusto que leer la cookie)
         const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
         // 2. Configura HTMX para que envíe el token en todas las solicitudes
@@ -50,6 +50,5 @@
     </script>
     {% endblock %}
     
-    {% csrf_token %}
-</body>
+    </body>
 </html>
