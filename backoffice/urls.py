@@ -17,7 +17,7 @@ urlpatterns = [
     path('exam/create/', views.exam_create, name='exam_create'),
     path('exam/<int:exam_id>/constructor/', views.exam_constructor_view, name='exam_constructor'),
     
-    # --- !! INICIO SPRINT S1d !! ---
+    # --- !! INICIO SPRINT S1d (Paso 1) !! ---
     # (Rutas HTMX para el constructor)
     path('exam/<int:exam_id>/add/<int:item_id>/', 
          views.add_item_to_exam, 
@@ -26,7 +26,17 @@ urlpatterns = [
     path('exam/<int:exam_id>/remove/<int:item_id>/', 
          views.remove_item_from_exam, 
          name='remove_item_from_exam'),
-    # --- !! FIN SPRINT S1d !! ---
+    # --- !! FIN SPRINT S1d (Paso 1) !! ---
+
+    # --- !! INICIO SPRINT S1d (Paso 2: Gestión) !! ---
+    path('exam/<int:pk>/delete/', 
+         views.exam_delete, 
+         name='exam_delete'),
+         
+    path('item/<int:pk>/delete/', 
+         views.item_delete, 
+         name='item_delete'),
+    # --- !! FIN SPRINT S1d (Paso 2) !! ---
 
     # --- Tareas Asíncronas (Abandonadas) ---
     path('exam/upload/', views.exam_upload_view, name='exam_upload'),
