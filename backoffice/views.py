@@ -15,9 +15,9 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.core.files.storage import default_storage
 from django.http import Http404
-from django.db import IntegrityError # (S1c Bugfix 2) Para atrapar el error de duplicado
+from django.db import IntegrityError 
 from django.db.models import Count, Q
-from django.contrib import messages # <--- [CAMBIO 1] IMPORTADO
+from django.contrib import messages 
 
 import google.generativeai as genai 
 
@@ -27,9 +27,6 @@ from tenancy.models import TenantMembership
 # (S1c) Vista del Dashboard
 @login_required
 def dashboard(request):
-    """
-    Muestra el Dashboard principal del Docente/Admin.
-    """
     try:
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
@@ -48,17 +45,12 @@ def dashboard(request):
         'exam_list': exam_list,
         'item_list': item_list,
     }
-    
     return render(request, 'backoffice/dashboard.html', context)
 
 # --- VISTAS DE CONSTRUCTOR DE ÍTEMS (S1c) ---
 @login_required
 @require_http_methods(["GET", "POST"])
 def item_create(request):
-    """
-    Maneja la creación de un nuevo Ítem (Pregunta).
-    """
-    
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
@@ -91,7 +83,7 @@ def item_create(request):
             ).first()
             
             if existing_item:
-                return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe una pregunta con ese enunciado exacto (ignorando mayúsculas).</div>")
+                return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe una pregunta con ese enunciado exacto.</div>")
 
             new_item = Item.objects.create(
                 tenant=current_tenant,
@@ -101,7 +93,6 @@ def item_create(request):
                 difficulty=difficulty,
                 options=options_json
             )
-            
             return HttpResponse(headers={'HX-Redirect': reverse('backoffice:dashboard')})
         
         except IntegrityError:
@@ -118,9 +109,6 @@ def item_create(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 def item_edit(request, pk):
-    """
-    Maneja la edición de un Ítem (Pregunta) existente.
-    """
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
@@ -140,7 +128,7 @@ def item_edit(request, pk):
         ).exclude(pk=pk).first()
 
         if existing_item:
-            return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe OTRA pregunta con ese enunciado exacto.</div>")
+            return HttpResponse(f"<div class='p-4 bg-red-800 text-red-100 rounded-lg'><strong>Error:</strong> Ya existe OTRA pregunta con ese enunciado.</div>")
 
         item.item_type = item_type
         item.stem = stem_limpio
@@ -187,13 +175,9 @@ def item_edit(request, pk):
     return render(request, 'backoffice/partials/item_form.html', context)
 
 
-# --- VISTA DE IA (S1c - v7) ---
 @login_required
 @require_http_methods(["POST"])
 def ai_generate_distractors(request):
-    """
-    Llamado por HTMX desde el modal de 'Crear Ítem'.
-    """
     stem = request.POST.get('stem')
     correct_answer = request.POST.get('correct_answer')
 
@@ -204,19 +188,9 @@ def ai_generate_distractors(request):
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
         prompt = (
-            "Eres un asistente de educación experto en crear exámenes de nivel universitario.\n"
-            "Tu tarea es generar 3 opciones **inequívocamente incorrectas** (distractores) para una pregunta de opción múltiple.\n"
-            "Los distractores deben ser plausibles y estar relacionados con el tema, pero ser claramente erróneos.\n"
-            "**REGLA CRÍTICA:** No sugieras distractores que sean sinónimos o ejemplos alternativos que *también* sean correctos.\n"
-            "**Ejemplo de REGLA CRÍTICA:** Si la pregunta es 'un protocolo de capa 4' y la respuesta correcta es 'TCP', NO debes sugerir 'UDP' como distractor, ya que 'UDP' también es una respuesta correcta de capa 4.\n"
-            "\n"
-            "--- CONTEXTO ---\n"
-            f"PREGUNTA (ENUNCIADO): \"{stem}\"\n"
-            f"RESPUESTA CORRECTA: \"{correct_answer}\"\n"
-            "\n"
-            "--- TAREA ---\n"
-            "Genera 3 distractores **inequívocamente incorrectos**. Devuelve ÚNICAMENTE un array JSON de strings, sin nada más.\n"
-            "Ejemplo de salida (para el contexto 'TCP'): [\"IP\", \"HTTP\", \"FTP\"]"
+            "Eres un asistente de educación experto en crear exámenes.\n"
+            f"Genera 3 distractores incorrectos para: P: \"{stem}\" R: \"{correct_answer}\".\n"
+            "Devuelve solo un array JSON de strings: [\"D1\", \"D2\", \"D3\"]"
         )
         
         response = model.generate_content(
@@ -227,7 +201,6 @@ def ai_generate_distractors(request):
         )
         
         distractors = json.loads(response.text)
-        
         if len(distractors) < 3:
             distractors.extend(["", ""]) 
         
@@ -237,36 +210,37 @@ def ai_generate_distractors(request):
     except Exception as e:
         return HttpResponse(f"<p class='text-red-500'>Error de IA: {e}</p>")
 
-
-# --- VISTAS DE UPLOAD DE EXCEL (S1c - Abandonadas) ---
 @login_required
 def exam_upload_view(request):
-    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
+    return HttpResponse("Desactivado.", status=403)
 
 @login_required
 def poll_task_status_view(request, task_id):
-    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
+    return HttpResponse("Desactivado.", status=403)
 
 @login_required
 def download_excel_template_view(request):
-    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
+    return HttpResponse("Desactivado.", status=403)
 
-# --- VISTAS DEL CONSTRUCTOR DE EXÁMENES (S1c-v7) ---
 
-# --- !! INICIO SPRINT S1d (Paso 1) !! ---
-# (Helper para obtener el contexto del constructor)
-def _get_constructor_context(request, exam_id):
+# --- CONSTRUCTOR DE EXÁMENES ---
+
+# [MODIFICADO] Helper actualizado para aceptar highlight_map
+def _get_constructor_context(request, exam_id, highlight_map=None):
     """
-    Función helper para obtener el contexto de las dos columnas
-    (preguntas en el examen vs. preguntas en el banco).
+    highlight_map: Diccionario {item_id: 'generated' | 'found'}
+    para mostrar iconos visuales temporalmente.
     """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     current_tenant = exam.tenant
     
-    # 1. Preguntas que YA están en el examen
     exam_items = exam.items.all().order_by('examitemlink__order')
     
-    # 2. Preguntas del banco que NO están en el examen
+    # Inyectamos la info del origen visualmente
+    if highlight_map:
+        for item in exam_items:
+            item.source_tag = highlight_map.get(item.id, None)
+
     bank_items = Item.objects.filter(tenant=current_tenant)\
                              .exclude(id__in=exam_items.values_list('id', flat=True))\
                              .order_by('-created_at')
@@ -281,229 +255,184 @@ def _get_constructor_context(request, exam_id):
 
 @login_required
 def exam_constructor_view(request, exam_id):
-    """
-    Vista principal del Constructor. 
-    Reemplaza el 'Placeholder (S2)'.
-    """
     try:
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/constructor.html', context)
     except Http404:
-        return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
+        return HttpResponse("Examen no encontrado.", status=404)
     except Exception as e:
         return HttpResponse(f"Error: {e}", status=500)
-
 
 @login_required
 @require_http_methods(["POST"])
 def add_item_to_exam(request, exam_id, item_id):
-    """
-    Vista HTMX para AÑADIR un ítem al examen.
-    """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     item = get_object_or_404(Item, id=item_id, tenant=exam.tenant)
-    
     ExamItemLink.objects.get_or_create(exam=exam, item=item)
-    
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_body.html', context)
-
 
 @login_required
 @require_http_methods(["POST"])
 def remove_item_from_exam(request, exam_id, item_id):
-    """
-    Vista HTMX para QUITAR un ítem del examen.
-    """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
-    
     ExamItemLink.objects.filter(exam=exam, item_id=item_id).delete()
-    
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_body.html', context)
-# --- !! FIN SPRINT S1d (Paso 1) !! ---
-
 
 @login_required
 @require_http_methods(["GET", "POST"])
 def exam_create(request):
-    """
-    Maneja la creación de un nuevo Examen (solo título).
-    """
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
+        return HttpResponse("Error.", status=403)
     current_tenant = membership.tenant
 
     if request.method == "POST":
         title = request.POST.get('title', 'Examen sin título').strip()
-        
-        exam = Exam.objects.create(
-            tenant=current_tenant,
-            author=request.user,
-            title=title
-        )
-        
+        exam = Exam.objects.create(tenant=current_tenant, author=request.user, title=title)
         redirect_url = reverse('backoffice:exam_constructor', args=[exam.id])
         return HttpResponse(headers={'HX-Redirect': redirect_url})
 
     return render(request, 'backoffice/partials/exam_form.html')
 
-# --- !! INICIO SPRINT S1d (Paso 2: Gestión) !! ---
 @login_required
 @require_http_methods(["POST"])
 def exam_delete(request, pk):
-    """
-    Vista HTMX para BORRAR un examen.
-    """
     try:
         exam = get_object_or_404(Exam, pk=pk, tenant__memberships__user=request.user)
         exam.delete()
         return HttpResponse("", status=200)
     except Http404:
-        return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
+        return HttpResponse("No encontrado.", status=404)
 
 @login_required
 @require_http_methods(["POST"])
 def item_delete(request, pk):
-    """
-    Vista HTMX para BORRAR una pregunta del banco.
-    """
     try:
         item = get_object_or_404(Item, pk=pk, tenant__memberships__user=request.user)
         item.delete()
         return HttpResponse("", status=200)
     except Http404:
-        return HttpResponse("Ítem no encontrado o no le pertenece.", status=404)
-# --- !! FIN SPRINT S1d (Paso 2) !! ---
+        return HttpResponse("No encontrado.", status=404)
 
-
-# --- !! INICIO SPRINT S1d (Paso 3: IA y Filtros) !! ---
 @login_required
 @require_http_methods(["GET"])
 def filter_items(request):
-    """
-    Vista HTMX para filtrar el Banco de Preguntas en el Dashboard.
-    """
     try:
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
     except Exception:
-        return HttpResponse("Error: No tiene un tenant asignado.", status=403)
+        return HttpResponse("Error.", status=403)
 
     filter_type = request.GET.get('filter', 'all')
-    
-    # Query base
     base_query = Item.objects.filter(tenant__in=user_tenants)
     
     if filter_type == 'in_use':
-        # Filtra ítems que están en al menos 1 examen
         base_query = base_query.annotate(in_use_count=Count('exams')).filter(in_use_count__gt=0)
     elif filter_type == 'not_in_use':
-        # Filtra ítems que no están en ningún examen
         base_query = base_query.annotate(in_use_count=Count('exams')).filter(in_use_count=0)
     else:
-        # 'all' - solo anota
         base_query = base_query.annotate(in_use_count=Count('exams'))
 
     item_list = base_query.order_by('-created_at')
-
-    context = {
-        'item_list': item_list,
-    }
-    # Devolvemos solo el parcial de la tabla
+    context = {'item_list': item_list}
     return render(request, 'backoffice/partials/_item_table_body.html', context)
 
 
-# --- [CAMBIO 2] VERSIÓN MODIFICADA DE 'ai_suggest_items' ---
+# --- [MODIFICADO] VISTA HÍBRIDA (Buscar + Generar) ---
 @login_required
 @require_http_methods(["POST"])
 def ai_suggest_items(request, exam_id):
     """
-    Vista HTMX para el Asistente de IA en el Constructor.
+    Estrategia Híbrida: Busca en el banco Y genera contenido nuevo.
+    Identifica el origen visualmente.
     """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     user_prompt = request.POST.get('ai_prompt')
-
-    # Manejo de Prompt Vacío
+    
     if not user_prompt:
-        messages.warning(request, "Por favor, escribe una petición para la IA.")
-        context = _get_constructor_context(request, exam_id)
-        return render(request, 'backoffice/partials/_constructor_body.html', context)
-    
-    context = _get_constructor_context(request, exam_id)
-    bank_items = context['bank_items']
-    
-    available_items_data = []
-    for item in bank_items:
-        available_items_data.append({
-            "id": item.id,
-            "stem": item.stem,
-            "tags": item.tags
-        })
-
-    # Manejo de Banco Vacío
-    if not available_items_data:
-        messages.warning(request, "No hay preguntas disponibles en el banco para añadir.")
+        messages.warning(request, "Escribe un tema para buscar o generar.")
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/partials/_constructor_body.html', context)
 
-    # 3. Creamos el Prompt para Gemini
+    highlight_map = {} 
+    found_count = 0
+    gen_count = 0
+
     try:
+        # --- FASE 1: BÚSQUEDA EN EL BANCO (Simple) ---
+        existing_matches = Item.objects.filter(
+            tenant=exam.tenant,
+            stem__icontains=user_prompt 
+        ).exclude(id__in=exam.items.values_list('id', flat=True))[:5] 
+
+        for item in existing_matches:
+            ExamItemLink.objects.get_or_create(exam=exam, item=item)
+            highlight_map[item.id] = 'found' 
+            found_count += 1
+
+        # --- FASE 2: GENERACIÓN CON IA ---
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
         prompt = (
-            "Eres un asistente de profesor experto en construir exámenes.\n"
-            "Tu tarea es seleccionar preguntas de una lista de preguntas disponibles en un 'Banco de Preguntas', basándote en la petición de un usuario.\n"
+            "Eres un experto en evaluación académica.\n"
+            f"El usuario necesita preguntas sobre: \"{user_prompt}\".\n"
+            "1. Genera 3 preguntas NUEVAS de opción múltiple sobre este tema.\n"
+            "2. Asegúrate de que sean preguntas de calidad universitaria.\n"
             "\n"
-            "--- PETICIÓN DEL USUARIO ---\n"
-            f"\"{user_prompt}\"\n"
-            "\n"
-            "--- PREGUNTAS DISPONIBLES EN EL BANCO (formato: [id, enunciado, etiquetas]) ---\n"
-            f"{json.dumps(available_items_data)}\n"
-            "\n"
-            "--- TAREA ---\n"
-            "Analiza la petición del usuario y compárala con las preguntas disponibles. Devuelve ÚNICAMENTE un array JSON de los IDs de las preguntas que mejor coinciden.\n"
-            "Ejemplo de salida: [15, 22, 43]"
+            "--- FORMATO DE SALIDA ---\n"
+            "Devuelve ÚNICAMENTE un JSON Array válido:\n"
+            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\", \"...\"], \"difficulty\": \"M\"}]"
         )
         
         response = model.generate_content(
             prompt,
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json",
-            )
+            generation_config=genai.types.GenerationConfig(response_mime_type="application/json")
         )
         
-        suggested_ids = json.loads(response.text)
+        generated_data = json.loads(response.text)
         
-        if suggested_ids:
-            # CASO ÉXITO
-            items_to_add = Item.objects.filter(
-                id__in=suggested_ids, 
-                tenant=exam.tenant
-            )
-            
-            count = 0
-            for item in items_to_add:
-                # Usamos get_or_create para evitar duplicados si la IA sugiere algo ya añadido
-                _, created = ExamItemLink.objects.get_or_create(exam=exam, item=item)
-                if created:
-                    count += 1
-            
-            if count > 0:
-                messages.success(request, f"¡Éxito! La IA añadió {count} preguntas nuevas al examen.")
-            else:
-                messages.info(request, "La IA sugirió preguntas que ya estaban en el examen.")
+        if generated_data:
+            for data in generated_data:
+                options_list = [{"text": data['correct_answer'], "correct": True}]
+                for dist in data.get('distractors', []):
+                    options_list.append({"text": dist, "correct": False})
+                
+                item, created = Item.objects.get_or_create(
+                    tenant=exam.tenant,
+                    stem__iexact=data['stem'].strip(),
+                    defaults={
+                        'author': request.user,
+                        'item_type': 'MC',
+                        'stem': data['stem'].strip(),
+                        'difficulty': data.get('difficulty', 'M'),
+                        'options': options_list,
+                        'tags': ['IA-Gen'] 
+                    }
+                )
+                
+                ExamItemLink.objects.get_or_create(exam=exam, item=item)
+                
+                # Priorizamos 'generated' si es nueva, sino 'found'
+                tag = 'generated' if created else 'found'
+                if item.id not in highlight_map:
+                    highlight_map[item.id] = tag
+                    if tag == 'generated':
+                        gen_count += 1
+                    else:
+                        found_count += 1
 
+        # --- FEEDBACK ---
+        total = found_count + gen_count
+        if total > 0:
+            msg = f"¡Listo! {found_count} preguntas encontradas en tu banco y {gen_count} generadas por la IA."
+            messages.success(request, msg)
         else:
-            # CASO ADVERTENCIA (EL FIX DEL BUG)
-            messages.warning(request, "La IA no encontró preguntas en el banco que coincidan con tu petición.")
-    
-    except Exception as e:
-        # Manejo de error mejorado
-        messages.error(request, f"Error al procesar la respuesta de la IA: {e}")
+            messages.warning(request, "No se encontraron coincidencias ni se pudieron generar preguntas válidas.")
 
-    # Si el 'try' tuvo éxito (o fallo silencioso), devolvemos el cuerpo actualizado
-    updated_context = _get_constructor_context(request, exam_id)
+    except Exception as e:
+        messages.error(request, f"Error procesando la solicitud: {e}")
+
+    updated_context = _get_constructor_context(request, exam_id, highlight_map=highlight_map)
     return render(request, 'backoffice/partials/_constructor_body.html', updated_context)
-# --- !! FIN SL1d (Paso 3: IA y Filtros) !! ---
