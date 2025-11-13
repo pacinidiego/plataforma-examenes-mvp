@@ -11,15 +11,23 @@ urlpatterns = [
     
     # --- Constructor de Ítems (S1c) ---
     path('items/create/', views.item_create, name='item_create'),
-    
-    # --- TAREA 2: Añadimos la URL para editar un ítem ---
     path('item/<int:pk>/edit/', views.item_edit, name='item_edit'),
     
-    # --- Constructor de Exámenes (S1c) ---
-    # (Esta ruta ya existía y la usaremos para Tarea 1 y 3)
+    # --- Constructor de Exámenes (S1c / S1d) ---
     path('exam/create/', views.exam_create, name='exam_create'),
     path('exam/<int:exam_id>/constructor/', views.exam_constructor_view, name='exam_constructor'),
     
+    # --- !! INICIO SPRINT S1d !! ---
+    # (Rutas HTMX para el constructor)
+    path('exam/<int:exam_id>/add/<int:item_id>/', 
+         views.add_item_to_exam, 
+         name='add_item_to_exam'),
+         
+    path('exam/<int:exam_id>/remove/<int:item_id>/', 
+         views.remove_item_from_exam, 
+         name='remove_item_from_exam'),
+    # --- !! FIN SPRINT S1d !! ---
+
     # --- Tareas Asíncronas (Abandonadas) ---
     path('exam/upload/', views.exam_upload_view, name='exam_upload'),
     path('exam/poll-task/<str:task_id>/', views.poll_task_status_view, name='poll_task_status'),
