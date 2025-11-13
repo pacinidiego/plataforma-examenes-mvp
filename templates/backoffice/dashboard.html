@@ -105,48 +105,28 @@
                 </button>
             </div>
 
+            <div class="mb-4 flex space-x-2"
+                 hx-get="{% url 'backoffice:filter_items' %}"
+                 hx-target="#item-table-body"
+                 hx-trigger="click from button">
+                <button name="filter" value="all" class="px-3 py-1 text-sm rounded-full bg-blue-700 text-white">Todas</button>
+                <button name="filter" value="in_use" class="px-3 py-1 text-sm rounded-full bg-gray-600 hover:bg-gray-700 text-gray-300">En Uso</button>
+                <button name="filter" value="not_in_use" class="px-3 py-1 text-sm rounded-full bg-gray-600 hover:bg-gray-700 text-gray-300">Sin Usar</button>
+            </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-gray-300">
                     <thead class="border-b border-gray-700">
                         <tr>
                             <th class="py-2 px-3 text-left">Enunciado (Stem)</th>
                             <th class="py-2 px-3 text-left">Tipo</th>
+                            <th class="py-2 px-3 text-left">Estado</th>
                             <th class="py-2 px-3 text-left">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="item-table-body" class="divide-y divide-gray-700">
-                        {% for item in item_list %}
-                            <tr id="item-row-{{ item.id }}">
-                                <td class="py-3 px-3">{{ item.stem|truncatechars:50 }}</td>
-                                <td class="py-3 px-3">{{ item.get_item_type_display }}</td>
-                                <td class="py-3 px-3 space-x-3">
-                                    <button class="text-blue-400 hover:text-blue-300"
-                                            hx-get="{% url 'backoffice:item_edit' item.id %}"
-                                            hx-target="#modal-content"
-                                            hx-swap="innerHTML"
-                                            x-on:click.prevent="showModal = true">
-                                        Editar
-                                    </button>
-                                    
-                                    <button class="text-red-400 hover:text-red-300"
-                                            hx-post="{% url 'backoffice:item_delete' item.pk %}"
-                                            hx-include="[name='csrfmiddlewaretoken']"
-                                            hx-target="closest tr"
-                                            hx-swap="outerHTML"
-                                            hx-confirm="¿Estás seguro de que quieres borrar esta pregunta del banco? Será eliminada de cualquier examen que la esté usando.">
-                                        Borrar
-                                    </button>
-                                    </td>
-                            </tr>
-                        {% empty %}
-                            <tr id="empty-item-row">
-                                <td colspan="3" class="py-4 px-3 text-center text-gray-500">
-                                    No has creado ninguna pregunta todavía.
-                                </td>
-                            </tr>
-                        {% endfor %}
+                        {% include "backoffice/partials/_item_table_body.html" with item_list=item_list %}
                     </tbody>
-                </table>
+                    </table>
             </div>
         </div>
         
