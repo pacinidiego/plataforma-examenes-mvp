@@ -71,7 +71,7 @@
                                     <a href="{% url 'backoffice:exam_constructor' exam.id %}" class="text-blue-400 hover:text-blue-300">Editar</a>
                                     
                                     <button class="text-red-400 hover:text-red-300"
-                                            hx-delete="{% url 'backoffice:exam_delete' exam.pk %}"
+                                            hx-post="{% url 'backoffice:exam_delete' exam.pk %}"
                                             hx-target="closest tr"
                                             hx-swap="outerHTML"
                                             hx-confirm="¿Estás seguro de que quieres borrar el examen '{{ exam.title }}'? Esta acción no se puede deshacer.">
@@ -128,7 +128,7 @@
                                     </button>
                                     
                                     <button class="text-red-400 hover:text-red-300"
-                                            hx-delete="{% url 'backoffice:item_delete' item.pk %}"
+                                            hx-post="{% url 'backoffice:item_delete' item.pk %}"
                                             hx-target="closest tr"
                                             hx-swap="outerHTML"
                                             hx-confirm="¿Estás seguro de que quieres borrar esta pregunta del banco? Será eliminada de cualquier examen que la esté usando.">
