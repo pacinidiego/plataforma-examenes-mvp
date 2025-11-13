@@ -347,8 +347,11 @@ def exam_create(request):
     return render(request, 'backoffice/partials/exam_form.html')
 
 # --- !! INICIO SPRINT S1d (Paso 2: Gestión) !! ---
+
+# --- !! CORRECCIÓN DEL BUG DE BORRADO !! ---
+# Cambiamos @require_http_methods(["DELETE"]) por ["POST"]
 @login_required
-@require_http_methods(["DELETE"])
+@require_http_methods(["POST"])
 def exam_delete(request, pk):
     """
     Vista HTMX para BORRAR un examen.
@@ -362,8 +365,10 @@ def exam_delete(request, pk):
     except Http404:
         return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
 
+# --- !! CORRECCIÓN DEL BUG DE BORRADO !! ---
+# Cambiamos @require_http_methods(["DELETE"]) por ["POST"]
 @login_required
-@require_http_methods(["DELETE"])
+@require_http_methods(["POST"])
 def item_delete(request, pk):
     """
     Vista HTMX para BORRAR una pregunta del banco.
