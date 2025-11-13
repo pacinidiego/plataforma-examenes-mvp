@@ -34,6 +34,7 @@ def dashboard(request):
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
     except Exception:
+        # --- !! CORRECCIÓN DE SINTAXIS !! ---
         return HttpResponse("Error: No tiene un tenant asignado.", status=403)
 
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
@@ -58,7 +59,8 @@ def item_create(request):
     
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status: 403)
+        # --- !! CORRECCIÓN DE SINTAXIS !! ---
+        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
 
     if request.method == "POST":
@@ -120,7 +122,8 @@ def item_edit(request, pk):
     """
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status: 403)
+        # --- !! CORRECCIÓN DE SINTAXIS !! ---
+        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
     
     item = get_object_or_404(Item, pk=pk, tenant=current_tenant)
@@ -238,15 +241,18 @@ def ai_generate_distractors(request):
 # --- VISTAS DE UPLOAD DE EXCEL (S1c - Abandonadas) ---
 @login_required
 def exam_upload_view(request):
-    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status: 403)
+    # --- !! CORRECCIÓN DE SINTAXIS !! ---
+    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
 
 @login_required
 def poll_task_status_view(request, task_id):
-    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status: 403)
+    # --- !! CORRECCIÓN DE SINTAXIS !! ---
+    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
 
 @login_required
 def download_excel_template_view(request):
-    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status: 403)
+    # --- !! CORRECCIÓN DE SINTAXIS !! ---
+    return HttpResponse("Esta función (upload Excel) ha sido desactivada.", status=403)
 
 # --- VISTAS DEL CONSTRUCTOR DE EXÁMENES (S1c-v7) ---
 
@@ -283,69 +289,3 @@ def exam_constructor_view(request, exam_id):
     Reemplaza el 'Placeholder (S2)'.
     """
     try:
-        context = _get_constructor_context(request, exam_id)
-        return render(request, 'backoffice/constructor.html', context)
-    except Http404:
-        return HttpResponse("Examen no encontrado o no le pertenece.", status: 404)
-    except Exception as e:
-        return HttpResponse(f"Error: {e}", status: 500)
-
-
-@login_required
-@require_http_methods(["POST"])
-def add_item_to_exam(request, exam_id, item_id):
-    """
-    Vista HTMX para AÑADIR un ítem al examen.
-    """
-    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
-    item = get_object_or_404(Item, id=item_id, tenant=exam.tenant)
-    
-    # Creamos el vínculo
-    ExamItemLink.objects.get_or_create(exam=exam, item=item)
-    
-    # Devolvemos el parcial de las listas actualizado
-    context = _get_constructor_context(request, exam_id)
-    return render(request, 'backoffice/partials/_constructor_body.html', context)
-
-
-@login_required
-@require_http_methods(["POST"])
-def remove_item_from_exam(request, exam_id, item_id):
-    """
-    Vista HTMX para QUITAR un ítem del examen.
-    """
-    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
-    
-    # Borramos el vínculo
-    ExamItemLink.objects.filter(exam=exam, item_id=item_id).delete()
-    
-    # Devolvemos el parcial de las listas actualizado
-    context = _get_constructor_context(request, exam_id)
-    return render(request, 'backoffice/partials/_constructor_body.html', context)
-# --- !! FIN SPRINT S1d !! ---
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def exam_create(request):
-    """
-    Maneja la creación de un nuevo Examen (solo título).
-    """
-    membership = TenantMembership.objects.filter(user=request.user).first()
-    if not membership:
-        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status: 403)
-    current_tenant = membership.tenant
-
-    if request.method == "POST":
-        title = request.POST.get('title', 'Examen sin título').strip()
-        
-        exam = Exam.objects.create(
-            tenant=current_tenant,
-            author=request.user,
-            title=title
-        )
-        
-        redirect_url = reverse('backoffice:exam_constructor', args=[exam.id])
-        return HttpResponse(headers={'HX-Redirect': redirect_url})
-
-    return render(request, 'backoffice/partials/exam_form.html')
