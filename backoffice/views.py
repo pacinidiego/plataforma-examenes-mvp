@@ -18,7 +18,7 @@ from django.http import Http404
 from django.db import IntegrityError 
 from django.db.models import Count, Q
 from django.contrib import messages 
-from django.utils import timezone # <--- [NUEVO IMPORT S1e]
+from django.utils import timezone # <--- [ESTE ES EL IMPORT CLAVE]
 
 import google.generativeai as genai 
 
@@ -436,7 +436,7 @@ def ai_suggest_items(request, exam_id):
     return render(request, 'backoffice/partials/_constructor_body.html', updated_context)
 
 
-# --- [NUEVA VISTA S1e] ---
+# --- [VISTA S1e - CORREGIDA] ---
 @login_required
 @require_http_methods(["POST"])
 def exam_publish(request, exam_id):
@@ -446,18 +446,26 @@ def exam_publish(request, exam_id):
     """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    if exam.status == 'draft':
-        if not exam.items.exists():
-            # No permitir publicar un examen vacío
-            messages.error(request, "No puedes publicar un examen sin preguntas.")
+    try:
+        if exam.status == 'draft':
+            if not exam.items.exists():
+                # No permitir publicar un examen vacío
+                messages.error(request, "No puedes publicar un examen sin preguntas.")
+            else:
+                # ¡Éxito! Publicamos el examen
+                exam.status = Exam.ExamStatus.PUBLISHED
+                exam.published_at = timezone.now()
+                exam.save()
+                messages.success(request, "¡Examen publicado! Ahora puedes compartir el enlace.")
         else:
-            # ¡Éxito! Publicamos el examen
-            exam.status = Exam.ExamStatus.PUBLISHED
-            exam.published_at = timezone.now()
-            exam.save()
-            messages.success(request, "¡Examen publicado! Ahora puedes compartir el enlace.")
-    else:
-        messages.info(request, "Este examen ya estaba publicado.")
+            messages.info(request, "Este examen ya estaba publicado.")
+
+    except Exception as e:
+        # Captura cualquier error (como el 'timezone' faltante)
+        messages.error(request, f"Error interno al publicar: {e}")
+        # Devolvemos el parcial igualmente para mostrar el error
+        context = { 'exam': exam }
+        return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
     # Devolvemos el parcial actualizado de la cabecera del constructor
     context = { 'exam': exam }
