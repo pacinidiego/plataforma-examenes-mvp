@@ -1,116 +1,88 @@
-{% load i18n %}
-<form hx-post="{% if item %}{% url 'backoffice:item_edit' item.pk %}{% else %}{% url 'backoffice:item_create' %}{% endif %}"
-      hx-target="this" 
-      hx-swap="outerHTML"
-      class="space-y-4">
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-gray-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Plataforma de Exámenes{% endblock %}</title>
+    
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwgUonBweSEbOKGgPWPKyeTWJM18EICHTM ERKjIfUPAL" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #2d3748; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #718096; }
+    </style>
+</head>
+<body class="h-full" 
+      x-data="{ 
+          modalOpen: false, 
+          modalContent: 'Cargando...' 
+      }"
+      @htmx:after-swap="
+          if ($event.detail.target.id === 'modal-content-form') {
+              modalOpen = true;
+          } else if ($event.detail.xhr.request.path.includes('dashboard')) {
+              modalOpen = false;
+          }
+      "
+      @htmx:before-swap="
+          if ($event.detail.target.id === 'modal-backdrop') {
+              modalOpen = false;
+              $event.detail.shouldSwap = false;
+          }
+      ">
+
     {% csrf_token %}
+    <script>
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            event.detail.headers['X-CSRFToken'] = document.querySelector('[name="csrfmiddlewaretoken"]').value;
+        })
+    </script>
 
-    <div class="p-6 pb-12"> <h3 class="text-xl font-semibold text-gray-900 mb-4">
-            {% if item %}Editar Pregunta{% else %}Crear Nueva Pregunta{% endif %}
-        </h3>
+    <div>
+        <main class="py-10">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-                <label for="id_item_type" class="block text-sm font-medium text-gray-700">
-                    Tipo de Pregunta
-                </label>
-                <select name="item_type" id="id_item_type"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                    {% for value, text in item_types %}
-                        <option value="{{ value }}" {% if item.item_type == value %}selected{% endif %}>{{ text }}</option>
-                    {% endfor %}
-                </select>
-            </div>
+    <div x-show="modalOpen" 
+         x-transition:enter="ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 overflow-y-auto" 
+         aria-labelledby="modal-title" role="dialog" aria-modal="true" style="display: none;">
+        
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             
-            <div>
-                <label for="id_difficulty" class="block text-sm font-medium text-gray-700">
-                    Dificultad
-                </label>
-                <select name="difficulty" id="id_difficulty"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                    <option value="1" {% if item.difficulty == 1 %}selected{% endif %}>Fácil</option>
-                    <option value="2" {% if item.difficulty == 2 %}selected{% endif %}>Media</option>
-                    <option value="3" {% if item.difficulty == 3 %}selected{% endif %}>Difícil</option>
-                </select>
-            </div>
-        </div>
+            <div @click="modalOpen = false" 
+                 class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity"></div>
+            
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-        <div>
-            <label for="id_stem" class="block text-sm font-medium text-gray-700">
-                Enunciado (Pregunta)
-            </label>
-            <textarea name="stem" id="id_stem" rows="4"
-                      class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                      required>{{ item.stem|default_if_none:'' }}</textarea>
-        </div>
-
-        <div id="mc_options_container" class="space-y-3 pt-4 border-t mt-4">
-            <h4 class="font-medium text-gray-800">Opciones (Múltiple Choice)</h4>
-            <div>
-                <label for="id_correct_answer" class="block text-sm font-medium text-green-700">
-                    Respuesta Correcta
-                </label>
-                <input type="text" name="correct_answer" id="id_correct_answer"
-                       value="{{ correct_answer_text|default_if_none:'' }}"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm">
-            </div>
-
-            <div>
-                <label class="block text-sm font-medium text-red-700">
-                    Distractores (Incorrectas)
-                </label>
+            <div x-show="modalOpen"
+                 x-transition:enter="ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave="ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 class="inline-block align-bottom rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 
-                <div class="space-y-2 mt-1" id="distractors-list">
-                    {% for distractor in distractors_list %}
-                    <input type="text" name="distractors" value="{{ distractor }}"
-                           class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                           placeholder="Distractor {{ forloop.counter }}">
-                    {% endfor %}
+                <div id="modal-content-form">
+                    {{ modalContent|safe }}
                 </div>
             </div>
-
-            <div id="ai-distractors-feedback" class="text-red-600 text-sm"></div>
-            <button type="button" 
-                    hx-post="{% url 'backoffice:ai_generate_distractors' %}"
-                    hx-include="closest form"
-                    hx-target="#distractors-list"
-                    hx-swap="innerHTML"
-                    class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none">
-                Generar Distractores con IA ✨
-            </button>
         </div>
-
     </div>
+    
+    <div id="modal-backdrop"></div>
 
-    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-        <button type="submit"
-                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
-            Guardar
-        </button>
-        <button type="button" 
-                @click="modalOpen = false"
-                class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm">
-            Cancelar
-        </button>
-    </div>
-</form>
-
-<script>
-    (function() {
-        var itemTypeSelect = document.getElementById('id_item_type');
-        var mcOptionsContainer = document.getElementById('mc_options_container');
-
-        function toggleMcOptions() {
-            if (!itemTypeSelect || !mcOptionsContainer) return;
-            
-            if (itemTypeSelect.value === 'MC') {
-                mcOptionsContainer.style.display = 'block';
-            } else {
-                mcOptionsContainer.style.display = 'none';
-            }
-        }
-        
-        toggleMcOptions();
-        itemTypeSelect.addEventListener('change', toggleMcOptions);
-    })();
-</script>
+</body>
+</html>
