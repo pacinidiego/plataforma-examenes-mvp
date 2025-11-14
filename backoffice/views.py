@@ -298,23 +298,36 @@ def exam_create(request):
 @login_required
 @require_http_methods(["POST"])
 def exam_delete(request, pk):
+    """
+    Vista HTMX para BORRAR un examen.
+    [CAMBIO] Devuelve un HX-Redirect para forzar el refresco del dashboard.
+    """
     try:
         exam = get_object_or_404(Exam, pk=pk, tenant__memberships__user=request.user)
         exam.delete()
-        return HttpResponse("", status=200)
+        # Forzamos un refresco de la página via HTMX
+        response = HttpResponse("", status=200)
+        response['HX-Redirect'] = reverse('backoffice:dashboard')
+        return response
     except Http404:
-        return HttpResponse("No encontrado.", status=404)
+        return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
 
 @login_required
 @require_http_methods(["POST"])
 def item_delete(request, pk):
+    """
+    Vista HTMX para BORRAR una pregunta del banco.
+    [CAMBIO] Devuelve un HX-Redirect para forzar el refresco del dashboard.
+    """
     try:
         item = get_object_or_404(Item, pk=pk, tenant__memberships__user=request.user)
         item.delete()
-        return HttpResponse("", status=200)
+        # Forzamos un refresco de la página via HTMX
+        response = HttpResponse("", status=200)
+        response['HX-Redirect'] = reverse('backoffice:dashboard')
+        return response
     except Http404:
-        return HttpResponse("No encontrado.", status=404)
-
+        return HttpResponse("Ítem no encontrado o no le pertenece.", status=404)
 @login_required
 @require_http_methods(["GET"])
 def filter_items(request):
