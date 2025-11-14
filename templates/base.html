@@ -1,21 +1,19 @@
 <!DOCTYPE html>
-<html lang="es" class="h-full bg-gray-900">
-<head>
+<html lang="es" class="h-full bg-gray-100"> <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Plataforma de Exámenes{% endblock %}</title>
     
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
 
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #2d3748; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #718096; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body class="h-full" 
@@ -63,7 +61,7 @@
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             
             <div @click="modalOpen = false" 
-                 class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity"></div>
+                 class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
             
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
@@ -84,6 +82,5 @@
     </div>
     
     <div id="modal-backdrop"></div>
-
 </body>
 </html>
