@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="es" class="h-full bg-gray-100"> <head>
+<html lang="es" class="h-full bg-gray-100">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Plataforma de Exámenes{% endblock %}</title>
@@ -21,15 +22,21 @@
           modalOpen: false, 
           modalContent: 'Cargando...' 
       }"
+      
       @htmx:after-swap="
           if ($event.detail.target.id === 'modal-content-form') {
               modalOpen = true;
-          } else if ($event.detail.xhr.request.path.includes('dashboard')) {
-              modalOpen = false;
+          }
+          // Chequeo seguro para redirecciones (ej. al borrar)
+          if ($event.detail.xhr && $event.detail.xhr.getResponseHeader('HX-Redirect')) {
+              if ($event.detail.xhr.getResponseHeader('HX-Redirect').includes('dashboard')) {
+                  modalOpen = false;
+              }
           }
       "
       @htmx:before-swap="
-          if ($event.detail.target.id === 'modal-backdrop') {
+          // Chequeo seguro para el botón 'Cancelar' del modal
+          if ($event.detail.target && $event.detail.target.id === 'modal-backdrop') {
               modalOpen = false;
               $event.detail.shouldSwap = false;
           }
