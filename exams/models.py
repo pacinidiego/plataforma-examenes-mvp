@@ -51,7 +51,6 @@ class Exam(models.Model):
     """
     
     # --- [CORRECCIÓN S1e] ---
-    # Usamos tuplas simples para las 'choices' para que coincidan con la migración
     STATUS_CHOICES = [
         ('draft', 'Borrador'),
         ('published', 'Publicado'),
