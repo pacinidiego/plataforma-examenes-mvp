@@ -33,11 +33,9 @@ def dashboard(request):
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
         if not memberships.exists():
-            # [CORRECCIÓN] status=403
             return HttpResponse("Error: No tiene un tenant asignado.", status=403)
             
     except Exception:
-        # [CORRECCIÓN] status=500
         return HttpResponse("Error: No se pudo verificar la membresía del tenant.", status=500)
 
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
@@ -64,7 +62,6 @@ def dashboard(request):
 def item_create(request):
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        # [CORRECCIÓN] status=403
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
 
@@ -123,7 +120,6 @@ def item_create(request):
 def item_edit(request, pk):
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        # [CORRECCIÓN] status=403
         return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
     
@@ -225,17 +221,14 @@ def ai_generate_distractors(request):
 
 @login_required
 def exam_upload_view(request):
-    # [CORRECCIÓN] status=403
     return HttpResponse("Desactivado.", status=403)
 
 @login_required
 def poll_task_status_view(request, task_id):
-    # [CORRECCIÓN] status=403
     return HttpResponse("Desactivado.", status=403)
 
 @login_required
 def download_excel_template_view(request):
-    # [CORRECCIÓN] status=403
     return HttpResponse("Desactivado.", status=403)
 
 
@@ -269,10 +262,8 @@ def exam_constructor_view(request, exam_id):
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/constructor.html', context)
     except Http404:
-        # [CORRECCIÓN] status=404
         return HttpResponse("Examen no encontrado.", status=404)
     except Exception as e:
-        # [CORRECCIÓN] status=500
         return HttpResponse(f"Error: {e}", status=500)
 
 @login_required
@@ -297,7 +288,6 @@ def remove_item_from_exam(request, exam_id, item_id):
 def exam_create(request):
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        # [CORRECCIÓN] status=403
         return HttpResponse("Error.", status=403)
     current_tenant = membership.tenant
 
@@ -319,7 +309,6 @@ def exam_delete(request, pk):
         response['HX-Redirect'] = reverse('backoffice:dashboard')
         return response
     except Http404:
-        # [CORRECCIÓN] status=404
         return HttpResponse("No encontrado.", status=404)
 
 @login_required
@@ -332,7 +321,6 @@ def item_delete(request, pk):
         response['HX-Redirect'] = reverse('backoffice:dashboard')
         return response
     except Http404:
-        # [CORRECCIÓN] status=404
         return HttpResponse("No encontrado.", status=404)
 
 
@@ -343,7 +331,6 @@ def filter_items(request):
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
     except Exception:
-        # [CORRECCIÓN] status=403
         return HttpResponse("Error.", status=403)
 
     filter_type = request.GET.get('filter', 'all')
@@ -377,7 +364,7 @@ def item_detail_view(request, item_id):
             'options': options
         })
     except Exception as e:
-        return HttpResponse(f"<div class='text-red-500'>Error cargando detalle: {e}</div>")
+        return HttpResponse(f"<div class='text-red-500'>Error cargando detalle: {e}")
 
 
 @login_required
@@ -484,7 +471,6 @@ def exam_publish(request, exam_id):
     except Exception as e:
         messages.error(request, f"Error interno al publicar: {e}")
         context = { 'exam': exam }
-        # [CORRECCIÓN] status=500
         return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
     context = { 'exam': exam }
@@ -508,7 +494,6 @@ def exam_unpublish(request, exam_id):
     except Exception as e:
         messages.error(request, f"Error interno al anular la publicación: {e}")
         context = { 'exam': exam }
-        # [CORRECCIÓN] status=500
         return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
     context = { 'exam': exam }
