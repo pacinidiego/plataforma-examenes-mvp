@@ -18,7 +18,7 @@ from django.http import Http404
 from django.db import IntegrityError 
 from django.db.models import Count, Q
 from django.contrib import messages 
-from django.utils import timezone # <--- [ESTE ES EL IMPORT CLAVE]
+from django.utils import timezone 
 
 import google.generativeai as genai 
 
@@ -453,7 +453,8 @@ def exam_publish(request, exam_id):
                 messages.error(request, "No puedes publicar un examen sin preguntas.")
             else:
                 # ¡Éxito! Publicamos el examen
-                exam.status = Exam.ExamStatus.PUBLISHED
+                # [LA CORRECCIÓN ESTÁ AQUÍ]
+                exam.status = "published" # Usamos el string simple
                 exam.published_at = timezone.now()
                 exam.save()
                 messages.success(request, "¡Examen publicado! Ahora puedes compartir el enlace.")
@@ -461,9 +462,8 @@ def exam_publish(request, exam_id):
             messages.info(request, "Este examen ya estaba publicado.")
 
     except Exception as e:
-        # Captura cualquier error (como el 'timezone' faltante)
+        # Captura cualquier error
         messages.error(request, f"Error interno al publicar: {e}")
-        # Devolvemos el parcial igualmente para mostrar el error
         context = { 'exam': exam }
         return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
