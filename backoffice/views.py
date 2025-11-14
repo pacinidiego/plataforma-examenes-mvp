@@ -19,7 +19,6 @@ from django.db import IntegrityError
 from django.db.models import Count, Q
 from django.contrib import messages 
 from django.utils import timezone 
-# [CORRECCIÓN] Import de StringAgg en la ubicación correcta
 from django.contrib.postgres.aggregates import StringAgg 
 
 import google.generativeai as genai 
@@ -34,10 +33,12 @@ def dashboard(request):
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
         if not memberships.exists():
-            return HttpResponse("Error: No tiene un tenant asignado.", status: 403)
+            # [CORRECCIÓN] status=403
+            return HttpResponse("Error: No tiene un tenant asignado.", status=403)
             
     except Exception:
-        return HttpResponse("Error: No se pudo verificar la membresía del tenant.", status: 500)
+        # [CORRECCIÓN] status=500
+        return HttpResponse("Error: No se pudo verificar la membresía del tenant.", status=500)
 
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
     
@@ -63,7 +64,8 @@ def dashboard(request):
 def item_create(request):
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status: 403)
+        # [CORRECCIÓN] status=403
+        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
 
     if request.method == "POST":
@@ -121,7 +123,8 @@ def item_create(request):
 def item_edit(request, pk):
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status: 403)
+        # [CORRECCIÓN] status=403
+        return HttpResponse("Error: Usuario no tiene un tenant asignado.", status=403)
     current_tenant = membership.tenant
     
     item = get_object_or_404(Item, pk=pk, tenant=current_tenant)
@@ -222,15 +225,18 @@ def ai_generate_distractors(request):
 
 @login_required
 def exam_upload_view(request):
-    return HttpResponse("Desactivado.", status: 403)
+    # [CORRECCIÓN] status=403
+    return HttpResponse("Desactivado.", status=403)
 
 @login_required
 def poll_task_status_view(request, task_id):
-    return HttpResponse("Desactivado.", status: 403)
+    # [CORRECCIÓN] status=403
+    return HttpResponse("Desactivado.", status=403)
 
 @login_required
 def download_excel_template_view(request):
-    return HttpResponse("Desactivado.", status: 403)
+    # [CORRECCIÓN] status=403
+    return HttpResponse("Desactivado.", status=403)
 
 
 # --- CONSTRUCTOR DE EXÁMENES ---
@@ -263,9 +269,11 @@ def exam_constructor_view(request, exam_id):
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/constructor.html', context)
     except Http404:
-        return HttpResponse("Examen no encontrado.", status: 404)
+        # [CORRECCIÓN] status=404
+        return HttpResponse("Examen no encontrado.", status=404)
     except Exception as e:
-        return HttpResponse(f"Error: {e}", status: 500)
+        # [CORRECCIÓN] status=500
+        return HttpResponse(f"Error: {e}", status=500)
 
 @login_required
 @require_http_methods(["POST"])
@@ -289,7 +297,8 @@ def remove_item_from_exam(request, exam_id, item_id):
 def exam_create(request):
     membership = TenantMembership.objects.filter(user=request.user).first()
     if not membership:
-        return HttpResponse("Error.", status: 403)
+        # [CORRECCIÓN] status=403
+        return HttpResponse("Error.", status=403)
     current_tenant = membership.tenant
 
     if request.method == "POST":
@@ -306,11 +315,12 @@ def exam_delete(request, pk):
     try:
         exam = get_object_or_404(Exam, pk=pk, tenant__memberships__user=request.user)
         exam.delete()
-        response = HttpResponse("", status: 200)
+        response = HttpResponse("", status=200)
         response['HX-Redirect'] = reverse('backoffice:dashboard')
         return response
     except Http404:
-        return HttpResponse("No encontrado.", status: 404)
+        # [CORRECCIÓN] status=404
+        return HttpResponse("No encontrado.", status=404)
 
 @login_required
 @require_http_methods(["POST"])
@@ -318,11 +328,12 @@ def item_delete(request, pk):
     try:
         item = get_object_or_404(Item, pk=pk, tenant__memberships__user=request.user)
         item.delete()
-        response = HttpResponse("", status: 200)
+        response = HttpResponse("", status=200)
         response['HX-Redirect'] = reverse('backoffice:dashboard')
         return response
     except Http404:
-        return HttpResponse("No encontrado.", status: 404)
+        # [CORRECCIÓN] status=404
+        return HttpResponse("No encontrado.", status=404)
 
 
 @login_required
@@ -332,7 +343,8 @@ def filter_items(request):
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
     except Exception:
-        return HttpResponse("Error.", status: 403)
+        # [CORRECCIÓN] status=403
+        return HttpResponse("Error.", status=403)
 
     filter_type = request.GET.get('filter', 'all')
     base_query = Item.objects.filter(tenant__in=user_tenants)
@@ -472,7 +484,8 @@ def exam_publish(request, exam_id):
     except Exception as e:
         messages.error(request, f"Error interno al publicar: {e}")
         context = { 'exam': exam }
-        return render(request, 'backoffice/partials/_constructor_header.html', context, status: 500)
+        # [CORRECCIÓN] status=500
+        return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
     context = { 'exam': exam }
     return render(request, 'backoffice/partials/_constructor_header.html', context)
@@ -495,7 +508,8 @@ def exam_unpublish(request, exam_id):
     except Exception as e:
         messages.error(request, f"Error interno al anular la publicación: {e}")
         context = { 'exam': exam }
-        return render(request, 'backoffice/partials/_constructor_header.html', context, status: 500)
+        # [CORRECCIÓN] status=500
+        return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
     context = { 'exam': exam }
     return render(request, 'backoffice/partials/_constructor_header.html', context)
