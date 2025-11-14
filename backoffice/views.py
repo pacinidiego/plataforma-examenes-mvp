@@ -28,12 +28,21 @@ from tenancy.models import TenantMembership
 # (S1c) Vista del Dashboard
 @login_required
 def dashboard(request):
+    """
+    Muestra el Dashboard principal del Docente/Admin.
+    """
+    # [CORRECCIÓN] Limitamos el try...except solo a la consulta de Tenant.
     try:
-        memberships = TenantMembership.objects.filter(user=request.user).first()
+        memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
+        if not memberships.exists():
+            return HttpResponse("Error: No tiene un tenant asignado.", status=403)
+            
     except Exception:
-        return HttpResponse("Error: No tiene un tenant asignado.", status=403)
+        # Esto solo fallará si el modelo TenantMembership o la app tenancy está rota
+        return HttpResponse("Error: No se pudo verificar la membresía del tenant.", status=500)
 
+    # Estas consultas ahora se ejecutan fuera del try...except
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
     
     item_list = Item.objects.filter(tenant__in=user_tenants)\
