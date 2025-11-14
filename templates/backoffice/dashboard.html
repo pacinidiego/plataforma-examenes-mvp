@@ -1,135 +1,100 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard{% endblock %}
-
 {% block content %}
-<div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-gray-900 bg-opacity-75 p-4" 
-     x-show="showModal" 
-     x-cloak
-     style="display: none;"> <div id="modal-content" class="w-full max-w-lg" x-on:click.outside="showModal = false">
+<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    
+    <header class="mb-6 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-white">
+                Dashboard del Docente
+            </h1>
+            <p class="mt-2 text-xl text-gray-300">
+                Bienvenido, {{ user.username }}.
+            </p>
         </div>
-</div>
-<nav class="bg-gray-800 shadow-md">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-16">
-            <div class="flex items-center">
-                <span class="font-bold text-xl text-white">Plataforma (Backoffice)</span>
-            </div>
-            <div class="flex items-center">
-                <span class="text-gray-300 mr-4">Hola, {{ user.username }}</span>
-                <form method="post" action="{% url 'logout' %}">
-                    {% csrf_token %}
-                    <button type="submit" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700">
-                        Cerrar Sesión
-                    </button>
-                </form>
-            </div>
+        <div>
+            <a href="{% url 'logout' %}" class="text-sm text-gray-400 hover:text-white">Cerrar Sesión</a>
+        </div>
+    </header>
+
+    <div class="bg-gray-800 rounded-lg shadow p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold text-white">
+                Mis Exámenes
+            </h2>
+            <button 
+                hx-get="{% url 'backoffice:exam_create' %}"
+                hx-target="#modal-content-form"
+                @click="modalContent = '<div class=\'p-6 bg-white text-gray-700\'>Cargando...</div>'; modalOpen = true"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
+                + Crear Examen
+            </button>
+        </div>
+        
+        <div class="space-y-3">
+            {% for exam in exam_list %}
+                <div class="p-3 bg-gray-700 rounded-lg flex items-center justify-between">
+                    <div>
+                        <a href="{% url 'backoffice:exam_constructor' exam.id %}" class="text-lg font-medium text-blue-300 hover:text-blue-200">
+                            {{ exam.title }}
+                        </a>
+                        <span class="block text-xs text-gray-400">
+                            {{ exam.items.count }} Preguntas
+                        </span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <a href="{% url 'backoffice:exam_constructor' exam.id %}" class="text-sm text-blue-400 hover:text-blue-300">
+                            Editar
+                        </a>
+                        <button hx-post="{% url 'backoffice:exam_delete' exam.pk %}"
+                                hx-swap="outerHTML"
+                                hx-target="closest div"
+                                hx-confirm="¿Seguro que quieres borrar este examen?"
+                                class="text-sm text-red-400 hover:text-red-300">
+                            Borrar
+                        </button>
+                    </div>
+                </div>
+            {% empty %}
+                <p class="text-gray-400">No has creado ningún examen todavía.</p>
+            {% endfor %}
         </div>
     </div>
-</nav>
 
-<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    <header>
-        <h1 class="text-3xl font-bold text-white">
-            Dashboard (Sprint S1d)
-        </h1>
-        <p class="mt-2 text-gray-300">
-            ¡Bienvenido, {{ user.username }}! Esta es la página principal del Constructor de Exámenes.
-        </p>
-    </header>
-    <main class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        <div class="bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-white">Mis Exámenes</h2>
-                
-                <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
-                        hx-get="{% url 'backoffice:exam_create' %}"
-                        hx-target="#modal-content"
-                        hx-swap="innerHTML"
-                        x-on:click.prevent="showModal = true"
-                        title="Crear un nuevo examen (solo título)">
-                    + Crear Examen
-                </button>
-                </div>
-            
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-gray-300">
-                    <thead class="border-b border-gray-700">
-                        <tr>
-                            <th class="py-2 px-3 text-left">Título</th>
-                            <th class="py-2 px-3 text-left">Preguntas</th>
-                            <th class="py-2 px-3 text-left">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-700" id="exam-table-body">
-                        {% for exam in exam_list %}
-                            <tr id="exam-row-{{ exam.id }}">
-                                <td class="py-3 px-3">{{ exam.title }}</td>
-                                <td class="py-3 px-3">{{ exam.items.count }}</td>
-                                <td class="py-3 px-3 space-x-3">
-                                    <a href="{% url 'backoffice:exam_constructor' exam.id %}" class="text-blue-400 hover:text-blue-300">Editar</a>
-                                    
-                                    <button class="text-red-400 hover:text-red-300"
-                                            hx-post="{% url 'backoffice:exam_delete' exam.pk %}"
-                                            hx-include="[name='csrfmiddlewaretoken']"
-                                            hx-target="closest tr"
-                                            hx-swap="outerHTML"
-                                            hx-confirm="¿Estás seguro de que quieres borrar el examen '{{ exam.title }}'? Esta acción no se puede deshacer.">
-                                        Borrar
-                                    </button>
-                                    </td>
-                            </tr>
-                        {% empty %}
-                            <tr id="empty-exam-row">
-                                <td colspan="3" class="py-4 px-3 text-center text-gray-500">
-                                    No has creado ningún examen todavía.
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+    <div class="bg-gray-800 rounded-lg shadow p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold text-white">
+                Banco de Preguntas
+            </h2>
+            <button 
+                hx-get="{% url 'backoffice:item_create' %}"
+                hx-target="#modal-content-form"
+                @click="modalContent = '<div class=\'p-6 bg-white text-gray-700\'>Cargando...</div>'; modalOpen = true"
+                class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
+                + Crear Pregunta
+            </button>
         </div>
 
-        <div class="bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-white">Banco de Preguntas</h2>
-                
-                <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
-                        hx-get="{% url 'backoffice:item_create' %}"
-                        hx-target="#modal-content"
-                        hx-swap="innerHTML"
-                        x-on:click="showModal = true">
-                    + Crear Pregunta (con IA ✨)
-                </button>
-            </div>
-
-            <div class="mb-4 flex space-x-2"
-                 hx-get="{% url 'backoffice:filter_items' %}"
-                 hx-target="#item-table-body"
-                 hx-trigger="click from button">
-                <button name="filter" value="all" class="px-3 py-1 text-sm rounded-full bg-blue-700 text-white">Todas</button>
-                <button name="filter" value="in_use" class="px-3 py-1 text-sm rounded-full bg-gray-600 hover:bg-gray-700 text-gray-300">En Uso</button>
-                <button name="filter" value="not_in_use" class="px-3 py-1 text-sm rounded-full bg-gray-600 hover:bg-gray-700 text-gray-300">Sin Usar</button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-gray-300">
-                    <thead class="border-b border-gray-700">
-                        <tr>
-                            <th class="py-2 px-3 text-left">Enunciado (Stem)</th>
-                            <th class="py-2 px-3 text-left">Tipo</th>
-                            <th class="py-2 px-3 text-left">Estado</th>
-                            <th class="py-2 px-3 text-left">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="item-table-body" class="divide-y divide-gray-700">
-                        {% include "backoffice/partials/_item_table_body.html" with item_list=item_list %}
-                    </tbody>
-                    </table>
-            </div>
+        <div class="flex space-x-2 mb-4" hx-target="#item-table-body" hx-swap="innerHTML">
+            <button hx-get="{% url 'backoffice:filter_items' %}?filter=all" class="text-sm px-3 py-1 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600">Todas</button>
+            <button hx-get="{% url 'backoffice:filter_items' %}?filter=in_use" class="text-sm px-3 py-1 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600">En Uso</button>
+            <button hx-get="{% url 'backoffice:filter_items' %}?filter=not_in_use" class="text-sm px-3 py-1 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600">Sin Usar</button>
         </div>
         
-    </main>
+        <table class="min-w-full divide-y divide-gray-700">
+            <thead class="bg-gray-700">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Enunciado (Stem)</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Tipo</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Estado</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="item-table-body" class="bg-gray-800 divide-y divide-gray-700">
+                {% include "backoffice/partials/_item_table_body.html" %}
+            </tbody>
+        </table>
+    </div>
+
 </div>
 {% endblock %}
