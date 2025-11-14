@@ -2,7 +2,8 @@
 <tr class="{% if forloop.counter|divisibleby:2 %}bg-gray-50{% else %}bg-white{% endif %}">
     
     <td class="px-4 py-4 text-sm font-medium text-gray-900 break-words">
-        {{ item.stem|truncatechars:100 }} </td>
+        {{ item.stem|truncatechars:100 }}
+    </td>
     
     <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
         {{ item.get_item_type_display }}
@@ -10,8 +11,9 @@
     
     <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
         {% if item.in_use_count > 0 %}
-            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                En {{ item.in_use_count }} examen
+            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800"
+                  title="Usado en: {{ item.exam_titles|default:'N/A' }}">
+                En {{ item.in_use_count }} examen{{ item.in_use_count|pluralize }}
             </span>
         {% else %}
             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
