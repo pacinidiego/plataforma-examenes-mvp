@@ -81,14 +81,14 @@
                 <button hx-get="{% url 'backoffice:filter_items' %}?filter=not_in_use" class="text-sm px-3 py-1 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300">Sin Usar</button>
             </div>
             
-            <div class="overflow-x-auto rounded-lg border border-gray-200">
-                <table class="min-w-full divide-y divide-gray-200">
+            <div class="rounded-lg border border-gray-200">
+                <table class="min-w-full divide-y divide-gray-200 table-fixed w-full">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Enunciado (Stem)</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                            <th class="w-[40%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Enunciado (Stem)</th>
+                            <th class="w-[20%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                            <th class="w-[20%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                            <th class="w-[20%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="item-table-body" class="bg-white divide-y divide-gray-200">
