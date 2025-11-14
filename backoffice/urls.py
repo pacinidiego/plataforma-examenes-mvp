@@ -11,8 +11,6 @@ urlpatterns = [
     path('item/create/', views.item_create, name='item_create'),
     path('item/<int:pk>/edit/', views.item_edit, name='item_edit'),
     path('item/<int:pk>/delete/', views.item_delete, name='item_delete'),
-    
-    # [NUEVO] Detalle de ítem para el modal
     path('item/<int:item_id>/detail/', views.item_detail_view, name='item_detail'),
     
     # CRUD de Exámenes
@@ -21,6 +19,9 @@ urlpatterns = [
     
     # Constructor
     path('exam/<int:exam_id>/constructor/', views.exam_constructor_view, name='exam_constructor'),
+    
+    # [NUEVA URL S1e] Publicar el examen
+    path('exam/<int:exam_id>/publish/', views.exam_publish, name='exam_publish'),
     
     # Acciones del Constructor
     path('exam/<int:exam_id>/add/<int:item_id>/', views.add_item_to_exam, name='add_item_to_exam'),
