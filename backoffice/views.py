@@ -29,7 +29,7 @@ from tenancy.models import TenantMembership
 @login_required
 def dashboard(request):
     try:
-        memberships = TenantMembership.objects.filter(user=request.user)
+        memberships = TenantMembership.objects.filter(user=request.user).first()
         user_tenants = memberships.values_list('tenant', flat=True)
     except Exception:
         return HttpResponse("Error: No tiene un tenant asignado.", status=403)
