@@ -61,7 +61,7 @@ class Exam(models.Model):
     status = models.CharField(
         max_length=10, 
         choices=STATUS_CHOICES, 
-        default='draft', # Usamos el string simple
+        default='draft', # Usamos el string simple 'draft'
         db_index=True
     )
     # --- [FIN CORRECCIÓN] ---
