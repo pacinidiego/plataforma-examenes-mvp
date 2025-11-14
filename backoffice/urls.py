@@ -20,8 +20,10 @@ urlpatterns = [
     # Constructor
     path('exam/<int:exam_id>/constructor/', views.exam_constructor_view, name='exam_constructor'),
     
-    # [NUEVA URL S1e] Publicar el examen
+    # Acciones de Publicación (S1e)
     path('exam/<int:exam_id>/publish/', views.exam_publish, name='exam_publish'),
+    # [NUEVA URL]
+    path('exam/<int:exam_id>/unpublish/', views.exam_unpublish, name='exam_unpublish'),
     
     # Acciones del Constructor
     path('exam/<int:exam_id>/add/<int:item_id>/', views.add_item_to_exam, name='add_item_to_exam'),
