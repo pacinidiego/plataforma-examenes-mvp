@@ -1,134 +1,122 @@
+import uuid
 from django.db import models
 from django.conf import settings
-from django.utils.translation import gettext_lazy as _
 from tenancy.models import Tenant
 
-# (Spec S1: Banco de Preguntas (MC, corta, caso))
+# Create your models here.
+
 class Item(models.Model):
+    """
+    Una Pregunta (Item) en el Banco de Preguntas.
+    """
     class ItemType(models.TextChoices):
-        MULTIPLE_CHOICE = 'MC', _('Opción Múltiple (MC)')
-        SHORT_ANSWER = 'SHORT', _('Respuesta Corta')
-        CASE_STUDY = 'CASE', _('Estudio de Caso')
+        MULTIPLE_CHOICE = 'MC', 'Opción Múltiple (MC)'
+        SHORT_ANSWER = 'SA', 'Respuesta Corta (SA)'
+        ESSAY = 'ES', 'Ensayo (ES)'
 
-    tenant = models.ForeignKey(
-        Tenant, 
-        on_delete=models.CASCADE, 
-        related_name='items',
-        verbose_name=_("Institución")
-    )
-    author = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.SET_NULL, 
-        null=True,
-        related_name='items_authored',
-        verbose_name=_("Autor (Docente)")
-    )
+    class Difficulty(models.IntegerChoices):
+        EASY = 1, 'Fácil'
+        MEDIUM = 2, 'Media'
+        HARD = 3, 'Difícil'
+
+    # Relaciones
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="items")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     
-    item_type = models.CharField(
-        max_length=10, 
-        choices=ItemType.choices, 
-        default=ItemType.MULTIPLE_CHOICE,
-        verbose_name=_("Tipo de Ítem")
-    )
+    # Contenido
+    item_type = models.CharField(max_length=2, choices=ItemType.choices, default=ItemType.MULTIPLE_CHOICE)
+    stem = models.TextField(verbose_name="Enunciado (Stem)")
+    options = models.JSONField(null=True, blank=True, help_text="Opciones para MC (ej. [{'text': 'A', 'correct': True}, ...])")
     
-    tags = models.CharField(
-        max_length=255, 
-        blank=True, 
-        verbose_name=_("Etiquetas"),
-        help_text=_("Escribe las etiquetas separadas por coma (ej: algebra, ecuaciones, primer_año)")
-    )
-
-    difficulty = models.PositiveSmallIntegerField(default=1, help_text=_("Nivel de dificultad (1-5)"), verbose_name=_("Dificultad"))
-
-    # (Fix Bug "Casi Igual"): Limpiamos el 'stem' en el 'save()'
-    stem = models.TextField(verbose_name=_("Enunciado (Stem)"))
+    # Metadatos
+    difficulty = models.IntegerField(choices=Difficulty.choices, default=Difficulty.MEDIUM)
+    tags = models.CharField(max_length=255, blank=True, help_text="Etiquetas separadas por comas")
     
-    options = models.JSONField(
-        blank=True, 
-        null=True, 
-        verbose_name=_("Opciones (para MC)"),
-        help_text=_("Formato JSON: [{'text': 'Opción A', 'correct': True}, ...]")
-    )
-
-    case_content = models.TextField(
-        blank=True, 
-        null=True, 
-        verbose_name=_("Contenido del Caso (si aplica)"),
-        help_text=_("El texto/contexto principal para un ítem de 'Estudio de Caso'.")
-    )
-
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = _("Pregunta")
-        # --- !! CORRECCIÓN DE TERMINOLOGÍA (Req #4) !! ---
-        verbose_name_plural = _("Banco de Preguntas")
-        
-        # --- !! CORRECCIÓN (BUG #2) !! ---
-        # No puede existir el mismo enunciado dos veces EN EL MISMO TENANT
+        verbose_name = "Pregunta (Item)"
+        verbose_name_plural = "Banco de Preguntas"
         unique_together = ('tenant', 'stem')
 
     def __str__(self):
-        return f"[{self.get_item_type_display()}] {self.stem[:50]}... ({self.tenant.name})"
-    
-    def save(self, *args, **kwargs):
-        # (Fix Bug "Casi Igual"): Limpiamos el 'stem' antes de guardarlo.
-        # Esto no soluciona el "(super usuario)" pero sí " hola " vs "hola"
-        if self.stem:
-            self.stem = " ".join(self.stem.split())
-        super().save(*args, **kwargs)
+        return self.stem[:60]
 
 
 class Exam(models.Model):
-    tenant = models.ForeignKey(
-        Tenant, 
-        on_delete=models.CASCADE, 
-        related_name='exams',
-        verbose_name=_("Institución")
+    """
+    Un Examen, que es una colección ordenada de Items.
+    """
+    
+    # --- [CORRECCIÓN S1e] ---
+    # Usamos tuplas simples para las 'choices' para que coincidan con la migración
+    STATUS_CHOICES = [
+        ('draft', 'Borrador'),
+        ('published', 'Publicado'),
+        ('archived', 'Archivado'),
+    ]
+
+    status = models.CharField(
+        max_length=10, 
+        choices=STATUS_CHOICES, 
+        default='draft', # Usamos el string simple
+        db_index=True
     )
-    author = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.SET_NULL, 
-        null=True,
-        related_name='exams_authored',
-        verbose_name=_("Autor (Docente)")
+    # --- [FIN CORRECCIÓN] ---
+
+    access_code = models.UUIDField(
+        default=uuid.uuid4, 
+        editable=False, 
+        unique=True,
+        help_text="UUID único para el enlace de acceso del alumno"
     )
-    title = models.CharField(max_length=255, verbose_name=_("Título del Examen"))
+    published_at = models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="Fecha en que el examen fue publicado"
+    )
+
+    # Relaciones
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="exams")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Contenido
+    title = models.CharField(max_length=255)
     
     items = models.ManyToManyField(
-        Item, 
+        Item,
         through='ExamItemLink',
-        related_name='exams',
-        verbose_name=_("Ítems Incluidos")
+        related_name='exams'
     )
-    
-    shuffle_items = models.BooleanField(default=True, verbose_name=_("Mezclar orden de preguntas (RA-02)"))
-    shuffle_options = models.BooleanField(default=True, verbose_name=_("Mezclar opciones de MC (RA-03)"))
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = _("Examen")
-        verbose_name_plural = _("Exámenes")
+        verbose_name = "Examen"
+        verbose_name_plural = "Exámenes"
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.title} ({self.tenant.name})"
+        return self.title
 
 
 class ExamItemLink(models.Model):
-    exam = models.ForeignKey(
-        'exams.Exam', 
-        on_delete=models.CASCADE
-    )
-    item = models.ForeignKey(
-        Item, 
-        on_delete=models.CASCADE
-    )
-    order = models.PositiveSmallIntegerField(default=0, verbose_name=_("Orden"))
-    points = models.PositiveSmallIntegerField(default=1, verbose_name=_("Puntaje"))
+    """
+    Tabla intermedia (Through model) que conecta Exam e Item.
+    """
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE)
+    item = models.ForeignKey(Item, on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ['order']
         unique_together = ('exam', 'item')
+
+    def save(self, *args, **kwargs):
+        if self.order == 0:
+            last_item = ExamItemLink.objects.filter(exam=self.exam).order_by('-order').first()
+            self.order = (last_item.order + 1) if last_item else 1
+        super().save(*args, **kwargs)
