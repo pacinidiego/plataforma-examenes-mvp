@@ -18,6 +18,7 @@ from django.http import Http404
 from django.db import IntegrityError 
 from django.db.models import Count, Q
 from django.contrib import messages 
+from django.utils import timezone # <--- [NUEVO IMPORT S1e]
 
 import google.generativeai as genai 
 
@@ -226,10 +227,6 @@ def download_excel_template_view(request):
 # --- CONSTRUCTOR DE EXÁMENES ---
 
 def _get_constructor_context(request, exam_id, highlight_map=None):
-    """
-    highlight_map: Diccionario {item_id: 'generated' | 'found'}
-    para mostrar iconos visuales temporalmente.
-    """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     current_tenant = exam.tenant
     
@@ -239,7 +236,6 @@ def _get_constructor_context(request, exam_id, highlight_map=None):
                              .exclude(id__in=exam_items.values_list('id', flat=True))\
                              .order_by('-created_at')
     
-    # Inyectamos la info del origen visualmente en el BANCO
     if highlight_map:
         for item in bank_items:
             item.source_tag = highlight_map.get(item.id, None)
@@ -298,36 +294,27 @@ def exam_create(request):
 @login_required
 @require_http_methods(["POST"])
 def exam_delete(request, pk):
-    """
-    Vista HTMX para BORRAR un examen.
-    [CAMBIO] Devuelve un HX-Redirect para forzar el refresco del dashboard.
-    """
     try:
         exam = get_object_or_404(Exam, pk=pk, tenant__memberships__user=request.user)
         exam.delete()
-        # Forzamos un refresco de la página via HTMX
         response = HttpResponse("", status=200)
         response['HX-Redirect'] = reverse('backoffice:dashboard')
         return response
     except Http404:
-        return HttpResponse("Examen no encontrado o no le pertenece.", status=404)
+        return HttpResponse("No encontrado.", status=404)
 
 @login_required
 @require_http_methods(["POST"])
 def item_delete(request, pk):
-    """
-    Vista HTMX para BORRAR una pregunta del banco.
-    [CAMBIO] Devuelve un HX-Redirect para forzar el refresco del dashboard.
-    """
     try:
         item = get_object_or_404(Item, pk=pk, tenant__memberships__user=request.user)
         item.delete()
-        # Forzamos un refresco de la página via HTMX
         response = HttpResponse("", status=200)
         response['HX-Redirect'] = reverse('backoffice:dashboard')
         return response
     except Http404:
-        return HttpResponse("Ítem no encontrado o no le pertenece.", status=404)
+        return HttpResponse("No encontrado.", status=404)
+
 @login_required
 @require_http_methods(["GET"])
 def filter_items(request):
@@ -352,19 +339,11 @@ def filter_items(request):
     return render(request, 'backoffice/partials/_item_table_body.html', context)
 
 
-# --- [NUEVA VISTA] DETALLE DE PREGUNTA (MODAL) ---
 @login_required
 def item_detail_view(request, item_id):
-    """
-    Devuelve el HTML parcial con el detalle completo de una pregunta
-    (Enunciado completo + Opciones).
-    """
     try:
         item = get_object_or_404(Item, id=item_id, tenant__memberships__user=request.user)
-        
-        # Preparamos las opciones para visualizarlas fácil
         options = item.options if isinstance(item.options, list) else []
-        
         return render(request, 'backoffice/partials/item_detail_modal_content.html', {
             'item': item,
             'options': options
@@ -373,13 +352,9 @@ def item_detail_view(request, item_id):
         return HttpResponse(f"<div class='text-red-500'>Error cargando detalle: {e}</div>")
 
 
-# --- [MODIFICADO] VISTA IA: Solo genera al Banco ---
 @login_required
 @require_http_methods(["POST"])
 def ai_suggest_items(request, exam_id):
-    """
-    Genera preguntas y las pone en el BANCO (Derecha), no en el examen.
-    """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     user_prompt = request.POST.get('ai_prompt')
     
@@ -390,10 +365,9 @@ def ai_suggest_items(request, exam_id):
 
     highlight_map = {} 
     gen_count = 0
-    found_count = 0 # Contará las encontradas
+    found_count = 0 
 
     try:
-        # 1. GENERACIÓN CON IA (Prioridad)
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
         prompt = (
@@ -420,7 +394,6 @@ def ai_suggest_items(request, exam_id):
                 for dist in data.get('distractors', []):
                     options_list.append({"text": dist, "correct": False})
                 
-                # Creamos la pregunta en el BANCO
                 item, created = Item.objects.get_or_create(
                     tenant=exam.tenant,
                     stem__iexact=data['stem'].strip(),
@@ -428,19 +401,17 @@ def ai_suggest_items(request, exam_id):
                         'author': request.user,
                         'item_type': 'MC',
                         'stem': data['stem'].strip(),
-                        'difficulty': 2, # Media por defecto
+                        'difficulty': 2, 
                         'options': options_list,
                         'tags': ['IA-Gen'] 
                     }
                 )
                 
-                # [CAMBIO CLAVE] NO hacemos ExamItemLink. Solo marcamos para resaltar.
                 tag = 'generated' if created else 'found'
                 highlight_map[item.id] = tag
                 if created:
                     gen_count += 1
 
-        # 2. BÚSQUEDA EN EL BANCO (Secundario: Resaltar lo que ya existe sobre el tema)
         existing_matches = Item.objects.filter(
             tenant=exam.tenant,
             stem__icontains=user_prompt 
@@ -449,9 +420,8 @@ def ai_suggest_items(request, exam_id):
         for item in existing_matches:
             if item.id not in highlight_map:
                 highlight_map[item.id] = 'found'
-                found_count += 1 # Contamos solo las que no acabamos de generar
+                found_count += 1 
 
-        # --- FEEDBACK ---
         if gen_count > 0:
             messages.success(request, f"Se generaron {gen_count} preguntas nuevas en el BANCO (columna derecha).")
         elif found_count > 0:
@@ -462,6 +432,33 @@ def ai_suggest_items(request, exam_id):
     except Exception as e:
         messages.error(request, f"Error procesando la solicitud: {e}")
 
-    # Renderizamos
     updated_context = _get_constructor_context(request, exam_id, highlight_map=highlight_map)
     return render(request, 'backoffice/partials/_constructor_body.html', updated_context)
+
+
+# --- [NUEVA VISTA S1e] ---
+@login_required
+@require_http_methods(["POST"])
+def exam_publish(request, exam_id):
+    """
+    Publica un examen (lo cambia de 'draft' a 'published').
+    Devuelve un parcial de HTMX para actualizar solo la cabecera.
+    """
+    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    
+    if exam.status == 'draft':
+        if not exam.items.exists():
+            # No permitir publicar un examen vacío
+            messages.error(request, "No puedes publicar un examen sin preguntas.")
+        else:
+            # ¡Éxito! Publicamos el examen
+            exam.status = Exam.ExamStatus.PUBLISHED
+            exam.published_at = timezone.now()
+            exam.save()
+            messages.success(request, "¡Examen publicado! Ahora puedes compartir el enlace.")
+    else:
+        messages.info(request, "Este examen ya estaba publicado.")
+
+    # Devolvemos el parcial actualizado de la cabecera del constructor
+    context = { 'exam': exam }
+    return render(request, 'backoffice/partials/_constructor_header.html', context)
