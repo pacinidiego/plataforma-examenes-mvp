@@ -19,7 +19,8 @@ from django.db import IntegrityError
 from django.db.models import Count, Q
 from django.contrib import messages 
 from django.utils import timezone 
-from django.db.models.functions import StringAgg # <--- [NUEVO IMPORT]
+# [CORRECCIÓN] Import de StringAgg movido a la ubicación correcta
+from django.contrib.postgres.aggregates import StringAgg 
 
 import google.generativeai as genai 
 
@@ -40,7 +41,6 @@ def dashboard(request):
 
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
     
-    # [CAMBIO] Añadimos anotación de 'exam_titles' para el tooltip
     item_list = Item.objects.filter(tenant__in=user_tenants)\
                             .annotate(
                                 in_use_count=Count('exams'),
@@ -53,7 +53,7 @@ def dashboard(request):
         'memberships': memberships,
         'exam_list': exam_list,
         'item_list': item_list,
-        'active_filter': 'all', # [NUEVO] Para el estado activo del filtro
+        'active_filter': 'all', 
     }
     return render(request, 'backoffice/dashboard.html', context)
 
@@ -325,7 +325,6 @@ def item_delete(request, pk):
         return HttpResponse("No encontrado.", status=404)
 
 
-# [CAMBIO] Vista de Filtro
 @login_required
 @require_http_methods(["GET"])
 def filter_items(request):
@@ -345,16 +344,14 @@ def filter_items(request):
     else:
         base_query = base_query.annotate(in_use_count=Count('exams'))
 
-    # [CAMBIO] Añadimos anotación de 'exam_titles' para el tooltip
     item_list = base_query.annotate(
         exam_titles=StringAgg('exams__title', delimiter=', ', distinct=True)
     ).order_by('-created_at')
 
     context = {
         'item_list': item_list,
-        'active_filter': filter_type, # [NUEVO] Pasamos el filtro activo
+        'active_filter': filter_type, 
     }
-    # [CAMBIO] Renderizamos el nuevo parcial que incluye los botones
     return render(request, 'backoffice/partials/_bank_panel.html', context)
 
 
