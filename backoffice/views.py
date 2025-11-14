@@ -28,10 +28,6 @@ from tenancy.models import TenantMembership
 # (S1c) Vista del Dashboard
 @login_required
 def dashboard(request):
-    """
-    Muestra el Dashboard principal del Docente/Admin.
-    """
-    # [CORRECCIÓN] Limitamos el try...except solo a la consulta de Tenant.
     try:
         memberships = TenantMembership.objects.filter(user=request.user)
         user_tenants = memberships.values_list('tenant', flat=True)
@@ -39,10 +35,8 @@ def dashboard(request):
             return HttpResponse("Error: No tiene un tenant asignado.", status=403)
             
     except Exception:
-        # Esto solo fallará si el modelo TenantMembership o la app tenancy está rota
         return HttpResponse("Error: No se pudo verificar la membresía del tenant.", status=500)
 
-    # Estas consultas ahora se ejecutan fuera del try...except
     exam_list = Exam.objects.filter(tenant__in=user_tenants).order_by('-created_at')[:20]
     
     item_list = Item.objects.filter(tenant__in=user_tenants)\
@@ -445,25 +439,17 @@ def ai_suggest_items(request, exam_id):
     return render(request, 'backoffice/partials/_constructor_body.html', updated_context)
 
 
-# --- [VISTA S1e - CORREGIDA] ---
 @login_required
 @require_http_methods(["POST"])
 def exam_publish(request, exam_id):
-    """
-    Publica un examen (lo cambia de 'draft' a 'published').
-    Devuelve un parcial de HTMX para actualizar solo la cabecera.
-    """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
     try:
         if exam.status == 'draft':
             if not exam.items.exists():
-                # No permitir publicar un examen vacío
                 messages.error(request, "No puedes publicar un examen sin preguntas.")
             else:
-                # ¡Éxito! Publicamos el examen
-                # [LA CORRECCIÓN ESTÁ AQUÍ]
-                exam.status = "published" # Usamos el string simple
+                exam.status = "published" 
                 exam.published_at = timezone.now()
                 exam.save()
                 messages.success(request, "¡Examen publicado! Ahora puedes compartir el enlace.")
@@ -471,11 +457,37 @@ def exam_publish(request, exam_id):
             messages.info(request, "Este examen ya estaba publicado.")
 
     except Exception as e:
-        # Captura cualquier error
         messages.error(request, f"Error interno al publicar: {e}")
         context = { 'exam': exam }
         return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
-    # Devolvemos el parcial actualizado de la cabecera del constructor
+    context = { 'exam': exam }
+    return render(request, 'backoffice/partials/_constructor_header.html', context)
+
+
+# --- [NUEVA VISTA S1e] ---
+@login_required
+@require_http_methods(["POST"])
+def exam_unpublish(request, exam_id):
+    """
+    Anula la publicación de un examen (lo revierte a 'draft').
+    """
+    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    
+    try:
+        if exam.status == 'published':
+            # Aquí podrías añadir lógica de negocio (ej. no anular si ya hay intentos)
+            exam.status = "draft"
+            exam.published_at = None
+            exam.save()
+            messages.warning(request, "Se anuló la publicación. El examen vuelve a ser un borrador.")
+        else:
+            messages.info(request, "Este examen ya era un borrador.")
+
+    except Exception as e:
+        messages.error(request, f"Error interno al anular la publicación: {e}")
+        context = { 'exam': exam }
+        return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
+
     context = { 'exam': exam }
     return render(request, 'backoffice/partials/_constructor_header.html', context)
