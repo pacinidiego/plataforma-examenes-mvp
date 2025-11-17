@@ -34,26 +34,25 @@
         {% endif %}
     </td>
     
-    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-        <button 
-            hx-get="{% url 'backoffice:item_edit' item.pk %}"
-            hx-target="#modal-content-form"
-            @click="modalContent = '<div class=\'p-6 bg-white text-gray-700\'>Cargando...</div>'; modalOpen = true"
-            class="px-2.5 py-1 text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none">
-            Editar
-        </button>
-        
-        <button hx-post="{% url 'backoffice:item_delete' item.pk %}"
-                hx-confirm="¿Borrar esta pregunta de todo el banco? Esta acción no se puede deshacer."
-                class="px-2.5 py-1 text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none">
-            Borrar
-        </button>
-    </td>
-</tr>
-{% empty %}
-<tr>
-    <td colspan="4" class="px-4 py-6 text-center text-gray-500">
-        No hay preguntas en el banco que coincidan con el filtro.
-    </td>
-</tr>
-{% endfor %}
+    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-center">
+        <div x-data="{ open: false }" class="relative inline-block text-left">
+            
+            <div>
+                <button @click="open = !open" type="button" class="p-1 rounded-full text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" id="options-menu-{{ item.pk }}" aria-haspopup="true" aria-expanded="true">
+                    <span class="sr-only">Abrir opciones</span>
+                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                </button>
+            </div>
+
+            <div x-show="open"
+                 @click.away="open = false"
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="transform opacity-0 scale-95"
+                 x-transition:enter-end="transform opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-75"
+                 x-transition:leave-start="transform opacity-100 scale-100"
+                 x-transition:leave-end="transform opacity-0 scale-95"
+                 class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10"
+                 role="menu" aria-orientation="vertical" aria
