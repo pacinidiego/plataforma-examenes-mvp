@@ -11,7 +11,7 @@
     </button>
 </div>
 
-<div class="flex space-x-2 mb-4" hx-target="#bank-panel" hx-swap="outerHTML">
+<div class="flex space-x-2 mb-4" hx-target="#bank-panel" hx-swap="innerHTML">
     <button hx-get="{% url 'backoffice:filter_items' %}?filter=all" 
             class="text-sm px-3 py-1 rounded-full {% if active_filter == 'all' %}bg-blue-600 text-white{% else %}bg-gray-200 text-gray-700 hover:bg-gray-300{% endif %}">
         Todas
