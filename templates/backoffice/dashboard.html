@@ -55,13 +55,15 @@
                                 </span>
                             </div>
                         </div>
-                        <div class="flex items-center space-x-3">
-                            <a href="{% url 'backoffice:exam_constructor' exam.id %}" class="text-sm text-blue-500 hover:text-blue-700">
+                        
+                        <div class="flex items-center space-x-2">
+                            <a href="{% url 'backoffice:exam_constructor' exam.id %}" 
+                               class="px-2.5 py-1 text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none">
                                 Editar
                             </a>
                             <button hx-post="{% url 'backoffice:exam_delete' exam.pk %}"
                                     hx-confirm="¿Seguro que quieres borrar este examen?"
-                                    class="text-sm text-red-500 hover:text-red-700">
+                                    class="px-2.5 py-1 text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none">
                                 Borrar
                             </button>
                         </div>
@@ -76,5 +78,6 @@
             {% include "backoffice/partials/_bank_panel.html" %}
         </div>
 
-    </div> </div>
+    </div> 
+</div>
 {% endblock %}
