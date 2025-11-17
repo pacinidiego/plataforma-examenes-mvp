@@ -17,6 +17,7 @@
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
+
 <body class="h-full" 
       x-data="{ 
           modalOpen: false, 
@@ -24,22 +25,11 @@
       }"
       
       @htmx:after-swap="
-          if ($event.detail.target.id === 'modal-content-form') {
-              modalOpen = true;
-          }
-          // Chequeo seguro para redirecciones (ej. al borrar)
-          if ($event.detail.xhr && $event.detail.xhr.getResponseHeader('HX-Redirect')) {
-              if ($event.detail.xhr.getResponseHeader('HX-Redirect').includes('dashboard')) {
-                  modalOpen = false;
-              }
-          }
+          ($event.detail.target.id === 'modal-content-form') && (modalOpen = true);
+          ($event.detail.xhr && $event.detail.xhr.getResponseHeader('HX-Redirect') && $event.detail.xhr.getResponseHeader('HX-Redirect').includes('dashboard')) && (modalOpen = false);
       "
       @htmx:before-swap="
-          // Chequeo seguro para el botón 'Cancelar' del modal
-          if ($event.detail.target && $event.detail.target.id === 'modal-backdrop') {
-              modalOpen = false;
-              $event.detail.shouldSwap = false;
-          }
+          ($event.detail.target && $event.detail.target.id === 'modal-backdrop') && (modalOpen = false, $event.detail.shouldSwap = false)
       ">
 
     {% csrf_token %}
