@@ -179,7 +179,7 @@ def item_edit(request, pk):
         'item': item,
         'item_types': Item.ItemType.choices,
         'correct_answer_text': correct_answer_text,
-        'distractors_list': distractors_list
+        'distactors_list': distractors_list
     }
     return render(request, 'backoffice/partials/item_form.html', context)
 
@@ -344,7 +344,7 @@ def filter_items(request):
         base_query = base_query.annotate(in_use_count=Count('exams'))
 
     item_list = base_query.annotate(
-        exam_titles=StringAgg('exams__title', delimiter=', ', distinct=True)
+        exam_titles=StringAgg('exams__title', delimiter=', ', distinct=True) # <-- Para el tooltip
     ).order_by('-created_at')
 
     context = {
