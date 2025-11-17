@@ -50,7 +50,6 @@ class Exam(models.Model):
     Un Examen, que es una colección ordenada de Items.
     """
     
-    # --- [CORRECCIÓN S1e] ---
     STATUS_CHOICES = [
         ('draft', 'Borrador'),
         ('published', 'Publicado'),
@@ -60,7 +59,75 @@ class Exam(models.Model):
     status = models.CharField(
         max_length=10, 
         choices=STATUS_CHOICES, 
-        default='draft', # Usamos el string simple 'draft'
+        default='draft',
         db_index=True
     )
-    # --- [FIN CORRECCIÓN] ---
+
+    access_code = models.UUIDField(
+        default=uuid.uuid4, 
+        editable=False, 
+        unique=True,
+        help_text="UUID único para el enlace de acceso del alumno"
+    )
+    published_at = models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="Fecha en que el examen fue publicado"
+    )
+
+    # Relaciones
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="exams")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Contenido
+    title = models.CharField(max_length=255)
+    
+    # Campos que faltaban (del error 500)
+    shuffle_items = models.BooleanField(
+        default=True, 
+        verbose_name="Mezclar preguntas"
+    ) # Toggle RA-02 
+    
+    shuffle_options = models.BooleanField(
+        default=True, 
+        verbose_name="Mezclar opciones"
+    ) # Toggle RA-03 
+    
+    items = models.ManyToManyField(
+        Item,
+        through='ExamItemLink',
+        related_name='exams'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Examen"
+        verbose_name_plural = "Exámenes"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title
+
+
+# =========================================================
+# ESTA CLASE FALTABA EN GITHUB (causando el Build Error)
+# =========================================================
+class ExamItemLink(models.Model):
+    """
+    Tabla intermedia (Through model) que conecta Exam e Item.
+    """
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE)
+    item = models.ForeignKey(Item, on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order']
+        unique_together = ('exam', 'item')
+
+    def save(self, *args, **kwargs):
+        if self.order == 0:
+            last_item = ExamItemLink.objects.filter(exam=self.exam).order_by('-order').first()
+            self.order = (last_item.order + 1) if last_item else 1
+        super().save(*args, **kwargs)
