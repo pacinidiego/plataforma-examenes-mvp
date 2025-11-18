@@ -1,17 +1,24 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     
     <header class="mb-6 flex justify-between items-center">
-        <div>
-            <h1 class="text-3xl font-bold text-gray-900">
-                Dashboard del Docente
-            </h1>
-            <p class="mt-2 text-xl text-gray-600">
-                Bienvenido, {{ user.username }}.
-            </p>
+        
+        <div class="flex items-center space-x-6">
+            <img src="{% static 'images/logo.png' %}" alt="Logo Plataforma" class="h-20 w-auto">
+            
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">
+                    Dashboard del Docente
+                </h1>
+                <p class="mt-2 text-xl text-gray-600">
+                    Bienvenido, {{ user.username }}.
+                </p>
+            </div>
         </div>
+
         <div>
             <a href="{% url 'logout' %}" class="text-sm text-gray-500 hover:text-gray-900">Cerrar Sesión</a>
         </div>
