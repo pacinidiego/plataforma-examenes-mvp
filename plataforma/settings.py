@@ -107,6 +107,12 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# ---- CORRECCIÓN AQUÍ: Decirle a Django dónde buscar tus archivos estáticos ----
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+# -------------------------------------------------------------------------------
+
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -125,25 +131,8 @@ CLOUDFLARE_R2_ACCESS_KEY_ID = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY_ID')
 CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY')
 CLOUDFLARE_R2_BUCKET_NAME = os.environ.get('CLOUDFLARE_R2_BUCKET_NAME')
 
-if CLOUDFLARE_R2_ACCOUNT_ID:
-    AWS_ACCESS_KEY_ID = CLOUDFLARE_R2_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY = CLOUDFLARE_R2_SECRET_ACCESS_KEY
-    AWS_STORAGE_BUCKET_NAME = CLOUDFLARE_R2_BUCKET_NAME
-    AWS_S3_ENDPOINT_URL = f"https://{CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-    AWS_DEFAULT_ACL = 'private' 
-    AWS_S3_FILE_OVERWRITE = False 
-    AWS_S3_SIGNATURE_VERSION = 's3v4'
-    AWS_S3_REGION_NAME = 'auto' 
-
-    STORAGES = {
-        "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-else:
+# Configuración para Build vs Runtime
+if os.environ.get('DJANGO_COLLECTSTATIC_RUNNING') == 'True':
     STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -152,6 +141,34 @@ else:
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+else:
+    if CLOUDFLARE_R2_ACCOUNT_ID:
+        AWS_ACCESS_KEY_ID = CLOUDFLARE_R2_ACCESS_KEY_ID
+        AWS_SECRET_ACCESS_KEY = CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        AWS_STORAGE_BUCKET_NAME = CLOUDFLARE_R2_BUCKET_NAME
+        AWS_S3_ENDPOINT_URL = f"https://{CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+        AWS_DEFAULT_ACL = 'private' 
+        AWS_S3_FILE_OVERWRITE = False 
+        AWS_S3_SIGNATURE_VERSION = 's3v4'
+        AWS_S3_REGION_NAME = 'auto' 
+
+        STORAGES = {
+            "default": {
+                "BACKEND": "storages.backends.s3.S3Storage",
+            },
+            "staticfiles": {
+                "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+            },
+        }
+    else:
+        STORAGES = {
+            "default": {
+                "BACKEND": "django.core.files.storage.FileSystemStorage",
+            },
+            "staticfiles": {
+                "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+            },
+        }
 
 # --- 3. Configuración de Logging ---
 LOGGING = {
@@ -181,7 +198,6 @@ LOGIN_URL = '/accounts/login/'
 LOGOUT_REDIRECT_URL = '/'
 
 # --- 5. Configuración de IA (S1c - v7) ---
-# Leemos la clave que pusiste en Render
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 if GEMINI_API_KEY:
     try:
