@@ -82,5 +82,16 @@
     <div id="ai-modal-container" class="hidden relative z-50"></div>
     
     <div id="modal-backdrop"></div>
+<div id="modal-backdrop"></div>
+
+    <script>
+        document.body.addEventListener('closeAiModal', function() {
+            const container = document.getElementById('ai-modal-container');
+            container.innerHTML = ''; // Limpia el contenido
+            container.classList.add('hidden'); // Lo oculta
+        });
+    </script>
 </body>
 </html>
+    
+
