@@ -438,6 +438,12 @@ def ai_preview_items(request, exam_id):
         
         generated_data = json.loads(response.text)
         
+        # --- CORRECCIÓN AQUÍ: Empaquetamos el JSON como string para el HTML ---
+        for item in generated_data:
+            # Creamos un string JSON limpio para cada ítem
+            item['json_string'] = json.dumps(item)
+        # -----------------------------------------------------------------------
+        
         return render(request, 'backoffice/partials/_ai_curation_modal.html', {
             'exam': exam,
             'generated_items': generated_data,
@@ -453,10 +459,10 @@ def ai_preview_items(request, exam_id):
 def ai_commit_items(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    # 1. Todos los items que sobrevivieron (para el Banco)
+    # Lista completa (Banco)
     items_all_json = request.POST.getlist('items_all')
     
-    # 2. Los seleccionados (para el Examen)
+    # Lista seleccionada (Examen)
     items_selected_json = set(request.POST.getlist('items_selected'))
     
     saved_count = 0
@@ -464,18 +470,14 @@ def ai_commit_items(request, exam_id):
     
     for item_json in items_all_json:
         try:
-            # LIMPIEZA CRÍTICA: Quitamos caracteres que rompen JSON
-            clean_json = item_json.replace('\n', ' ').replace('\r', '')
-            # Reemplazamos comillas simples por dobles si es un dict stringificado de Python
-            clean_json = clean_json.replace("'", '"')
-            
-            data = json.loads(clean_json)
+            # --- CORRECCIÓN AQUÍ: Parseo directo y limpio ---
+            data = json.loads(item_json)
+            # ------------------------------------------------
             
             options_list = [{"text": data['correct_answer'], "correct": True}]
             for dist in data.get('distractors', []):
                 options_list.append({"text": dist, "correct": False})
             
-            # A. Guardar en Banco
             item, created = Item.objects.get_or_create(
                 tenant=exam.tenant,
                 stem__iexact=data['stem'].strip(),
@@ -490,8 +492,7 @@ def ai_commit_items(request, exam_id):
             )
             saved_count += 1
             
-            # B. Guardar en Examen (si estaba seleccionado)
-            # Comparamos el string original para asegurar coincidencia
+            # Si el string del JSON estaba en la lista de seleccionados, agregamos al examen
             if item_json in items_selected_json:
                 ExamItemLink.objects.get_or_create(exam=exam, item=item)
                 added_to_exam_count += 1
