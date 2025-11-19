@@ -16,7 +16,7 @@ from django.urls import reverse
 from django.core.files.storage import default_storage
 from django.http import Http404
 from django.db import IntegrityError 
-from django.db.models import Count, Q, Sum # <--- Sum agregado para puntajes
+from django.db.models import Count, Q, Sum 
 from django.contrib import messages 
 from django.utils import timezone 
 from django.contrib.postgres.aggregates import StringAgg 
@@ -309,7 +309,6 @@ def exam_update_title(request, exam_id):
         exam.title = new_title
         exam.save()
     # Retornamos 204 (No Content) porque el input se actualiza solo al escribir
-    # y no necesitamos redibujar nada más.
     return HttpResponse(status=204)
 
 # --- NUEVA VISTA: Actualizar Puntaje (HTMX) ---
@@ -420,13 +419,14 @@ def item_detail_view(request, item_id):
         return HttpResponse(f"<div class='text-red-500'>Error cargando detalle: {e}")
 
 
+# --- VISTA IA MEJORADA (Control de cantidad + Anti-Repetición) ---
 @login_required
 @require_http_methods(["POST"])
 def ai_suggest_items(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     user_prompt = request.POST.get('ai_prompt', '').strip()
     
-    # FIX: Si el prompt está vacío, no hacemos nada, solo recargamos el panel
+    # Si está vacío, recargamos la vista sin hacer nada (evita mensajes vacíos)
     if not user_prompt:
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/partials/_constructor_body.html', context)
@@ -436,16 +436,33 @@ def ai_suggest_items(request, exam_id):
     found_count = 0 
 
     try:
+        # 1. CONTEXTO NEGATIVO: Buscamos preguntas que YA existen sobre el tema
+        # para decirle a la IA que NO las repita.
+        existing_stems = Item.objects.filter(
+            tenant=exam.tenant,
+            stem__icontains=user_prompt
+        ).values_list('stem', flat=True)[:20]
+
+        avoid_text = ""
+        if existing_stems:
+            lista_preguntas = "\n- ".join(existing_stems)
+            avoid_text = f"\nIMPORTANTE - YA TENGO ESTAS PREGUNTAS, NO LAS REPITAS NI GENERES VARIACIONES SIMILARES:\n{lista_preguntas}\n"
+
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
+        # 2. PROMPT INTELIGENTE Y SEGURO
         prompt = (
-            "Eres un experto en evaluación académica.\n"
-            f"El usuario necesita preguntas sobre: \"{user_prompt}\".\n"
-            "1. Genera 3 preguntas NUEVAS de opción múltiple sobre este tema.\n"
-            "2. Asegúrate de que sean preguntas de calidad universitaria.\n"
+            "Eres un experto en evaluación académica universitaria.\n"
+            f"PEDIDO DEL USUARIO: \"{user_prompt}\".\n"
             "\n"
-            "--- FORMATO DE SALIDA ---\n"
-            "Devuelve ÚNICAMENTE un JSON Array válido:\n"
+            "INSTRUCCIONES:\n"
+            "1. Analiza el pedido. Si el usuario especifica cantidad, intenta cumplirla (MÁXIMO 10 preguntas por vez).\n"
+            "2. Si NO especifica cantidad, genera 5 preguntas.\n"
+            "3. Genera contenido NUEVO y ORIGINAL.\n"
+            f"{avoid_text}" # Inyección de contexto negativo
+            "\n"
+            "--- FORMATO DE SALIDA (JSON PURO) ---\n"
+            "Devuelve ÚNICAMENTE un JSON Array válido, sin markdown (```json), sin texto extra:\n"
             "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\", \"...\"]}]"
         )
         
@@ -462,6 +479,7 @@ def ai_suggest_items(request, exam_id):
                 for dist in data.get('distractors', []):
                     options_list.append({"text": dist, "correct": False})
                 
+                # get_or_create evita duplicados técnicos si la IA ignora la orden
                 item, created = Item.objects.get_or_create(
                     tenant=exam.tenant,
                     stem__iexact=data['stem'].strip(),
@@ -491,11 +509,11 @@ def ai_suggest_items(request, exam_id):
                 found_count += 1 
 
         if gen_count > 0:
-            messages.success(request, f"Se generaron {gen_count} preguntas nuevas en el BANCO (columna derecha).")
+            messages.success(request, f"Se generaron {gen_count} preguntas nuevas.")
         elif found_count > 0:
-            messages.info(request, f"Se encontraron {found_count} preguntas existentes relacionadas en tu banco.")
+            messages.info(request, f"No se pudo generar nada nuevo, pero encontré {found_count} similares.")
         else:
-            messages.warning(request, "No se generaron preguntas nuevas (posible duplicado o error IA).")
+            messages.warning(request, "La IA no generó preguntas nuevas válidas.")
 
     except Exception as e:
         messages.error(request, f"Error procesando la solicitud: {e}")
@@ -509,7 +527,6 @@ def ai_suggest_items(request, exam_id):
 def exam_publish(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    # Calculamos el total para validarlo antes de publicar
     total_points = ExamItemLink.objects.filter(exam=exam).aggregate(Sum('points'))['points__sum'] or 0.0
 
     try:
@@ -521,7 +538,6 @@ def exam_publish(request, exam_id):
                 exam.published_at = timezone.now()
                 exam.save()
                 
-                # VALIDACIÓN DE PUNTAJE
                 if total_points != 10.0:
                     messages.warning(request, f"Examen publicado, pero el total es {total_points} (se recomienda 10).")
                 else:
@@ -534,7 +550,6 @@ def exam_publish(request, exam_id):
         context = { 'exam': exam, 'total_points': total_points }
         return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
-    # Retornamos el contexto actualizado (incluyendo el total)
     context = { 'exam': exam, 'total_points': total_points }
     return render(request, 'backoffice/partials/_constructor_header.html', context)
 
@@ -544,7 +559,6 @@ def exam_publish(request, exam_id):
 def exam_unpublish(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    # También necesitamos calcular el total aquí para mantener la UI consistente
     total_points = ExamItemLink.objects.filter(exam=exam).aggregate(Sum('points'))['points__sum'] or 0.0
     
     try:
