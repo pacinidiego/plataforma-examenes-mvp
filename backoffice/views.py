@@ -467,28 +467,32 @@ def ai_preview_items(request, exam_id):
         return HttpResponse(f"<div class='bg-red-100 text-red-700 p-4 rounded mb-4'>Error IA: {e}</div>")
 
 
-# Paso 2: Confirmar y Guardar
+# --- PASO 2: CONFIRMAR Y GUARDAR (Recibe lo curado) ---
 @login_required
 @require_http_methods(["POST"])
 def ai_commit_items(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    items_json_list = request.POST.getlist('items_json')
-    action = request.POST.get('action', 'add_exam') # 'add_exam' o 'save_bank'
+    # 1. Lista completa (Todo lo que sobrevivió en el modal) -> Para el BANCO
+    items_all_json = request.POST.getlist('items_all')
+    
+    # 2. Lista seleccionada (Solo los que tenían el switch activo) -> Para el EXAMEN
+    # Nota: request.POST.getlist devuelve strings. Como el value del checkbox 
+    # es el JSON string exacto, podemos comparar strings o parsear ambos.
+    items_selected_json = set(request.POST.getlist('items_selected'))
     
     saved_count = 0
     added_to_exam_count = 0
     
-    for item_json in items_json_list:
+    for item_json in items_all_json:
         try:
-            # Parseamos el JSON (hack simple para template strings)
-            data = json.loads(item_json.replace("'", '"')) 
+            data = json.loads(item_json.replace("'", '"'))
             
             options_list = [{"text": data['correct_answer'], "correct": True}]
             for dist in data.get('distractors', []):
                 options_list.append({"text": dist, "correct": False})
             
-            # 1. Guardamos en Banco
+            # A. SIEMPRE creamos/buscamos el ítem en el banco
             item, created = Item.objects.get_or_create(
                 tenant=exam.tenant,
                 stem__iexact=data['stem'].strip(),
@@ -503,25 +507,26 @@ def ai_commit_items(request, exam_id):
             )
             saved_count += 1
             
-            # 2. Vinculamos al examen SI corresponde
-            if action == 'add_exam':
+            # B. VERIFICAMOS si este JSON específico estaba marcado para el examen
+            # (Comparamos el string crudo para evitar diferencias de parseo)
+            if item_json in items_selected_json:
                 ExamItemLink.objects.get_or_create(exam=exam, item=item)
                 added_to_exam_count += 1
             
         except Exception as e:
+            print(f"Error guardando item IA: {e}")
             continue
 
+    # Mensaje resumen inteligente
     if saved_count > 0:
-        if action == 'add_exam':
-            messages.success(request, f"¡Listo! {added_to_exam_count} preguntas agregadas al examen.")
-        else:
-            messages.info(request, f"¡Listo! {saved_count} preguntas guardadas en el banco.")
+        msg = f"Proceso finalizado: {saved_count} guardadas en Banco."
+        if added_to_exam_count > 0:
+            msg = f"¡Listo! {added_to_exam_count} agregadas al Examen (y {saved_count} guardadas en Banco)."
+        messages.success(request, msg)
     else:
-        messages.warning(request, "No se seleccionó ninguna pregunta.")
+        messages.warning(request, "No se procesó ninguna pregunta.")
 
     context = _get_constructor_context(request, exam_id)
-    
-    # Devolvemos actualización OOB y cerramos el modal
     response = render(request, 'backoffice/partials/_constructor_oob_update.html', context)
     response['HX-Trigger'] = 'closeAiModal' 
     return response
