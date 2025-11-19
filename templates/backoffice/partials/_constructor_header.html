@@ -10,169 +10,56 @@
         <div>
             <div class="flex items-center space-x-3 mb-2">
                 <h1 class="text-2xl font-bold text-gray-900">{{ exam.title }}</h1>
-                ```
-*(Solo necesitas agregar ese bloque `div` con el enlace al principio del archivo).*
-
----
-
-### 2. Actualizar `_constructor_body.html` (Respuestas, Estilos y Layout)
-
-Este es el cambio grande. Vamos a rediseñar la tarjeta de la pregunta para incluir las opciones y mejorar la legibilidad.
-
-Reemplaza **todo el contenido** de `templates/backoffice/partials/_constructor_body.html` con este código mejorado:
-
-```html
-<div class="lg:col-span-2 space-y-6">
-    <div class="bg-white border border-gray-200 rounded-lg p-6 min-h-[500px] flex flex-col shadow-sm">
-        
-        <div class="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
-            <h2 class="text-gray-800 text-lg font-bold">En el Examen</h2>
-            <span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-semibold">{{ exam_items_count }} preguntas</span>
-        </div>
-
-        <div class="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
-            {% for link in exam_links %}
-            <div class="group bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-blue-300 transition-all relative">
-                
-                <div class="flex gap-4">
-                    <span class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-white border border-gray-300 text-gray-500 text-sm rounded-full font-bold shadow-sm">
-                        {{ forloop.counter }}
+                {% if exam.status == 'published' %}
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Publicado
                     </span>
-
-                    <div class="flex-grow">
-                        <div class="flex justify-between items-start">
-                            <p class="text-gray-900 font-medium text-base leading-relaxed mb-2">
-                                {{ link.item.stem }}
-                            </p>
-                            
-                            <button hx-get="{% url 'backoffice:item_edit' link.item.id %}"
-                                    hx-target="#modal-content-form"
-                                    @click="modalContent = '<div class=\'p-6 bg-white text-gray-700\'>Cargando...</div>'; modalOpen = true"
-                                    class="text-gray-400 hover:text-blue-600 p-1 transition-colors ml-2"
-                                    title="Editar Pregunta">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                            </button>
-                        </div>
-
-                        <div class="mt-2 mb-3 pl-2 border-l-2 border-gray-200">
-                            {% if link.item.options %}
-                                <ul class="space-y-1">
-                                    {% for opt in link.item.options %}
-                                        <li class="text-sm flex items-start gap-2 {% if opt.correct %}text-green-700 font-medium{% else %}text-gray-500{% endif %}">
-                                            <span class="mt-1">
-                                                {% if opt.correct %}
-                                                    <svg class="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
-                                                {% else %}
-                                                    <div class="w-3 h-3 rounded-full border border-gray-300 mt-0.5"></div>
-                                                {% endif %}
-                                            </span>
-                                            {{ opt.text }}
-                                        </li>
-                                    {% endfor %}
-                                </ul>
-                            {% else %}
-                                <span class="text-xs text-gray-400 italic">Sin opciones definidas</span>
-                            {% endif %}
-                        </div>
-
-                        <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                            <span class="text-xs text-gray-500 uppercase bg-gray-100 px-2 py-1 rounded border border-gray-200">
-                                {{ link.item.get_item_type_display }}
-                            </span>
-                            
-                            <div class="flex items-center space-x-4">
-                                <div class="flex items-center space-x-2 bg-white px-2 py-1 rounded border border-gray-200">
-                                    <label class="text-xs font-semibold text-gray-500 uppercase">Puntos:</label>
-                                    <input type="number" 
-                                           step="0.5" 
-                                           min="0"
-                                           name="points"
-                                           value="{{ link.points|floatformat }}" 
-                                           class="w-14 h-6 text-sm text-right font-bold text-blue-600 border-0 border-b border-gray-300 focus:ring-0 focus:border-blue-500 p-0"
-                                           hx-post="{% url 'backoffice:item_update_points' exam.id link.item.id %}"
-                                           hx-trigger="change"
-                                           hx-target="#constructor-header">
-                                </div>
-
-                                <button hx-post="{% url 'backoffice:remove_item_from_exam' exam.id link.item.id %}"
-                                        hx-target="#constructor-body"
-                                        class="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                        title="Quitar del examen">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                {% else %}
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        Borrador
+                    </span>
+                {% endif %}
             </div>
-            {% empty %}
-            <div class="flex flex-col items-center justify-center h-64 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50">
-                <svg class="w-12 h-12 mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                <p class="text-sm font-medium">El examen está vacío</p>
-                <p class="text-xs mt-1">Selecciona preguntas del banco para comenzar.</p>
+            <p class="text-gray-500 text-sm">
+                Creado el {{ exam.created_at|date:"d M Y" }}
+            </p>
+        </div>
+
+        <div class="flex flex-col items-end space-y-3">
+            <div class="text-right">
+                <span class="block text-xs text-gray-500 uppercase tracking-wide font-semibold">Puntaje Total</span>
+                <span class="text-2xl font-bold {% if total_points == 10.0 %}text-green-600{% else %}text-orange-500{% endif %}">
+                    {{ total_points|default:"0" }} <span class="text-gray-400 text-lg">/ 10</span>
+                </span>
             </div>
-            {% endfor %}
+
+            <div class="flex space-x-3">
+                {% if exam.status == 'draft' %}
+                    <button hx-post="{% url 'backoffice:exam_publish' exam.id %}"
+                            hx-target="#constructor-header"
+                            hx-swap="outerHTML"
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        🚀 Publicar Examen
+                    </button>
+                {% else %}
+                    <button hx-post="{% url 'backoffice:exam_unpublish' exam.id %}"
+                            hx-target="#constructor-header"
+                            hx-swap="outerHTML"
+                            class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
+                        ↩️ Anular Publicación
+                    </button>
+                {% endif %}
+            </div>
         </div>
     </div>
-</div>
-
-<div class="lg:col-span-1">
-    <div class="bg-white border border-gray-200 rounded-lg p-6 h-full flex flex-col shadow-sm">
-        
-        <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
-            <h2 class="text-gray-800 text-lg font-bold">Banco de Preguntas</h2>
-            <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full font-semibold">{{ bank_items_count }}</span>
-        </div>
-
-        <div class="mb-6">
-            <form hx-post="{% url 'backoffice:ai_suggest_items' exam.id %}" 
-                  hx-target="#constructor-body"
-                  class="relative group">
-                {% csrf_token %}
-                <input type="text" 
-                       name="ai_prompt" 
-                       placeholder="Generar con IA (ej. 'Revolución Francesa')" 
-                       class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg pl-3 pr-10 py-2.5 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm">
-                <button type="submit" class="absolute right-2 top-2 text-purple-500 hover:text-purple-700 p-1 rounded hover:bg-purple-50 transition-colors" title="Generar Preguntas">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                </button>
-            </form>
-        </div>
-
-        <div class="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-2" style="max-height: 600px;">
-            {% for item in bank_items %}
-            <div class="p-3 rounded-lg border 
-                        {% if item.source_tag == 'generated' %} bg-green-50 border-green-200
-                        {% elif item.source_tag == 'found' %} bg-blue-50 border-blue-200
-                        {% else %} bg-white border-gray-200 {% endif %} 
-                        hover:border-blue-400 hover:shadow-sm transition-all flex justify-between items-center group">
-                
-                <div class="flex-1 min-w-0 mr-3">
-                    <p class="text-gray-700 text-sm truncate font-medium">{{ item.stem }}</p>
-                    <div class="flex space-x-2 mt-1">
-                        {% if item.source_tag == 'generated' %}
-                            <span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">✨ NUEVA</span>
-                        {% endif %}
-                        <span class="text-[10px] text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded bg-gray-50">{{ item.get_item_type_display }}</span>
-                    </div>
-                </div>
-
-                <button hx-post="{% url 'backoffice:add_item_to_exam' exam.id item.id %}"
-                        hx-target="#constructor-body"
-                        class="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 p-1.5 rounded-full transition-colors"
-                        title="Agregar al examen">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                </button>
+    
+    {% if messages %}
+    <div class="mt-4 space-y-2">
+        {% for message in messages %}
+            <div class="p-3 rounded-md text-sm {% if message.tags == 'error' %}bg-red-50 text-red-700{% elif message.tags == 'warning' %}bg-orange-50 text-orange-700{% else %}bg-green-50 text-green-700{% endif %}">
+                {{ message }}
             </div>
-            {% empty %}
-                <div class="text-center py-8">
-                    <p class="text-gray-400 text-sm">No hay más preguntas.</p>
-                </div>
-            {% endfor %}
-        </div>
+        {% endfor %}
     </div>
+    {% endif %}
 </div>
