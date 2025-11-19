@@ -12,7 +12,8 @@ urlpatterns = [
     path('item/<int:pk>/edit/', views.item_edit, name='item_edit'),
     path('item/<int:pk>/delete/', views.item_delete, name='item_delete'),
     path('item/<int:item_id>/detail/', views.item_detail_view, name='item_detail'),
-    
+    #nuevo path
+    path('exam/<int:exam_id>/update_title/', views.exam_update_title, name='exam_update_title'),
     # CRUD de Exámenes
     path('exam/create/', views.exam_create, name='exam_create'),
     path('exam/<int:pk>/delete/', views.exam_delete, name='exam_delete'),
