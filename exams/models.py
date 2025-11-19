@@ -82,16 +82,15 @@ class Exam(models.Model):
     # Contenido
     title = models.CharField(max_length=255)
     
-    # Campos que faltaban (del error 500)
     shuffle_items = models.BooleanField(
         default=True, 
         verbose_name="Mezclar preguntas"
-    ) # Toggle RA-02 
+    ) 
     
     shuffle_options = models.BooleanField(
         default=True, 
         verbose_name="Mezclar opciones"
-    ) # Toggle RA-03 
+    )
     
     items = models.ManyToManyField(
         Item,
@@ -111,9 +110,6 @@ class Exam(models.Model):
         return self.title
 
 
-# =========================================================
-# ESTA CLASE FALTABA EN GITHUB (causando el Build Error)
-# =========================================================
 class ExamItemLink(models.Model):
     """
     Tabla intermedia (Through model) que conecta Exam e Item.
@@ -121,6 +117,12 @@ class ExamItemLink(models.Model):
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE)
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
     order = models.PositiveIntegerField(default=0)
+    
+    # =========================================================
+    # CORRECCIÓN: Añadimos el campo 'points' que la BD pide
+    # =========================================================
+    points = models.FloatField(default=1.0, verbose_name="Puntaje")
+    # =========================================================
 
     class Meta:
         ordering = ['order']
