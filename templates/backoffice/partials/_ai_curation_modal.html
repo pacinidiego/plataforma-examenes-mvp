@@ -30,13 +30,13 @@
                              x-data="{ selected: true }">
                             
                             <input type="hidden" name="items_all" 
-                                   value='{"stem": "{{ item.stem|escapejs }}", "correct_answer": "{{ item.correct_answer|escapejs }}", "distractors": {{ item.distractors|safe }}}'>
+                                   value="{{ item.json_string|force_escape }}">
 
                             <input type="checkbox" 
                                    name="items_selected" 
                                    x-model="selected"
                                    class="hidden" 
-                                   value='{"stem": "{{ item.stem|escapejs }}", "correct_answer": "{{ item.correct_answer|escapejs }}", "distractors": {{ item.distractors|safe }}}'>
+                                   value="{{ item.json_string|force_escape }}">
 
                             <div class="flex justify-between items-start gap-4">
                                 <div class="flex-1">
