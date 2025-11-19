@@ -284,8 +284,9 @@ def add_item_to_exam(request, exam_id, item_id):
     # Creamos el link con puntaje por defecto (1.0 según el modelo)
     ExamItemLink.objects.get_or_create(exam=exam, item=item)
     
+    # TRUCO HTMX OOB: Usamos un template especial que actualiza header Y body a la vez
     context = _get_constructor_context(request, exam_id)
-    return render(request, 'backoffice/partials/_constructor_body.html', context)
+    return render(request, 'backoffice/partials/_constructor_oob_update.html', context)
 
 @login_required
 @require_http_methods(["POST"])
@@ -294,8 +295,22 @@ def remove_item_from_exam(request, exam_id, item_id):
     # Borramos el link de la tabla intermedia
     ExamItemLink.objects.filter(exam=exam, item_id=item_id).delete()
     
+    # TRUCO HTMX OOB: Usamos un template especial que actualiza header Y body a la vez
     context = _get_constructor_context(request, exam_id)
-    return render(request, 'backoffice/partials/_constructor_body.html', context)
+    return render(request, 'backoffice/partials/_constructor_oob_update.html', context)
+
+# --- NUEVA VISTA: Actualizar Título del Examen (HTMX) ---
+@login_required
+@require_http_methods(["POST"])
+def exam_update_title(request, exam_id):
+    exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    new_title = request.POST.get('title', '').strip()
+    if new_title:
+        exam.title = new_title
+        exam.save()
+    # Retornamos 204 (No Content) porque el input se actualiza solo al escribir
+    # y no necesitamos redibujar nada más.
+    return HttpResponse(status=204)
 
 # --- NUEVA VISTA: Actualizar Puntaje (HTMX) ---
 @login_required
@@ -409,10 +424,10 @@ def item_detail_view(request, item_id):
 @require_http_methods(["POST"])
 def ai_suggest_items(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
-    user_prompt = request.POST.get('ai_prompt')
+    user_prompt = request.POST.get('ai_prompt', '').strip()
     
+    # FIX: Si el prompt está vacío, no hacemos nada, solo recargamos el panel
     if not user_prompt:
-        messages.warning(request, "Escribe un tema para generar preguntas.")
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/partials/_constructor_body.html', context)
 
