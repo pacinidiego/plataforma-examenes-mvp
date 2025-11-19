@@ -5,6 +5,9 @@ app_name = 'backoffice'
 
 urlpatterns = [
     # --- Dashboard y Filtros ---
+    # ESTA LÍNEA FALTABA: Hace que /backoffice/ cargue el dashboard
+    path('', views.dashboard, name='dashboard_index'),
+    
     path('dashboard/', views.dashboard, name='dashboard'),
     path('items/filter/', views.filter_items, name='filter_items'),
 
