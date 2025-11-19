@@ -21,23 +21,26 @@
                 {% csrf_token %}
 
                 <div class="px-6 py-4 bg-gray-50 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                    <p class="text-sm text-gray-500 mb-4">
-                        <strong>Instrucciones:</strong> Elimina (🗑️) las que no te gusten. Luego decide si las agregas al examen o solo las guardas en el banco.
+                    <p class="text-sm text-gray-500 mb-4 flex justify-between items-center">
+                        <span><strong>Instrucciones:</strong> Revisa las preguntas. Si desactivas el switch, la pregunta irá <strong>solo al banco</strong>. Si usas la basura, se descarta.</span>
                     </p>
 
                     <div class="grid grid-cols-1 gap-4">
                         {% for item in generated_items %}
-                        <div class="ai-card bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:border-indigo-300 transition-all relative group">
+                        <div class="ai-card bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:border-indigo-300 transition-all relative group"
+                             x-data="{ selected: true }">
                             
-                            <textarea name="items_json" class="hidden">
-                                {{ item|json_script:"item-data" }}
-                                {{ item|safe }} 
-                            </textarea>
-                            <input type="hidden" name="items_json" value='{"stem": "{{ item.stem|escapejs }}", "correct_answer": "{{ item.correct_answer|escapejs }}", "distractors": {{ item.distractors|safe }}}'>
+                            <input type="hidden" name="items_all" value='{"stem": "{{ item.stem|escapejs }}", "correct_answer": "{{ item.correct_answer|escapejs }}", "distractors": {{ item.distractors|safe }}}'>
+
+                            <input type="checkbox" 
+                                   name="items_selected" 
+                                   x-model="selected"
+                                   class="hidden" 
+                                   value='{"stem": "{{ item.stem|escapejs }}", "correct_answer": "{{ item.correct_answer|escapejs }}", "distractors": {{ item.distractors|safe }}}'>
 
                             <div class="flex justify-between items-start gap-4">
                                 <div class="flex-1">
-                                    <h4 class="font-semibold text-gray-900 text-sm mb-2">{{ item.stem }}</h4>
+                                    <h4 class="font-semibold text-gray-900 text-sm mb-2 leading-snug">{{ item.stem }}</h4>
                                     <ul class="space-y-1">
                                         <li class="text-xs flex items-center gap-2 text-green-700 font-medium bg-green-50 p-1 rounded border border-green-100 w-fit">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -49,30 +52,43 @@
                                     </ul>
                                 </div>
 
-                                <button type="button" 
-                                        onclick="this.closest('.ai-card').remove()"
-                                        class="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors"
-                                        title="Descartar esta pregunta">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                </button>
+                                <div class="flex flex-col items-end gap-3">
+                                    <button type="button" 
+                                            onclick="this.closest('.ai-card').remove()"
+                                            class="text-gray-300 hover:text-red-500 transition-colors"
+                                            title="Descartar totalmente">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+
+                                    <div class="flex items-center cursor-pointer" @click="selected = !selected">
+                                        <span class="text-[10px] font-bold mr-2 uppercase transition-colors"
+                                              :class="selected ? 'text-indigo-600' : 'text-gray-400'">
+                                            <span x-text="selected ? 'AL EXAMEN' : 'SOLO BANCO'"></span>
+                                        </span>
+                                        <div class="relative">
+                                            <div class="w-10 h-5 rounded-full shadow-inner transition-colors duration-300"
+                                                 :class="selected ? 'bg-indigo-600' : 'bg-gray-200'"></div>
+                                            <div class="dot absolute w-3 h-3 bg-white rounded-full shadow top-1 left-1 transition-transform duration-300"
+                                                 :class="selected ? 'transform translate-x-5' : ''"></div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         {% endfor %}
                     </div>
                 </div>
 
-                <div class="px-6 py-4 bg-gray-100 flex flex-col sm:flex-row justify-end gap-3 border-t border-gray-200">
-                    
-                    <button type="submit" name="action" value="save_bank"
-                            class="px-4 py-2 bg-white text-gray-700 font-medium rounded-lg border border-gray-300 hover:bg-gray-50 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2 shadow-sm">
-                        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
-                        Solo Guardar en Banco
+                <div class="px-6 py-4 bg-gray-100 flex justify-end gap-3 border-t border-gray-200">
+                    <button type="button" 
+                            onclick="document.getElementById('ai-modal-container').innerHTML = ''; document.getElementById('ai-modal-container').classList.add('hidden');"
+                            class="px-4 py-2 bg-white text-gray-700 font-medium rounded-lg border border-gray-300 hover:bg-gray-50">
+                        Cancelar
                     </button>
-                    
-                    <button type="submit" name="action" value="add_exam"
-                            class="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md flex items-center justify-center gap-2 transition-all transform hover:scale-105">
+                    <button type="submit" 
+                            class="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md flex items-center gap-2 transition-transform hover:scale-105">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                        Confirmar y Agregar al Examen
+                        Guardar Selección
                     </button>
                 </div>
             </form>
