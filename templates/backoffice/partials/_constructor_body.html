@@ -20,6 +20,7 @@
                 </div>
                 <input type="text" 
                        name="ai_prompt" 
+                       required
                        placeholder="Escribe un tema (ej. 'Segunda Guerra Mundial', 'Derivadas', 'Anatomía Humana')..." 
                        class="block w-full pl-10 pr-3 py-3 border border-indigo-200 rounded-lg leading-5 bg-white placeholder-indigo-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all shadow-sm">
             </div>
@@ -43,8 +44,7 @@
                 </span>
             </div>
             <div class="text-xs text-gray-400 italic">
-                
-            </div>
+                </div>
         </div>
 
         <div class="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
@@ -196,3 +196,9 @@
         </div>
     </div>
 </div>
+
+<button onclick="window.scrollTo({top: 0, behavior: 'smooth'})" 
+        class="fixed bottom-8 right-8 bg-slate-800 text-white p-3 rounded-full shadow-lg hover:bg-slate-700 transition-all z-50 border border-slate-600 opacity-80 hover:opacity-100"
+        title="Ir Arriba">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+</button>
