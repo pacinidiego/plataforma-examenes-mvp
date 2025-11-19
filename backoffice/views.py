@@ -16,7 +16,7 @@ from django.urls import reverse
 from django.core.files.storage import default_storage
 from django.http import Http404
 from django.db import IntegrityError 
-from django.db.models import Count, Q, Sum # Importante: Sum para los puntajes
+from django.db.models import Count, Q, Sum 
 from django.contrib import messages 
 from django.utils import timezone 
 from django.contrib.postgres.aggregates import StringAgg 
@@ -56,7 +56,7 @@ def dashboard(request):
     }
     return render(request, 'backoffice/dashboard.html', context)
 
-# --- VISTAS DE CONSTRUCTOR DE ÍTEMS (S1c) ---
+# --- VISTAS DE CONSTRUCTOR DE ÍTEMS ---
 @login_required
 @require_http_methods(["GET", "POST"])
 def item_create(request):
@@ -195,20 +195,17 @@ def ai_generate_distractors(request):
 
     try:
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
-        
         prompt = (
             "Eres un asistente de educación experto en crear exámenes.\n"
             f"Genera 3 distractores incorrectos para: P: \"{stem}\" R: \"{correct_answer}\".\n"
             "Devuelve solo un array JSON de strings: [\"D1\", \"D2\", \"D3\"]"
         )
-        
         response = model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
                 response_mime_type="application/json",
             )
         )
-        
         distractors = json.loads(response.text)
         if len(distractors) < 3:
             distractors.extend(["", ""]) 
@@ -232,19 +229,14 @@ def download_excel_template_view(request):
     return HttpResponse("Desactivado.", status=403)
 
 
-# --- CONSTRUCTOR DE EXÁMENES (Lógica de Negocio Principal) ---
+# --- CONSTRUCTOR DE EXÁMENES ---
 
 def _get_constructor_context(request, exam_id, highlight_map=None):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     current_tenant = exam.tenant
     
-    # Usamos select_related para eficiencia
     exam_links = ExamItemLink.objects.filter(exam=exam).select_related('item').order_by('order')
-    
-    # Calculamos el puntaje total
     total_points = exam_links.aggregate(Sum('points'))['points__sum'] or 0.0
-    
-    # IDs de items ya en el examen para excluirlos del banco
     exam_item_ids = exam_links.values_list('item_id', flat=True)
 
     bank_items = Item.objects.filter(tenant=current_tenant)\
@@ -274,18 +266,14 @@ def exam_constructor_view(request, exam_id):
     except Exception as e:
         return HttpResponse(f"Error: {e}", status=500)
 
-# --- ACCIONES DEL CONSTRUCTOR (HTMX) ---
+# --- ACCIONES DEL CONSTRUCTOR ---
 
 @login_required
 @require_http_methods(["POST"])
 def add_item_to_exam(request, exam_id, item_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     item = get_object_or_404(Item, id=item_id, tenant=exam.tenant)
-    
-    # Creamos el link con puntaje por defecto
     ExamItemLink.objects.get_or_create(exam=exam, item=item)
-    
-    # Actualización OOB: Lista + Cabecera
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_oob_update.html', context)
 
@@ -294,8 +282,6 @@ def add_item_to_exam(request, exam_id, item_id):
 def remove_item_from_exam(request, exam_id, item_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     ExamItemLink.objects.filter(exam=exam, item_id=item_id).delete()
-    
-    # Actualización OOB: Lista + Cabecera
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_oob_update.html', context)
 
@@ -320,8 +306,6 @@ def item_update_points(request, exam_id, item_id):
         new_points = 0
     link.points = new_points
     link.save()
-    
-    # Solo actualizamos el header con el nuevo total
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_header.html', context)
 
@@ -412,7 +396,6 @@ def item_detail_view(request, item_id):
 
 # --- IA: FLUJO DE CURADURÍA (Preview + Commit) ---
 
-# Paso 1: Previsualizar (Sin guardar en BD)
 @login_required
 @require_http_methods(["POST"])
 def ai_preview_items(request, exam_id):
@@ -423,7 +406,6 @@ def ai_preview_items(request, exam_id):
         return HttpResponse(status=204)
 
     try:
-        # Contexto Negativo (Anti-repetición)
         existing_stems = Item.objects.filter(
             tenant=exam.tenant,
             stem__icontains=user_prompt
@@ -437,7 +419,7 @@ def ai_preview_items(request, exam_id):
         model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         
         prompt = (
-            "Eres un experto en evaluación académica.\n"
+            "Eres un experto en evaluación académica universitaria.\n"
             f"PEDIDO: \"{user_prompt}\".\n"
             "INSTRUCCIONES:\n"
             "1. Genera preguntas de opción múltiple según el pedido (Máx 10).\n"
@@ -456,7 +438,6 @@ def ai_preview_items(request, exam_id):
         
         generated_data = json.loads(response.text)
         
-        # Renderizamos el MODAL de Curaduría
         return render(request, 'backoffice/partials/_ai_curation_modal.html', {
             'exam': exam,
             'generated_items': generated_data,
@@ -467,18 +448,15 @@ def ai_preview_items(request, exam_id):
         return HttpResponse(f"<div class='bg-red-100 text-red-700 p-4 rounded mb-4'>Error IA: {e}</div>")
 
 
-# --- PASO 2: CONFIRMAR Y GUARDAR (Recibe lo curado) ---
 @login_required
 @require_http_methods(["POST"])
 def ai_commit_items(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    # 1. Lista completa (Todo lo que sobrevivió en el modal) -> Para el BANCO
+    # 1. Todos los items que sobrevivieron (para el Banco)
     items_all_json = request.POST.getlist('items_all')
     
-    # 2. Lista seleccionada (Solo los que tenían el switch activo) -> Para el EXAMEN
-    # Nota: request.POST.getlist devuelve strings. Como el value del checkbox 
-    # es el JSON string exacto, podemos comparar strings o parsear ambos.
+    # 2. Los seleccionados (para el Examen)
     items_selected_json = set(request.POST.getlist('items_selected'))
     
     saved_count = 0
@@ -486,13 +464,18 @@ def ai_commit_items(request, exam_id):
     
     for item_json in items_all_json:
         try:
-            data = json.loads(item_json.replace("'", '"'))
+            # LIMPIEZA CRÍTICA: Quitamos caracteres que rompen JSON
+            clean_json = item_json.replace('\n', ' ').replace('\r', '')
+            # Reemplazamos comillas simples por dobles si es un dict stringificado de Python
+            clean_json = clean_json.replace("'", '"')
+            
+            data = json.loads(clean_json)
             
             options_list = [{"text": data['correct_answer'], "correct": True}]
             for dist in data.get('distractors', []):
                 options_list.append({"text": dist, "correct": False})
             
-            # A. SIEMPRE creamos/buscamos el ítem en el banco
+            # A. Guardar en Banco
             item, created = Item.objects.get_or_create(
                 tenant=exam.tenant,
                 stem__iexact=data['stem'].strip(),
@@ -507,8 +490,8 @@ def ai_commit_items(request, exam_id):
             )
             saved_count += 1
             
-            # B. VERIFICAMOS si este JSON específico estaba marcado para el examen
-            # (Comparamos el string crudo para evitar diferencias de parseo)
+            # B. Guardar en Examen (si estaba seleccionado)
+            # Comparamos el string original para asegurar coincidencia
             if item_json in items_selected_json:
                 ExamItemLink.objects.get_or_create(exam=exam, item=item)
                 added_to_exam_count += 1
@@ -517,7 +500,6 @@ def ai_commit_items(request, exam_id):
             print(f"Error guardando item IA: {e}")
             continue
 
-    # Mensaje resumen inteligente
     if saved_count > 0:
         msg = f"Proceso finalizado: {saved_count} guardadas en Banco."
         if added_to_exam_count > 0:
@@ -530,6 +512,7 @@ def ai_commit_items(request, exam_id):
     response = render(request, 'backoffice/partials/_constructor_oob_update.html', context)
     response['HX-Trigger'] = 'closeAiModal' 
     return response
+
 
 # --- PUBLICACIÓN ---
 @login_required
