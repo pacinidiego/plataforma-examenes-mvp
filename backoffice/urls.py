@@ -16,6 +16,9 @@ urlpatterns = [
     # CRUD de Exámenes
     path('exam/create/', views.exam_create, name='exam_create'),
     path('exam/<int:pk>/delete/', views.exam_delete, name='exam_delete'),
+
+    # --- NUEVA URL PARA ACTUALIZAR PUNTAJE ---
+    path('exam/<int:exam_id>/update_points/<int:item_id>/', views.item_update_points, name='item_update_points'),
     
     # Constructor
     path('exam/<int:exam_id>/constructor/', views.exam_constructor_view, name='exam_constructor'),
