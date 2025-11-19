@@ -17,7 +17,7 @@
 
             <form hx-post="{% url 'backoffice:ai_commit_items' exam.id %}" 
                   hx-target="#constructor-body"
-                  onsubmit="document.getElementById('ai-modal-container').innerHTML = ''; document.getElementById('ai-modal-container').classList.add('hidden');">
+                  
                 {% csrf_token %}
 
                 <div class="px-6 py-4 bg-gray-50 max-h-[60vh] overflow-y-auto custom-scrollbar">
