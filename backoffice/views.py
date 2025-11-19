@@ -16,7 +16,7 @@ from django.urls import reverse
 from django.core.files.storage import default_storage
 from django.http import Http404
 from django.db import IntegrityError 
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum # <--- Sum agregado para puntajes
 from django.contrib import messages 
 from django.utils import timezone 
 from django.contrib.postgres.aggregates import StringAgg 
@@ -43,7 +43,7 @@ def dashboard(request):
     item_list = Item.objects.filter(tenant__in=user_tenants)\
                             .annotate(
                                 in_use_count=Count('exams'),
-                                exam_titles=StringAgg('exams__title', delimiter=', ', distinct=True) # <-- Para el tooltip
+                                exam_titles=StringAgg('exams__title', delimiter=', ', distinct=True)
                             )\
                             .order_by('-created_at')[:20]
 
@@ -179,7 +179,7 @@ def item_edit(request, pk):
         'item': item,
         'item_types': Item.ItemType.choices,
         'correct_answer_text': correct_answer_text,
-        'distactors_list': distractors_list
+        'distractors_list': distractors_list
     }
     return render(request, 'backoffice/partials/item_form.html', context)
 
@@ -232,16 +232,24 @@ def download_excel_template_view(request):
     return HttpResponse("Desactivado.", status=403)
 
 
-# --- CONSTRUCTOR DE EXÁMENES ---
+# --- CONSTRUCTOR DE EXÁMENES (Lógica de Negocio Principal) ---
 
 def _get_constructor_context(request, exam_id, highlight_map=None):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     current_tenant = exam.tenant
     
-    exam_items = exam.items.all().order_by('examitemlink__order')
+    # Obtenemos los LINKS (la unión) porque ahí está el campo 'points' y 'order'
+    # Usamos select_related para evitar N+1 queries al traer los items
+    exam_links = ExamItemLink.objects.filter(exam=exam).select_related('item').order_by('order')
+    
+    # Calculamos el puntaje total sumando los puntos de cada link
+    total_points = exam_links.aggregate(Sum('points'))['points__sum'] or 0.0
+    
+    # IDs de items ya en el examen (para excluir del banco y no mostrar duplicados)
+    exam_item_ids = exam_links.values_list('item_id', flat=True)
 
     bank_items = Item.objects.filter(tenant=current_tenant)\
-                             .exclude(id__in=exam_items.values_list('id', flat=True))\
+                             .exclude(id__in=exam_item_ids)\
                              .order_by('-created_at')
     
     if highlight_map:
@@ -250,10 +258,11 @@ def _get_constructor_context(request, exam_id, highlight_map=None):
                              
     return {
         'exam': exam,
-        'exam_items': exam_items,
+        'exam_links': exam_links,  # Pasamos los links a la plantilla
         'bank_items': bank_items,
-        'exam_items_count': exam_items.count(),
+        'exam_items_count': exam_links.count(),
         'bank_items_count': bank_items.count(),
+        'total_points': total_points, # Pasamos el total calculado
     }
 
 @login_required
@@ -271,7 +280,10 @@ def exam_constructor_view(request, exam_id):
 def add_item_to_exam(request, exam_id, item_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     item = get_object_or_404(Item, id=item_id, tenant=exam.tenant)
+    
+    # Creamos el link con puntaje por defecto (1.0 según el modelo)
     ExamItemLink.objects.get_or_create(exam=exam, item=item)
+    
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_body.html', context)
 
@@ -279,9 +291,34 @@ def add_item_to_exam(request, exam_id, item_id):
 @require_http_methods(["POST"])
 def remove_item_from_exam(request, exam_id, item_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    # Borramos el link de la tabla intermedia
     ExamItemLink.objects.filter(exam=exam, item_id=item_id).delete()
+    
     context = _get_constructor_context(request, exam_id)
     return render(request, 'backoffice/partials/_constructor_body.html', context)
+
+# --- NUEVA VISTA: Actualizar Puntaje (HTMX) ---
+@login_required
+@require_http_methods(["POST"])
+def item_update_points(request, exam_id, item_id):
+    # Buscamos el Link específico que une este examen con este ítem
+    link = get_object_or_404(ExamItemLink, exam_id=exam_id, item_id=item_id)
+    
+    try:
+        new_points = float(request.POST.get('points', 0))
+        if new_points < 0: new_points = 0 # Evitamos puntajes negativos
+    except ValueError:
+        new_points = 0
+        
+    link.points = new_points
+    link.save()
+    
+    # Recalculamos el contexto para obtener el nuevo total
+    context = _get_constructor_context(request, exam_id)
+    
+    # Devolvemos el header actualizado (donde se muestra el total)
+    return render(request, 'backoffice/partials/_constructor_header.html', context)
+
 
 @login_required
 @require_http_methods(["GET", "POST"])
@@ -293,6 +330,7 @@ def exam_create(request):
 
     if request.method == "POST":
         title = request.POST.get('title', 'Examen sin título').strip()
+        # Creamos el examen (usará los defaults del modelo para shuffle y status)
         exam = Exam.objects.create(tenant=current_tenant, author=request.user, title=title)
         redirect_url = reverse('backoffice:exam_constructor', args=[exam.id])
         return HttpResponse(headers={'HX-Redirect': redirect_url})
@@ -344,7 +382,7 @@ def filter_items(request):
         base_query = base_query.annotate(in_use_count=Count('exams'))
 
     item_list = base_query.annotate(
-        exam_titles=StringAgg('exams__title', delimiter=', ', distinct=True) # <-- Para el tooltip
+        exam_titles=StringAgg('exams__title', delimiter=', ', distinct=True)
     ).order_by('-created_at')
 
     context = {
@@ -456,6 +494,9 @@ def ai_suggest_items(request, exam_id):
 def exam_publish(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
+    # Calculamos el total para validarlo antes de publicar
+    total_points = ExamItemLink.objects.filter(exam=exam).aggregate(Sum('points'))['points__sum'] or 0.0
+
     try:
         if exam.status == 'draft':
             if not exam.items.exists():
@@ -464,16 +505,22 @@ def exam_publish(request, exam_id):
                 exam.status = "published" 
                 exam.published_at = timezone.now()
                 exam.save()
-                messages.success(request, "¡Examen publicado! Ahora puedes compartir el enlace.")
+                
+                # VALIDACIÓN DE PUNTAJE
+                if total_points != 10.0:
+                    messages.warning(request, f"Examen publicado, pero el total es {total_points} (se recomienda 10).")
+                else:
+                    messages.success(request, "¡Examen publicado correctamente (Total: 10 pts)!")
         else:
             messages.info(request, "Este examen ya estaba publicado.")
 
     except Exception as e:
         messages.error(request, f"Error interno al publicar: {e}")
-        context = { 'exam': exam }
+        context = { 'exam': exam, 'total_points': total_points }
         return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
-    context = { 'exam': exam }
+    # Retornamos el contexto actualizado (incluyendo el total)
+    context = { 'exam': exam, 'total_points': total_points }
     return render(request, 'backoffice/partials/_constructor_header.html', context)
 
 
@@ -481,6 +528,9 @@ def exam_publish(request, exam_id):
 @require_http_methods(["POST"])
 def exam_unpublish(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
+    
+    # También necesitamos calcular el total aquí para mantener la UI consistente
+    total_points = ExamItemLink.objects.filter(exam=exam).aggregate(Sum('points'))['points__sum'] or 0.0
     
     try:
         if exam.status == 'published':
@@ -493,8 +543,8 @@ def exam_unpublish(request, exam_id):
 
     except Exception as e:
         messages.error(request, f"Error interno al anular la publicación: {e}")
-        context = { 'exam': exam }
+        context = { 'exam': exam, 'total_points': total_points }
         return render(request, 'backoffice/partials/_constructor_header.html', context, status=500)
 
-    context = { 'exam': exam }
+    context = { 'exam': exam, 'total_points': total_points }
     return render(request, 'backoffice/partials/_constructor_header.html', context)
