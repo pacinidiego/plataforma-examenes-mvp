@@ -38,15 +38,19 @@
 
         <div class="space-y-2">
             <label class="block text-sm font-medium text-gray-700">Distractores (Opciones incorrectas)</label>
-            {% for dist in distractors_list %}
-                <input type="text" name="distractors" value="{{ dist }}" class="w-full rounded-md border border-gray-300 p-2 focus:border-red-300 focus:ring-1 focus:ring-red-300 text-sm" placeholder="Opción incorrecta...">
-            {% endfor %}
+            
+            <div id="distractors-container" class="space-y-2">
+                {% for dist in distractors_list %}
+                    <input type="text" name="distractors" value="{{ dist }}" class="w-full rounded-md border border-gray-300 p-2 focus:border-red-300 focus:ring-1 focus:ring-red-300 text-sm" placeholder="Opción incorrecta...">
+                {% endfor %}
+            </div>
         </div>
         
         <div class="flex justify-end mt-2">
             <button type="button" 
                     hx-post="{% url 'backoffice:ai_generate_distractors' %}"
-                    hx-target="#modal-content-form"
+                    hx-target="#distractors-container" 
+                    hx-swap="innerHTML"
                     hx-include="[name='stem'], [name='correct_answer']"
                     class="text-xs font-semibold bg-purple-100 text-purple-700 px-3 py-1.5 rounded-full hover:bg-purple-200 transition-colors flex items-center gap-1 border border-purple-200 shadow-sm">
                 <span>✨</span> Generar Distractores con IA
