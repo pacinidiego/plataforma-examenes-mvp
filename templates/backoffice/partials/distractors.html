@@ -1,11 +1,7 @@
-<!--
-(S1c v7) Este es el template que devuelve la vista 'ai_generate_distractors'.
-HTMX lo insertará en el div '#distractors-list'.
--->
-<label class="block text-sm font-medium text-red-400">Opciones Incorrectas (Distractores)</label>
-
-{% for d in distractors %}
-<input type="text" name="distractors" 
-       value="{{ d }}"
-       class="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+{% for dist in distractors %}
+    <input type="text" 
+           name="distractors" 
+           value="{{ dist }}" 
+           class="w-full rounded-md border border-gray-300 p-2 focus:border-red-300 focus:ring-1 focus:ring-red-300 text-sm transition-colors" 
+           placeholder="Opción incorrecta...">
 {% endfor %}
