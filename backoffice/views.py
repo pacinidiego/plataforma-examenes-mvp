@@ -69,6 +69,9 @@ def item_create(request):
         item_type = request.POST.get('item_type')
         stem = request.POST.get('stem')
         difficulty = request.POST.get('difficulty')
+        # Tags opcionales (agregado reciente)
+        tags = request.POST.get('tags', '').strip()
+        
         stem_limpio = " ".join(stem.split())
         
         options_json = None
@@ -100,7 +103,8 @@ def item_create(request):
                 item_type=item_type,
                 stem=stem_limpio, 
                 difficulty=difficulty,
-                options=options_json
+                options=options_json,
+                tags=tags
             )
             return HttpResponse(headers={'HX-Redirect': reverse('backoffice:dashboard')})
         
@@ -129,6 +133,7 @@ def item_edit(request, pk):
         item_type = request.POST.get('item_type')
         stem = request.POST.get('stem')
         difficulty = request.POST.get('difficulty')
+        tags = request.POST.get('tags', '').strip()
         stem_limpio = " ".join(stem.split())
 
         existing_item = Item.objects.filter(
@@ -142,6 +147,7 @@ def item_edit(request, pk):
         item.item_type = item_type
         item.stem = stem_limpio
         item.difficulty = difficulty
+        item.tags = tags
         
         options_json = None
         if item_type == 'MC':
@@ -424,11 +430,12 @@ def ai_preview_items(request, exam_id):
             "INSTRUCCIONES:\n"
             "1. Genera preguntas de opción múltiple según el pedido (Máx 10).\n"
             "2. Si no pide cantidad, genera 5.\n"
+            "3. INCLUYE ETIQUETAS: Para cada pregunta, genera un string con 2 o 3 etiquetas clave separadas por comas (ej: 'Historia, Europa, Guerra') en el campo 'tags'.\n"
             f"{avoid_text}"
             "\n"
             "--- FORMATO JSON ---\n"
             "Devuelve SOLO un JSON Array válido:\n"
-            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\"]}]"
+            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\"], \"tags\": \"tag1, tag2\"}]"
         )
         
         response = model.generate_content(
@@ -438,11 +445,10 @@ def ai_preview_items(request, exam_id):
         
         generated_data = json.loads(response.text)
         
-        # --- CORRECCIÓN AQUÍ: Empaquetamos el JSON como string para el HTML ---
+        # --- PREPARACIÓN PARA HTML ---
         for item in generated_data:
-            # Creamos un string JSON limpio para cada ítem
+            # Empaquetamos el JSON como string para que no se rompa en el template
             item['json_string'] = json.dumps(item)
-        # -----------------------------------------------------------------------
         
         return render(request, 'backoffice/partials/_ai_curation_modal.html', {
             'exam': exam,
@@ -459,10 +465,10 @@ def ai_preview_items(request, exam_id):
 def ai_commit_items(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    # Lista completa (Banco)
+    # 1. Lista completa (Banco)
     items_all_json = request.POST.getlist('items_all')
     
-    # Lista seleccionada (Examen)
+    # 2. Lista seleccionada (Examen)
     items_selected_json = set(request.POST.getlist('items_selected'))
     
     saved_count = 0
@@ -470,14 +476,16 @@ def ai_commit_items(request, exam_id):
     
     for item_json in items_all_json:
         try:
-            # --- CORRECCIÓN AQUÍ: Parseo directo y limpio ---
-            data = json.loads(item_json)
-            # ------------------------------------------------
+            # --- CORRECCIÓN: Limpieza y Parseo Seguro ---
+            clean_json = item_json.replace('\n', ' ').replace('\r', '')
+            data = json.loads(clean_json)
+            # --------------------------------------------
             
             options_list = [{"text": data['correct_answer'], "correct": True}]
             for dist in data.get('distractors', []):
                 options_list.append({"text": dist, "correct": False})
             
+            # A. Guardar en Banco (con tags si vienen)
             item, created = Item.objects.get_or_create(
                 tenant=exam.tenant,
                 stem__iexact=data['stem'].strip(),
@@ -487,12 +495,14 @@ def ai_commit_items(request, exam_id):
                     'stem': data['stem'].strip(),
                     'difficulty': 2,
                     'options': options_list,
-                    'tags': ['IA-Gen']
+                    'tags': data.get('tags', ['IA-Gen']) # Guardamos tags si existen
                 }
             )
             saved_count += 1
             
-            # Si el string del JSON estaba en la lista de seleccionados, agregamos al examen
+            # B. Guardar en Examen (si estaba seleccionado)
+            # Comparamos el string original para asegurar coincidencia exacta
+            # Nota: en production, usar un ID temporal sería más robusto, pero esto funciona para el MVP.
             if item_json in items_selected_json:
                 ExamItemLink.objects.get_or_create(exam=exam, item=item)
                 added_to_exam_count += 1
