@@ -69,9 +69,7 @@ def item_create(request):
         item_type = request.POST.get('item_type')
         stem = request.POST.get('stem')
         difficulty = request.POST.get('difficulty')
-        # Tags opcionales (agregado reciente)
         tags = request.POST.get('tags', '').strip()
-        
         stem_limpio = " ".join(stem.split())
         
         options_json = None
@@ -85,7 +83,6 @@ def item_create(request):
             for d in distractors:
                 if d: 
                     options_list.append({"text": d, "correct": False})
-            
             options_json = options_list
 
         try:
@@ -344,17 +341,63 @@ def exam_delete(request, pk):
     except Http404:
         return HttpResponse("No encontrado.", status=404)
 
+# --- MODIFICADO: Borrado Individual Seguro ---
 @login_required
 @require_http_methods(["POST"])
 def item_delete(request, pk):
-    try:
-        item = get_object_or_404(Item, pk=pk, tenant__memberships__user=request.user)
-        item.delete()
-        response = HttpResponse("", status=200)
-        response['HX-Redirect'] = reverse('backoffice:dashboard')
-        return response
-    except Http404:
-        return HttpResponse("No encontrado.", status=404)
+    item = get_object_or_404(Item, pk=pk, tenant__memberships__user=request.user)
+    
+    # PROTECCIÓN: No borrar si está en uso
+    if item.exams.exists():
+        return HttpResponse(
+            f"<div class='bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded relative mb-2' role='alert'>"
+            f"<strong class='font-bold'>Error:</strong> "
+            f"<span class='block sm:inline'>No se puede borrar '{item.stem[:20]}...' porque está en {item.exams.count()} examen(es).</span>"
+            f"</div>"
+        )
+
+    item.delete()
+    messages.success(request, "Pregunta eliminada correctamente.")
+    return HttpResponse(headers={'HX-Redirect': reverse('backoffice:dashboard')})
+
+# --- NUEVO: Borrado Masivo ---
+@login_required
+@require_http_methods(["POST"])
+def item_bulk_delete(request):
+    selected_ids = request.POST.getlist('selected_items')
+    
+    if not selected_ids:
+        messages.warning(request, "No seleccionaste ninguna pregunta.")
+        return HttpResponse(headers={'HX-Redirect': reverse('backoffice:dashboard')})
+
+    tenant_membership = TenantMembership.objects.filter(user=request.user).first()
+    if not tenant_membership:
+        return HttpResponse("Error de permisos.", status=403)
+
+    items_to_check = Item.objects.filter(
+        tenant=tenant_membership.tenant,
+        id__in=selected_ids
+    )
+
+    deleted_count = 0
+    skipped_count = 0
+    
+    for item in items_to_check:
+        if item.exams.exists():
+            skipped_count += 1
+        else:
+            item.delete()
+            deleted_count += 1
+
+    if deleted_count > 0:
+        msg = f"Se eliminaron {deleted_count} preguntas."
+        if skipped_count > 0:
+            msg += f" (Se omitieron {skipped_count} porque están en uso)."
+        messages.success(request, msg)
+    elif skipped_count > 0:
+        messages.error(request, f"No se pudo borrar: Las {skipped_count} preguntas seleccionadas están en uso.")
+    
+    return HttpResponse(headers={'HX-Redirect': reverse('backoffice:dashboard')})
 
 
 @login_required
@@ -445,9 +488,7 @@ def ai_preview_items(request, exam_id):
         
         generated_data = json.loads(response.text)
         
-        # --- PREPARACIÓN PARA HTML ---
         for item in generated_data:
-            # Empaquetamos el JSON como string para que no se rompa en el template
             item['json_string'] = json.dumps(item)
         
         return render(request, 'backoffice/partials/_ai_curation_modal.html', {
@@ -465,10 +506,7 @@ def ai_preview_items(request, exam_id):
 def ai_commit_items(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     
-    # 1. Lista completa (Banco)
     items_all_json = request.POST.getlist('items_all')
-    
-    # 2. Lista seleccionada (Examen)
     items_selected_json = set(request.POST.getlist('items_selected'))
     
     saved_count = 0
@@ -476,16 +514,15 @@ def ai_commit_items(request, exam_id):
     
     for item_json in items_all_json:
         try:
-            # --- CORRECCIÓN: Limpieza y Parseo Seguro ---
             clean_json = item_json.replace('\n', ' ').replace('\r', '')
             data = json.loads(clean_json)
-            # --------------------------------------------
             
             options_list = [{"text": data['correct_answer'], "correct": True}]
             for dist in data.get('distractors', []):
                 options_list.append({"text": dist, "correct": False})
             
-            # A. Guardar en Banco (con tags si vienen)
+            default_tag = data.get('tags', 'IA-Gen')
+            
             item, created = Item.objects.get_or_create(
                 tenant=exam.tenant,
                 stem__iexact=data['stem'].strip(),
@@ -495,14 +532,11 @@ def ai_commit_items(request, exam_id):
                     'stem': data['stem'].strip(),
                     'difficulty': 2,
                     'options': options_list,
-                    'tags': data.get('tags', ['IA-Gen']) # Guardamos tags si existen
+                    'tags': default_tag
                 }
             )
             saved_count += 1
             
-            # B. Guardar en Examen (si estaba seleccionado)
-            # Comparamos el string original para asegurar coincidencia exacta
-            # Nota: en production, usar un ID temporal sería más robusto, pero esto funciona para el MVP.
             if item_json in items_selected_json:
                 ExamItemLink.objects.get_or_create(exam=exam, item=item)
                 added_to_exam_count += 1
