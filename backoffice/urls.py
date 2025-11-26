@@ -15,6 +15,8 @@ urlpatterns = [
     path('item/create/', views.item_create, name='item_create'),
     path('item/<int:pk>/edit/', views.item_edit, name='item_edit'),
     path('item/<int:pk>/delete/', views.item_delete, name='item_delete'),
+    # NUEVA RUTA: Borrado Masivo
+    path('items/bulk_delete/', views.item_bulk_delete, name='item_bulk_delete'),
     path('item/<int:item_id>/detail/', views.item_detail_view, name='item_detail'),
 
     # --- CRUD de Exámenes ---
