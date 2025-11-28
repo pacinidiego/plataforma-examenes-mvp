@@ -1,0 +1,41 @@
+# runner/migrations/0001_initial.py
+
+import django.db.models.deletion
+import uuid
+from django.conf import settings
+from django.db import migrations, models
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        ('exams', '0005_remove_item_case_content'),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='Attempt',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('student_name', models.CharField(blank=True, max_length=255, verbose_name='Nombre del Alumno')),
+                ('student_legajo', models.CharField(blank=True, max_length=100, verbose_name='Legajo/DNI')),
+                ('start_time', models.DateTimeField(auto_now_add=True, verbose_name='Inicio')),
+                ('end_time', models.DateTimeField(blank=True, null=True, verbose_name='Fin')),
+                # === AGREGADO MANUALMENTE PARA EVITAR EL ERROR ===
+                ('completed_at', models.DateTimeField(blank=True, null=True, verbose_name='Completado el')),
+                # =================================================
+                ('last_heartbeat', models.DateTimeField(auto_now=True)),
+                ('ip_address', models.GenericIPAddressField(blank=True, null=True)),
+                ('answers', models.JSONField(blank=True, default=dict)),
+                ('score', models.FloatField(blank=True, null=True)),
+                ('is_active', models.BooleanField(default=True)),
+                ('exam', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='attempts', to='exams.exam')),
+                ('user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='attempts', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['-start_time'],
+            },
+        ),
+    ]
