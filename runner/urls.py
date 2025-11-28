@@ -14,4 +14,6 @@ urlpatterns = [
     # 3. Runner (El examen real)
     # Ahora también recibe attempt_id para saber qué intento retomar
     path('<uuid:access_code>/take/<uuid:attempt_id>/', views.exam_runner_view, name='take'),
+    # NUEVA RUTA: Guardar respuesta (AJAX/Fetch)
+    path('save/<uuid:attempt_id>/', views.save_answer, name='save_answer'),
 ]
