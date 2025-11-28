@@ -341,7 +341,7 @@ def exam_delete(request, pk):
     except Http404:
         return HttpResponse("No encontrado.", status=404)
 
-# --- MODIFICADO: Borrado Individual Seguro ---
+# --- MODIFICADO: Borrado Individual Seguro (Con Redirección) ---
 @login_required
 @require_http_methods(["POST"])
 def item_delete(request, pk):
@@ -349,15 +349,13 @@ def item_delete(request, pk):
     
     # PROTECCIÓN: No borrar si está en uso
     if item.exams.exists():
-        return HttpResponse(
-            f"<div class='bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded relative mb-2' role='alert'>"
-            f"<strong class='font-bold'>Error:</strong> "
-            f"<span class='block sm:inline'>No se puede borrar '{item.stem[:20]}...' porque está en {item.exams.count()} examen(es).</span>"
-            f"</div>"
-        )
-
-    item.delete()
-    messages.success(request, "Pregunta eliminada correctamente.")
+        # CORRECCIÓN: Usamos messages.error y redirigimos, en lugar de romper el HTML
+        messages.error(request, f"No se puede borrar '{item.stem[:20]}...' porque se usa en {item.exams.count()} examen(es).")
+    else:
+        item.delete()
+        messages.success(request, "Pregunta eliminada correctamente.")
+    
+    # Siempre recargamos el dashboard para mostrar el mensaje y la tabla actualizada
     return HttpResponse(headers={'HX-Redirect': reverse('backoffice:dashboard')})
 
 # --- NUEVO: Borrado Masivo ---
