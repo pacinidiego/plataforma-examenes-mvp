@@ -5,10 +5,8 @@
 <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     
     <header class="mb-6 flex justify-between items-center">
-        
         <div class="flex items-center space-x-6">
-            <img src="{% static 'images/logo.png' %}" alt="Logo Plataforma" class="h-20 w-auto">
-            
+            <img src="{% static 'images/logo.png' %}" alt="Logo" class="h-20 w-auto">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900">
                     Dashboard del Docente
@@ -18,11 +16,24 @@
                 </p>
             </div>
         </div>
-
         <div>
             <a href="{% url 'logout' %}" class="text-sm text-gray-500 hover:text-gray-900">Cerrar Sesión</a>
         </div>
     </header>
+
+    {% if messages %}
+    <div class="mb-6 space-y-2">
+        {% for message in messages %}
+            <div class="p-4 rounded-lg border flex justify-between items-center shadow-sm 
+                {% if message.tags == 'error' %}bg-red-50 text-red-700 border-red-200
+                {% elif message.tags == 'warning' %}bg-yellow-50 text-yellow-800 border-yellow-200
+                {% else %}bg-green-50 text-green-800 border-green-200{% endif %}">
+                <span class="font-medium">{{ message }}</span>
+                <button onclick="this.parentElement.remove()" class="text-gray-400 hover:text-gray-600 font-bold ml-4">✕</button>
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
 
