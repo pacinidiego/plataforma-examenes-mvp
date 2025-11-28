@@ -1,6 +1,8 @@
 import random
+import json
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_POST
 from exams.models import Exam
 from .models import Attempt
 
@@ -53,6 +55,10 @@ def exam_runner_view(request, access_code, attempt_id):
         'attempt': attempt,
         'items': items,
         'total_questions': len(items)
+    })  # <--- ¡AQUÍ ESTABA EL ERROR! Faltaba cerrar llave y paréntesis.
+
+
+# 4. GUARDADO AUTOMÁTICO (AJAX)
 @require_POST
 def save_answer(request, attempt_id):
     """
@@ -79,4 +85,3 @@ def save_answer(request, attempt_id):
         
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
-    })
