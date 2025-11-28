@@ -37,7 +37,7 @@
                 </div>
             </div>
 
-            <form action="{% url 'runner:take' exam.access_code %}" method="POST" class="space-y-5">
+            <form action="{% url 'runner:lobby' exam.access_code %}" method="POST" class="space-y-5">
                 {% csrf_token %}
                 
                 <div>
