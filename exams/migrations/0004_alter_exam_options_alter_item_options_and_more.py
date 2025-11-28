@@ -1,3 +1,5 @@
+# exams/migrations/0004_alter_exam_options_alter_item_options_and_more.py
+
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
@@ -20,10 +22,7 @@ class Migration(migrations.Migration):
             name='item',
             options={'verbose_name': 'Pregunta (Item)', 'verbose_name_plural': 'Banco de Preguntas'},
         ),
-        migrations.RemoveField(
-            model_name='item',
-            name='case_content',
-        ),
+        # === AQUI QUITAMOS EL REMOVE FIELD QUE DABA ERROR ===
         migrations.AddField(
             model_name='exam',
             name='extra_time_buffer',
