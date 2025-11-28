@@ -1,5 +1,178 @@
-<div class="lg:col-span-3 mb-2">...</div>
-<div class="lg:col-span-2 space-y-6">...</div>
+<style>
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: flex; }
+</style>
+
+<div class="lg:col-span-3 mb-2">
+    <div class="bg-gradient-to-r from-indigo-50 to-white border border-indigo-100 rounded-lg p-6 shadow-sm relative overflow-hidden">
+        
+        <div id="ai-loading" class="htmx-indicator absolute inset-0 bg-white/90 z-20 items-center justify-center backdrop-blur-sm transition-all">
+            <div class="flex flex-col items-center gap-3">
+                <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-indigo-800 font-bold text-sm animate-pulse">Consultando a la IA...</span>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">✨</span>
+                <h2 class="text-indigo-900 text-lg font-bold">Generador de Preguntas con IA</h2>
+            </div>
+        </div>
+
+        <form hx-post="{% url 'backoffice:ai_preview_items' exam.id %}" 
+              hx-target="#ai-modal-container"
+              hx-swap="innerHTML"
+              hx-indicator="#ai-loading" 
+              hx-on::after-request="document.getElementById('ai-modal-container').classList.remove('hidden')"
+              class="relative flex gap-3">
+            {% csrf_token %}
+            
+            <div class="relative flex-grow">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <input type="text" 
+                       name="ai_prompt" 
+                       required
+                       placeholder="Escribe un tema (ej. 'Segunda Guerra Mundial', 'Derivadas', 'Anatomía Humana')..." 
+                       class="block w-full pl-10 pr-3 py-3 border border-indigo-200 rounded-lg leading-5 bg-white placeholder-indigo-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all shadow-sm">
+            </div>
+            
+            <button type="submit" class="inline-flex items-center px-6 py-3 border border-transparent text-sm font-bold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-wait">
+                Previsualizar
+            </button>
+        </form>
+        <p class="text-xs text-indigo-500 mt-2 ml-1">Tip: Puedes pedir cantidad (ej. 'Generar 8 preguntas...'). Se abrirá una ventana para revisar antes de guardar.</p>
+    </div>
+</div>
+
+<div class="lg:col-span-2 space-y-6">
+    <div class="bg-white border border-gray-200 rounded-lg p-6 min-h-[600px] flex flex-col shadow-sm">
+        
+        <div class="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+            <div class="flex items-center gap-2">
+                <h2 class="text-gray-800 text-lg font-bold">En el Examen</h2>
+                <span class="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-bold border border-blue-200">
+                    {{ exam_items_count }}
+                </span>
+            </div>
+        </div>
+
+        <div class="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
+            {% for link in exam_links %}
+            <div class="group bg-gray-50 p-5 rounded-xl border border-gray-200 hover:border-blue-400 hover:shadow-md transition-all duration-200 relative">
+                
+                <div class="flex gap-4">
+                    <div class="flex flex-col items-center gap-1">
+                        <span class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-white border border-gray-300 text-gray-600 text-sm rounded-full font-extrabold shadow-sm">
+                            {{ forloop.counter }}
+                        </span>
+                    </div>
+
+                    <div class="flex-grow">
+                        <div class="flex justify-between items-start">
+                            <div class="w-full">
+                                {% if link.item.tags %}
+                                <div class="mb-2">
+                                    {% for tag in link.item.tags.split|slice:":3" %} 
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-600 border border-gray-300 mr-1">
+                                        {{ tag }}
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                                
+                                <h3 class="text-gray-900 font-semibold text-base leading-snug mb-3">
+                                    {{ link.item.stem }}
+                                </h3>
+                            </div>
+                            
+                            <button hx-get="{% url 'backoffice:item_edit' link.item.id %}"
+                                    hx-target="#modal-content-form"
+                                    @click="modalContent = '<div class=\'p-6 bg-white text-gray-700\'>Cargando...</div>'; modalOpen = true"
+                                    class="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors flex-shrink-0 ml-2"
+                                    title="Editar texto de la pregunta">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                            </button>
+                        </div>
+
+                        <div class="bg-white rounded border border-gray-200 p-3 mb-3">
+                            {% if link.item.options %}
+                                <ul class="space-y-2">
+                                    {% for opt in link.item.options %}
+                                        <li class="text-sm flex items-start gap-2.5">
+                                            <div class="mt-1">
+                                                {% if opt.correct %}
+                                                    <div class="w-4 h-4 rounded-full bg-green-100 border border-green-300 flex items-center justify-center text-green-700">
+                                                        <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
+                                                    </div>
+                                                {% else %}
+                                                    <div class="w-4 h-4 rounded-full border border-gray-300 bg-gray-50"></div>
+                                                {% endif %}
+                                            </div>
+                                            <span class="{% if opt.correct %}text-green-800 font-medium{% else %}text-gray-600{% endif %}">
+                                                {{ opt.text }}
+                                            </span>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <span class="text-xs text-gray-400 italic">Es una pregunta de desarrollo (sin opciones).</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="flex items-center justify-between pt-2">
+                            <span class="text-[10px] font-bold tracking-wider text-gray-400 uppercase bg-gray-100 px-2 py-1 rounded border border-gray-200">
+                                {{ link.item.get_item_type_display }}
+                            </span>
+                            
+                            <div class="flex items-center gap-3 bg-white p-1 pr-3 rounded-lg border border-gray-200 shadow-sm">
+                                <div class="flex items-center bg-gray-50 rounded px-2 py-1">
+                                    <label class="text-[10px] font-bold text-gray-500 mr-2">PUNTOS</label>
+                                    <input type="number" 
+                                           step="0.5" 
+                                           min="0"
+                                           name="points"
+                                           value="{{ link.points|floatformat }}" 
+                                           class="w-12 h-6 text-right font-bold text-blue-700 border-0 border-b-2 border-blue-200 focus:border-blue-600 focus:ring-0 bg-transparent p-0 text-sm transition-colors"
+                                           hx-post="{% url 'backoffice:item_update_points' exam.id link.item.id %}"
+                                           hx-trigger="change"
+                                           hx-target="#constructor-header">
+                                </div>
+
+                                <div class="h-4 w-px bg-gray-300"></div>
+
+                                <button hx-post="{% url 'backoffice:remove_item_from_exam' exam.id link.item.id %}"
+                                        hx-target="#constructor-body"
+                                        class="text-gray-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50"
+                                        title="Quitar del examen">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="flex flex-col items-center justify-center h-96 text-gray-400 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
+                <div class="p-4 bg-white rounded-full mb-3 shadow-sm">
+                    <svg class="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+                <p class="text-base font-semibold text-gray-600">El examen está vacío</p>
+                <p class="text-sm mt-1">Usa el generador IA o selecciona preguntas del banco.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
 
 <div class="lg:col-span-1">
     <div class="bg-white border border-gray-200 rounded-lg p-6 h-full flex flex-col shadow-sm">
@@ -19,22 +192,20 @@
                         {% else %} bg-white border-gray-200 hover:border-blue-400 hover:shadow-md {% endif %}">
                 
                 <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1.5">
+                    <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
                         {% if item.source_tag == 'generated' %}
                             <span class="text-[9px] uppercase tracking-wider bg-green-100 text-green-700 px-1.5 py-0.5 rounded-sm font-bold">Nueva</span>
                         {% endif %}
                         <span class="text-[9px] uppercase tracking-wider text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm border border-gray-200">
                             {{ item.get_item_type_display }}
                         </span>
+                        
+                        {% if item.tags %}
+                            <span class="text-[9px] bg-indigo-50 text-indigo-600 px-1 py-0.5 rounded border border-indigo-100 truncate max-w-[100px] inline-block" title="{{ item.tags }}">
+                                {{ item.tags }}
+                            </span>
+                        {% endif %}
                     </div>
-
-                    {% if item.tags %}
-                    <div class="mb-1">
-                        <span class="text-[9px] bg-indigo-50 text-indigo-600 px-1 py-0.5 rounded border border-indigo-100 truncate max-w-[120px] inline-block">
-                            {{ item.tags }}
-                        </span>
-                    </div>
-                    {% endif %}
 
                     <p class="text-gray-700 text-xs leading-relaxed font-medium line-clamp-3 group-hover:line-clamp-none transition-all duration-300">
                         {{ item.stem }}
