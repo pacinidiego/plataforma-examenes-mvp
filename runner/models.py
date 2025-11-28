@@ -22,7 +22,12 @@ class Attempt(models.Model):
     
     # Tiempos
     start_time = models.DateTimeField(auto_now_add=True, verbose_name="Inicio")
-    end_time = models.DateTimeField(null=True, blank=True, verbose_name="Fin")
+    end_time = models.DateTimeField(null=True, blank=True, verbose_name="Fin") # Mantenemos este por compatibilidad histórica
+    
+    # === NUEVO CAMPO REQUERIDO ===
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Completado el")
+    # =============================
+
     last_heartbeat = models.DateTimeField(auto_now=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     
