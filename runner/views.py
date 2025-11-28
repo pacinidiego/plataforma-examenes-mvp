@@ -53,4 +53,30 @@ def exam_runner_view(request, access_code, attempt_id):
         'attempt': attempt,
         'items': items,
         'total_questions': len(items)
+@require_POST
+def save_answer(request, attempt_id):
+    """
+    Recibe una respuesta individual y la guarda en el JSON del intento.
+    """
+    try:
+        attempt = get_object_or_404(Attempt, id=attempt_id)
+        
+        # Parseamos los datos del cuerpo (body) de la petición
+        data = json.loads(request.body)
+        question_id = str(data.get('question_id'))
+        selected_option = data.get('answer')
+        
+        # Actualizamos el diccionario de respuestas
+        # Usamos la estructura: answers = { "123": "Opción A", "124": "Opción B" }
+        # Primero traemos el dict actual para no sobreescribir otras respuestas
+        current_answers = attempt.answers or {}
+        current_answers[question_id] = selected_option
+        
+        attempt.answers = current_answers
+        attempt.save(update_fields=['answers', 'last_heartbeat']) # Actualizamos heartbeat también
+        
+        return JsonResponse({'status': 'ok', 'saved': True})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     })
