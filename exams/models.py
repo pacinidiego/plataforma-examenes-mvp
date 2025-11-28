@@ -3,8 +3,6 @@ from django.db import models
 from django.conf import settings
 from tenancy.models import Tenant
 
-# Create your models here.
-
 class Item(models.Model):
     """
     Una Pregunta (Item) en el Banco de Preguntas.
@@ -82,6 +80,20 @@ class Exam(models.Model):
     # Contenido
     title = models.CharField(max_length=255)
     
+    # === NUEVOS CAMPOS DE TIEMPO (TI-01 y TI-02) ===
+    time_per_item = models.PositiveIntegerField(
+        default=60, 
+        verbose_name="Segundos por pregunta",
+        help_text="Tiempo límite para cada pregunta individual."
+    )
+    
+    extra_time_buffer = models.PositiveIntegerField(
+        default=5, 
+        verbose_name="Buffer extra (minutos)",
+        help_text="Tiempo adicional global para el examen."
+    )
+    # ===============================================
+
     shuffle_items = models.BooleanField(
         default=True, 
         verbose_name="Mezclar preguntas"
@@ -109,6 +121,12 @@ class Exam(models.Model):
     def __str__(self):
         return self.title
 
+    # Cálculo del tiempo total
+    def get_total_duration_seconds(self):
+        # Total = (Segundos por pregunta * cantidad) + (Minutos extra * 60)
+        count = self.items.count()
+        return (count * self.time_per_item) + (self.extra_time_buffer * 60)
+
 
 class ExamItemLink(models.Model):
     """
@@ -118,11 +136,7 @@ class ExamItemLink(models.Model):
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
     order = models.PositiveIntegerField(default=0)
     
-    # =========================================================
-    # CORRECCIÓN: Añadimos el campo 'points' que la BD pide
-    # =========================================================
     points = models.FloatField(default=1.0, verbose_name="Puntaje")
-    # =========================================================
 
     class Meta:
         ordering = ['order']
