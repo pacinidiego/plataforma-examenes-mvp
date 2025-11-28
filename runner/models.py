@@ -5,39 +5,36 @@ from exams.models import Exam
 
 class Attempt(models.Model):
     """
-    Representa el intento de un alumno de resolver un examen.
-    Guarda el estado, las respuestas y el tiempo.
+    Representa el intento de un alumno.
+    Soporta alumnos logueados (user) o invitados por link (student_name).
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     # Relaciones
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='attempts')
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='attempts')
+    
+    # Usuario (Opcional: para cuando integremos login real)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='attempts')
+    
+    # Datos del Alumno (Para acceso actual vía Link)
+    student_name = models.CharField(max_length=255, blank=True, verbose_name="Nombre del Alumno")
+    student_legajo = models.CharField(max_length=100, blank=True, verbose_name="Legajo/DNI")
     
     # Tiempos
     start_time = models.DateTimeField(auto_now_add=True, verbose_name="Inicio")
-    end_time = models.DateTimeField(null=True, blank=True, verbose_name="Fin / Entrega")
-    
-    # Resiliencia y Seguridad
-    # 'last_heartbeat' se actualiza cada 30s. Si es muy viejo, asumimos desconexión.
+    end_time = models.DateTimeField(null=True, blank=True, verbose_name="Fin")
     last_heartbeat = models.DateTimeField(auto_now=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     
-    # Respuestas
-    # Guardamos un JSON simple: { "item_id": "opcion_elegida", ... }
-    # Esto permite autosave rápido sin crear miles de filas en la BD.
+    # Respuestas (JSON)
     answers = models.JSONField(default=dict, blank=True)
-    
-    # Resultado
-    score = models.FloatField(null=True, blank=True, verbose_name="Puntaje Final")
-    
-    # Estado
-    is_active = models.BooleanField(default=True, help_text="True si el examen está en curso")
+    score = models.FloatField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ['-start_time']
-        verbose_name = "Intento de Examen"
-        verbose_name_plural = "Intentos"
 
     def __str__(self):
-        return f"{self.user.username} - {self.exam.title}"
+        if self.user:
+            return f"{self.user.username} - {self.exam.title}"
+        return f"{self.student_name} ({self.student_legajo}) - {self.exam.title}"
