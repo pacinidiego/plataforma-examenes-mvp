@@ -8,5 +8,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Operación vacía intencionalmente para evitar error de columna inexistente
+        # IMPORTANTE: Dejar esto vacío.
+        # Al estar vacío, Django marca la migración como "hecha" 
+        # sin intentar borrar la columna que ya no existe.
     ]
