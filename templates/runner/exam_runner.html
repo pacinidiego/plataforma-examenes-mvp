@@ -8,12 +8,11 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         [x-cloak] { display: none !important; }
-        /* Transición suave para la barra de tiempo por pregunta */
         .timer-bar { transition: width 1s linear; }
     </style>
 </head>
 <body class="h-full flex flex-col overflow-hidden" 
-      x-data="examRunner('{{ attempt.id }}', {{ remaining_seconds }}, {{ time_per_item }}, {{ total_questions }})"
+      x-data="examRunner('{{ attempt.id }}', {{ remaining_seconds }}, {{ time_per_item }}, {{ total_questions }}, {{ initial_step }})"
       x-init="initTimer()">
 
     <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 z-10 shrink-0 shadow-sm">
@@ -41,7 +40,7 @@
             <div class="h-6 w-px bg-gray-300 mx-2"></div>
 
             <div class="flex flex-col items-end">
-                <span class="text-xs text-gray-500 uppercase font-bold">Tiempo Total</span>
+                <span class="text-xs text-gray-500 uppercase font-bold">Total</span>
                 <div class="font-mono text-xl font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded border border-gray-200"
                      :class="globalSeconds < 300 ? 'text-red-600 border-red-200 bg-red-50' : ''">
                     <span x-text="formatTime(globalSeconds)"></span>
@@ -49,7 +48,7 @@
             </div>
 
             <a href="{% url 'runner:submit_exam' attempt.id %}" 
-               onclick="return confirm('¿Confirmas que deseas finalizar el examen? No podrás volver a ingresar.')"
+               onclick="return confirm('¿Confirmas finalizar el examen? No podrás volver.')"
                class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-4 rounded transition-colors shadow-sm">
                 Entregar
             </a>
@@ -68,8 +67,7 @@
             <div x-show="currentStep === {{ forloop.counter0 }}" x-cloak
                  class="bg-white rounded-2xl shadow-md border border-gray-200 p-8 transition-all relative overflow-hidden">
                 
-                <div class="absolute top-4 right-4 text-xs font-mono text-gray-400 border rounded px-2 py-1"
-                     :class="itemSeconds < 10 ? 'text-red-500 border-red-200 bg-red-50' : ''">
+                <div class="absolute top-4 right-4 text-xs font-mono text-gray-400 border rounded px-2 py-1">
                     <span x-text="itemSeconds"></span>s
                 </div>
 
@@ -119,39 +117,38 @@
     </footer>
 
     <script>
-        function examRunner(attemptId, serverRemainingSeconds, timePerItem, totalQuestions) {
+        function examRunner(attemptId, serverRemainingSeconds, timePerItem, totalQuestions, startStep) {
             return {
-                currentStep: 0,
+                currentStep: startStep, // <-- Arranca en el paso calculado por el server
                 total: totalQuestions,
                 saveStatus: '', 
                 answers: {},
                 
-                // --- MANEJO DE TIEMPOS ---
+                // Tiempos
                 globalSeconds: serverRemainingSeconds,
                 itemSeconds: timePerItem,
                 maxItemSeconds: timePerItem,
                 itemProgress: 100,
 
                 initTimer() {
-                    // 1. Cronómetro Global (Corre siempre)
+                    // Global Timer
                     setInterval(() => {
                         if (this.globalSeconds > 0) {
                             this.globalSeconds--;
                         } else {
-                            // TI-01: Se acabó el tiempo total -> Enviar examen
+                            // Se acabó el tiempo total -> Enviar
                             window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
                         }
                     }, 1000);
 
-                    // 2. Cronómetro por Item (Corre solo si no ha terminado)
+                    // Item Timer
                     setInterval(() => {
                         if (this.currentStep < this.total) { 
                             if (this.itemSeconds > 0) {
                                 this.itemSeconds--;
-                                // Actualizar barra de porcentaje
                                 this.itemProgress = (this.itemSeconds / this.maxItemSeconds) * 100;
                             } else {
-                                // TI-02: Se acabó el tiempo de la pregunta -> Siguiente forzada
+                                // Se acabó tiempo de pregunta -> Siguiente
                                 this.nextQuestion(true); 
                             }
                         }
@@ -171,13 +168,11 @@
                 nextQuestion(auto = false) {
                     if (this.currentStep < this.total - 1) {
                         this.currentStep++;
-                        // Resetear temporizador de pregunta al avanzar
-                        this.itemSeconds = this.maxItemSeconds;
+                        this.itemSeconds = this.maxItemSeconds; // Reset timer pregunta
                         this.itemProgress = 100;
-                        // Scroll top suave
                         document.querySelector('main').scrollTo({top: 0, behavior: 'smooth'});
                     } else if (auto) {
-                        // Si era la última y se acabó el tiempo -> Finalizar
+                        // Si es la última y se acabó el tiempo, enviar
                         window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
                     }
                 },
