@@ -1,5 +1,4 @@
 # exams/migrations/0005_remove_item_case_content.py
-
 from django.db import migrations
 
 class Migration(migrations.Migration):
@@ -9,8 +8,4 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='item',
-            name='case_content',
-        ),
     ]
