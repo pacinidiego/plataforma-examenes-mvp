@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación Técnica</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .audio-bar { transition: height 0.1s ease; }
+    </style>
+</head>
+<body class="h-full flex flex-col" x-data="techCheck()">
+
+    <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-center shrink-0">
+        <div class="flex items-center gap-2 text-gray-700">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <h1 class="font-bold text-lg">Verificación de Sistema</h1>
+        </div>
+    </header>
+
+    <main class="flex-1 flex items-center justify-center p-4 sm:p-8">
+        <div class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            
+            <div class="space-y-4">
+                <div class="relative bg-black rounded-2xl overflow-hidden aspect-video shadow-lg border-4 border-gray-100">
+                    <video x-ref="video" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1]"></video>
+                    
+                    <div x-show="!checks.camera" class="absolute inset-0 flex flex-col items-center justify-center text-white/50">
+                        <p class="text-sm font-medium">Iniciando cámara...</p>
+                    </div>
+                </div>
+
+                <div x-show="cameras.length > 1" x-cloak>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Cambiar Cámara</label>
+                    <select x-model="selectedCamera" @change="startCamera()" 
+                            class="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <template x-for="cam in cameras" :key="cam.deviceId">
+                            <option :value="cam.deviceId" x-text="cam.label || 'Cámara ' + (cameras.indexOf(cam) + 1)"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <div class="flex justify-between text-xs text-gray-500 mb-2 font-bold uppercase tracking-wide">
+                        <span>Nivel de Micrófono</span>
+                        <span x-text="audioLevel + '%'"></span>
+                    </div>
+                    <div class="h-4 bg-gray-100 rounded-full overflow-hidden flex items-end gap-0.5 p-0.5">
+                        <div class="h-full bg-green-500 rounded-full transition-all duration-75" :style="`width: ${audioLevel}%`"></div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2 text-center">Di "Hola" para probar tu micrófono</p>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Lista de Requisitos</h2>
+
+                <div class="flex items-center p-5 rounded-xl border-2 transition-all duration-500"
+                     :class="checks.camera ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center mr-4 shrink-0 transition-colors"
+                         :class="checks.camera ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-gray-900">Cámara Web</h3>
+                        <p class="text-sm" :class="checks.camera ? 'text-green-700' : 'text-gray-500'" x-text="checks.camera ? 'Conectada y funcionando' : 'Buscando dispositivo...'"></p>
+                    </div>
+                    <div x-show="checks.camera" class="text-green-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                </div>
+
+                <div class="flex items-center p-5 rounded-xl border-2 transition-all duration-500"
+                     :class="checks.audio ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center mr-4 shrink-0 transition-colors"
+                         :class="checks.audio ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-gray-900">Micrófono</h3>
+                        <p class="text-sm" :class="checks.audio ? 'text-green-700' : 'text-gray-500'" x-text="checks.audio ? 'Audio detectado correctamente' : 'Habla para probar...'"></p>
+                    </div>
+                    <div x-show="checks.audio" class="text-green-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                </div>
+
+                <div class="flex items-center p-5 rounded-xl border-2 transition-all duration-500"
+                     :class="checks.network ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center mr-4 shrink-0 transition-colors"
+                         :class="checks.network ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-gray-900">Conexión a Internet</h3>
+                        <p class="text-sm" :class="checks.network ? 'text-green-700' : 'text-gray-500'" x-text="checks.network ? 'Conexión estable' : 'Verificando red...'"></p>
+                    </div>
+                    <div x-show="checks.network" class="text-green-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                </div>
+
+                <div class="pt-6">
+                    <a href="{% url 'runner:take' exam.access_code attempt.id %}"
+                       class="block w-full py-4 rounded-xl font-bold text-lg text-center transition-all shadow-lg transform hover:-translate-y-0.5"
+                       :class="allChecksPassed ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed pointer-events-none'">
+                        <span x-text="allChecksPassed ? 'Ingresar al Examen' : 'Completa las verificaciones'"></span>
+                    </a>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function techCheck() {
+            return {
+                checks: { camera: false, audio: false, network: false },
+                audioLevel: 0,
+                cameras: [],        // LISTA DE CÁMARAS
+                selectedCamera: '', // CÁMARA ELEGIDA
+                
+                get allChecksPassed() {
+                    return this.checks.camera && this.checks.audio && this.checks.network;
+                },
+
+                init() {
+                    // Primero iniciamos con la default para pedir permisos
+                    this.startCamera().then(() => {
+                        // Una vez que tenemos permiso, listamos los dispositivos
+                        this.listCameras();
+                    });
+                    this.checkNetwork();
+                },
+
+                async listCameras() {
+                    try {
+                        const devices = await navigator.mediaDevices.enumerateDevices();
+                        this.cameras = devices.filter(d => d.kind === 'videoinput');
+                        // Si no hay seleccionada, usamos la primera
+                        if (!this.selectedCamera && this.cameras.length > 0) {
+                            this.selectedCamera = this.cameras[0].deviceId;
+                        }
+                    } catch (e) {
+                        console.error("Error listando cámaras", e);
+                    }
+                },
+
+                async startCamera() {
+                    // Si ya hay un stream, detenerlo para cambiar
+                    if (this.$refs.video.srcObject) {
+                        this.$refs.video.srcObject.getTracks().forEach(track => track.stop());
+                    }
+
+                    try {
+                        // Constraints: Si hay selección, usala. Si no, default.
+                        const constraints = {
+                            audio: true,
+                            video: this.selectedCamera ? { deviceId: { exact: this.selectedCamera } } : true
+                        };
+
+                        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                        this.$refs.video.srcObject = stream;
+                        this.checks.camera = true;
+                        
+                        // Configurar análisis de audio
+                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        const analyser = audioContext.createAnalyser();
+                        const microphone = audioContext.createMediaStreamSource(stream);
+                        const javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+                        analyser.smoothingTimeConstant = 0.8;
+                        analyser.fftSize = 1024;
+
+                        microphone.connect(analyser);
+                        analyser.connect(javascriptNode);
+                        javascriptNode.connect(audioContext.destination);
+
+                        javascriptNode.onaudioprocess = () => {
+                            const array = new Uint8Array(analyser.frequencyBinCount);
+                            analyser.getByteFrequencyData(array);
+                            let values = 0;
+                            const length = array.length;
+                            for (let i = 0; i < length; i++) {
+                                values += array[i];
+                            }
+                            const average = values / length;
+                            this.audioLevel = Math.min(100, Math.round(average * 2));
+
+                            if (average > 10 && !this.checks.audio) {
+                                this.checks.audio = true;
+                            }
+                        }
+
+                    } catch (err) {
+                        console.error("Error acceso cámara:", err);
+                        alert("No pudimos acceder a tu cámara. Por favor verifica los permisos.");
+                    }
+                },
+
+                checkNetwork() {
+                    if(navigator.onLine) {
+                        setTimeout(() => this.checks.network = true, 1500);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

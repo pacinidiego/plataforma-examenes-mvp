@@ -24,6 +24,9 @@ urlpatterns = [
     # Todo lo que esté en /backoffice/ lo manejará nuestra nueva app
     path('backoffice/', include('backoffice.urls')),
 
+    # Runner (Alumno) - Esta es la puerta nueva
+    path('room/', include('runner.urls')),
+
     # TODO: Redirección de la raíz ('/') al backoffice si está logueado,
     # o al login si no lo está.
 ]

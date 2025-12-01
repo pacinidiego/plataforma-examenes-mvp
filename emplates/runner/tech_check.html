@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-gray-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación Técnica - {{ exam.title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="h-full flex flex-col justify-center items-center p-4 text-white"
+      x-data="techCheck()">
+
+    <div class="w-full max-w-2xl bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
+        
+        <div class="p-8 text-center">
+            <h1 class="text-2xl font-bold mb-2">Antes de empezar</h1>
+            <p class="text-gray-400 text-sm mb-8">Necesitamos verificar que tu equipo funcione correctamente para el proctoring.</p>
+
+            <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden mb-6 border-2 transition-colors"
+                 :class="cameraOk ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'border-gray-600'">
+                
+                <video id="preview" autoplay muted playsinline class="w-full h-full object-cover transform scale-x-[-1]"></video>
+                
+                <div x-show="!cameraOk" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/80 z-10">
+                    <div class="bg-gray-800 p-4 rounded-full mb-3">
+                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <span class="text-gray-300 font-medium">Cámara apagada</span>
+                </div>
+
+                <div class="absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 backdrop-blur-md"
+                     :class="cameraOk ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'">
+                    <div class="w-2 h-2 rounded-full" :class="cameraOk ? 'bg-green-500' : 'bg-red-500'"></div>
+                    <span x-text="cameraOk ? 'Cámara OK' : 'Sin señal'"></span>
+                </div>
+            </div>
+
+            <div class="flex justify-center gap-4">
+                <button @click="startCamera()" 
+                        x-show="!cameraOk"
+                        class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-all flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Activar Cámara
+                </button>
+
+                <a href="{% url 'runner:take' exam.access_code attempt.id %}" 
+                   x-show="cameraOk"
+                   class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-all flex items-center gap-2 shadow-lg shadow-green-900/20 animate-bounce-subtle">
+                    Continuar al Examen
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
+                </a>
+            </div>
+
+            <p class="mt-6 text-xs text-gray-500">
+                Al continuar, aceptas que tu cámara permanezca encendida durante el examen.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function techCheck() {
+            return {
+                cameraOk: false,
+                
+                async startCamera() {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { width: 640, height: 360 }, 
+                            audio: false // Por ahora solo video para no acoplar
+                        });
+                        
+                        const video = document.getElementById('preview');
+                        video.srcObject = stream;
+                        this.cameraOk = true;
+                        
+                    } catch (err) {
+                        console.error("Error de cámara:", err);
+                        alert("No pudimos acceder a tu cámara. Por favor revisa los permisos del navegador.");
+                        this.cameraOk = false;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

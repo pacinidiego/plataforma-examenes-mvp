@@ -75,10 +75,23 @@
                         </div>
                         
                         <div class="flex items-center space-x-2">
+                            
+                            {% if exam.status == 'published' %}
+                            <button x-data="{ copied: false }"
+                                    @click="navigator.clipboard.writeText(window.location.origin + '/room/{{ exam.access_code }}/'); copied = true; setTimeout(() => copied = false, 2000)"
+                                    class="px-2.5 py-1 text-xs font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200 focus:outline-none flex items-center gap-1 relative"
+                                    title="Copiar enlace para alumnos">
+                                <svg x-show="!copied" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                                <svg x-show="copied" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                <span x-text="copied ? '¡Copiado!' : 'Link'"></span>
+                            </button>
+                            {% endif %}
+
                             <a href="{% url 'backoffice:exam_constructor' exam.id %}" 
                                class="px-2.5 py-1 text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none">
                                 Editar
                             </a>
+                            
                             <button hx-post="{% url 'backoffice:exam_delete' exam.pk %}"
                                     hx-confirm="¿Seguro que quieres borrar este examen?"
                                     class="px-2.5 py-1 text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none">

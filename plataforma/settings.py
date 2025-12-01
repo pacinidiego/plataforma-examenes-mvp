@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'tenancy.apps.TenancyConfig', 
     'exams.apps.ExamsConfig',
     'backoffice.apps.BackofficeConfig',
+    'runner',  # <-- LA NUEVA APP DEL SPRINT 2
 ]
 
 MIDDLEWARE = [
