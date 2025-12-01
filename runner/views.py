@@ -7,15 +7,36 @@ from django.utils import timezone  # Necesario para calcular tiempos
 from exams.models import Exam
 from .models import Attempt
 
-# 1. LOBBY: Solo pide los datos
+# 1. LOBBY: Control de acceso y sesión única
 def lobby_view(request, access_code):
     exam = get_object_or_404(Exam, access_code=access_code)
     
     if request.method == "POST":
-        # Crear el intento aquí
         nombre = request.POST.get('full_name')
         legajo = request.POST.get('student_id')
         
+        # --- NUEVA LÓGICA: Verificar duplicados ---
+        existing_attempt = Attempt.objects.filter(
+            exam=exam, 
+            student_legajo=legajo
+        ).first()
+
+        if existing_attempt:
+            # CASO A: Ya terminó el examen
+            if existing_attempt.completed_at:
+                return render(request, 'runner/lobby.html', {
+                    'exam': exam,
+                    'error': f'El alumno con legajo {legajo} ya ha completado este examen.'
+                })
+            
+            # CASO B: Está en curso -> Lo "resucitamos" (Reanudación)
+            # Actualizamos el nombre por si corrigió un typo, pero mantenemos el ID y respuestas
+            existing_attempt.student_name = nombre
+            existing_attempt.save()
+            return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=existing_attempt.id)
+        # ------------------------------------------
+
+        # CASO C: Es nuevo -> Crear intento
         attempt = Attempt.objects.create(
             exam=exam,
             student_name=nombre,
@@ -51,7 +72,7 @@ def exam_runner_view(request, access_code, attempt_id):
     # B. Cargar preguntas (respetando shuffle)
     items = list(exam.items.all())
     if exam.shuffle_items:
-        # Usamos el ID del intento como semilla
+        # Usamos el ID del intento como semilla para consistencia
         random.Random(str(attempt.id)).shuffle(items)
         
     # C. Cálculo de Tiempos (Server-Side Authority)
@@ -112,11 +133,7 @@ def submit_exam_view(request, attempt_id):
     exam = attempt.exam
     total_score = 0
     
-    # Traemos las preguntas y las relaciones (donde está el puntaje)
-    # Nota: Para ser precisos con el puntaje, iteramos sobre los links o items
-    # Aquí simplificamos asumiendo que el 'score' estaba en la lógica previa o items.
-    # Si ExamItemLink tiene 'points', deberíamos usar eso.
-    
+    # Traemos las preguntas
     questions = exam.items.all()
     student_answers = attempt.answers or {}
 
@@ -125,14 +142,12 @@ def submit_exam_view(request, attempt_id):
         student_selected = student_answers.get(str(question.id))
         
         if student_selected:
-            # Buscamos la opción correcta dentro del JSON de opciones de la pregunta
-            # Estructura options: [{'text': 'A', 'correct': True}, ...]
+            # Buscamos la opción correcta
             options = question.options or []
             correct_option = next((opt for opt in options if opt.get('correct') is True), None)
             
             if correct_option and correct_option.get('text') == student_selected:
-                # Sumamos punto (aquí asumimos 1 punto por defecto si no usamos ExamItemLink)
-                # Para ser perfecto con tu modelo ExamItemLink:
+                # Sumamos punto (buscando el puntaje específico en la tabla intermedia)
                 link = exam.examitemlink_set.filter(item=question).first()
                 points = link.points if link else 1.0
                 total_score += points
