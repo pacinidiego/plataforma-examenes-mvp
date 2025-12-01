@@ -7,36 +7,42 @@ from django.utils import timezone
 from exams.models import Exam
 from .models import Attempt
 
-# 1. LOBBY: Lógica de Bloqueo / Reanudación
+# 1. LOBBY: Lógica de Bloqueo y Reanudación
 def lobby_view(request, access_code):
     exam = get_object_or_404(Exam, access_code=access_code)
     
     if request.method == "POST":
-        # Usamos .strip() para quitar espacios accidentales al inicio/final
+        # Limpieza de espacios en blanco
         nombre = request.POST.get('full_name', '').strip()
         legajo = request.POST.get('student_id', '').strip()
         
-        # BUSCAR SI YA EXISTE UN INTENTO
-        existing_attempt = Attempt.objects.filter(
+        # A. REGLA DE ORO: ¿Ya lo terminó? -> BLOQUEAR
+        finished_attempt = Attempt.objects.filter(
             exam=exam, 
-            student_legajo__iexact=legajo  # iexact ignora mayúsculas/minúsculas
+            student_legajo__iexact=legajo,
+            completed_at__isnull=False
         ).first()
 
-        if existing_attempt:
-            # CASO A: YA TERMINÓ -> BLOQUEAR
-            if existing_attempt.completed_at:
-                return render(request, 'runner/lobby.html', {
-                    'exam': exam,
-                    'error': f'Acceso denegado. El legajo "{legajo}" ya completó este examen.'
-                })
+        if finished_attempt:
+            return render(request, 'runner/lobby.html', {
+                'exam': exam,
+                'error': f'Acceso denegado. El alumno con legajo "{legajo}" ya envió este examen.'
+            })
             
-            # CASO B: ESTÁ EN CURSO -> REANUDAR (No crea uno nuevo)
-            # Actualizamos el nombre por si lo escribió mejor esta vez
-            existing_attempt.student_name = nombre
-            existing_attempt.save()
-            return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=existing_attempt.id)
+        # B. ¿Tiene uno abierto? -> RESUCITAR (Reanudar)
+        active_attempt = Attempt.objects.filter(
+            exam=exam, 
+            student_legajo__iexact=legajo,
+            completed_at__isnull=True
+        ).first()
 
-        # CASO C: ES NUEVO -> CREAR
+        if active_attempt:
+            # Actualizamos el nombre por si corrigió un error de tipeo
+            active_attempt.student_name = nombre
+            active_attempt.save()
+            return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=active_attempt.id)
+
+        # C. Es nuevo -> CREAR
         attempt = Attempt.objects.create(
             exam=exam,
             student_name=nombre,
@@ -55,27 +61,37 @@ def tech_check_view(request, access_code, attempt_id):
     return render(request, 'runner/tech_check.html', {'exam': exam, 'attempt': attempt})
 
 
-# 3. RUNNER (Examen)
+# 3. RUNNER (Examen con Lógica de Salto)
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # Si ya terminó, lo echamos fuera a la pantalla final
+    # Seguridad: Si ya terminó, echar fuera
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
+    # Cargar preguntas
     items = list(exam.items.all())
     if exam.shuffle_items:
         random.Random(str(attempt.id)).shuffle(items)
         
-    # Tiempo restante
+    # Control de Tiempo (Server Authority)
     total_duration = exam.get_total_duration_seconds()
     elapsed = (timezone.now() - attempt.start_time).total_seconds()
     remaining = max(0, total_duration - elapsed)
 
     if remaining <= 0:
         return redirect('runner:submit_exam', attempt_id=attempt.id)
-            
+
+    # --- LÓGICA DE SALTO DIRECTO (OPCIÓN B) ---
+    # Calculamos dónde debe arrancar basándonos en lo que ya respondió.
+    saved_answers = attempt.answers or {}
+    initial_step = len(saved_answers)
+    
+    # Si respondió todo pero no entregó, lo dejamos en la última para que vea el botón "Entregar"
+    if initial_step >= len(items):
+        initial_step = len(items) - 1
+
     return render(request, 'runner/exam_runner.html', {
         'exam': exam,
         'attempt': attempt,
@@ -83,10 +99,11 @@ def exam_runner_view(request, access_code, attempt_id):
         'total_questions': len(items),
         'remaining_seconds': int(remaining),
         'time_per_item': exam.time_per_item,
+        'initial_step': initial_step,  # Variable clave para el salto
     })
 
 
-# 4. SAVE ANSWER
+# 4. GUARDAR RESPUESTA (AJAX)
 @require_POST
 def save_answer(request, attempt_id):
     try:
@@ -103,9 +120,11 @@ def save_answer(request, attempt_id):
         return JsonResponse({'status': 'error'}, status=400)
 
 
-# 5. SUBMIT EXAM
+# 5. FINALIZAR Y CALIFICAR
 def submit_exam_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
+    
+    # Evitar doble entrega
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
@@ -117,19 +136,21 @@ def submit_exam_view(request, attempt_id):
     for q in questions:
         selected = answers.get(str(q.id))
         if selected:
+            # Buscar opción correcta
             correct = next((o for o in (q.options or []) if o.get('correct')), None)
             if correct and correct.get('text') == selected:
+                # Buscar puntaje de la pregunta
                 link = exam.examitemlink_set.filter(item=q).first()
                 score += link.points if link else 1.0
 
     attempt.score = score
-    attempt.completed_at = timezone.now() # MARCA DE TIEMPO FINAL
+    attempt.completed_at = timezone.now()
     attempt.save()
 
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
 
-# 6. FINISHED SCREEN
+# 6. PANTALLA FINAL
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/finished.html', {'attempt': attempt})
