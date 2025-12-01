@@ -25,7 +25,7 @@
             <p class="text-3xl font-bold text-blue-900">{{ attempt.score|floatformat:2 }} pts</p>
         </div>
 
-        <a href="/" class="block w-full bg-gray-600 text-white py-2 rounded hover:bg-gray-700 transition">
+        <a href="{% url 'runner:lobby' attempt.exam.access_code %}" class="block w-full bg-gray-600 text-white py-2 rounded hover:bg-gray-700 transition">
             Volver al Inicio
         </a>
     </div>
