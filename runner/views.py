@@ -5,14 +5,13 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from exams.models import Exam
-from .models import Attempt
+from .models import Attempt, AttemptEvent
 
 # 1. LOBBY: Lógica de Bloqueo y Reanudación
 def lobby_view(request, access_code):
     exam = get_object_or_404(Exam, access_code=access_code)
     
     if request.method == "POST":
-        # Limpieza de espacios en blanco
         nombre = request.POST.get('full_name', '').strip()
         legajo = request.POST.get('student_id', '').strip()
         
@@ -29,7 +28,7 @@ def lobby_view(request, access_code):
                 'error': f'Acceso denegado. El alumno con legajo "{legajo}" ya envió este examen.'
             })
             
-        # B. ¿Tiene uno abierto? -> RESUCITAR (Reanudar)
+        # B. ¿Tiene uno abierto? -> RESUCITAR
         active_attempt = Attempt.objects.filter(
             exam=exam, 
             student_legajo__iexact=legajo,
@@ -37,7 +36,6 @@ def lobby_view(request, access_code):
         ).first()
 
         if active_attempt:
-            # Actualizamos el nombre por si corrigió un error de tipeo
             active_attempt.student_name = nombre
             active_attempt.save()
             return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=active_attempt.id)
@@ -61,21 +59,18 @@ def tech_check_view(request, access_code, attempt_id):
     return render(request, 'runner/tech_check.html', {'exam': exam, 'attempt': attempt})
 
 
-# 3. RUNNER (Examen con Lógica de Salto)
+# 3. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # Seguridad: Si ya terminó, echar fuera
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-    # Cargar preguntas
     items = list(exam.items.all())
     if exam.shuffle_items:
         random.Random(str(attempt.id)).shuffle(items)
         
-    # Control de Tiempo (Server Authority)
     total_duration = exam.get_total_duration_seconds()
     elapsed = (timezone.now() - attempt.start_time).total_seconds()
     remaining = max(0, total_duration - elapsed)
@@ -83,12 +78,10 @@ def exam_runner_view(request, access_code, attempt_id):
     if remaining <= 0:
         return redirect('runner:submit_exam', attempt_id=attempt.id)
 
-    # --- LÓGICA DE SALTO DIRECTO (OPCIÓN B) ---
-    # Calculamos dónde debe arrancar basándonos en lo que ya respondió.
+    # Lógica de Salto Directo
     saved_answers = attempt.answers or {}
     initial_step = len(saved_answers)
     
-    # Si respondió todo pero no entregó, lo dejamos en la última para que vea el botón "Entregar"
     if initial_step >= len(items):
         initial_step = len(items) - 1
 
@@ -99,11 +92,11 @@ def exam_runner_view(request, access_code, attempt_id):
         'total_questions': len(items),
         'remaining_seconds': int(remaining),
         'time_per_item': exam.time_per_item,
-        'initial_step': initial_step,  # Variable clave para el salto
+        'initial_step': initial_step,
     })
 
 
-# 4. GUARDAR RESPUESTA (AJAX)
+# 4. GUARDAR RESPUESTA
 @require_POST
 def save_answer(request, attempt_id):
     try:
@@ -120,11 +113,9 @@ def save_answer(request, attempt_id):
         return JsonResponse({'status': 'error'}, status=400)
 
 
-# 5. FINALIZAR Y CALIFICAR
+# 5. FINALIZAR
 def submit_exam_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
-    
-    # Evitar doble entrega
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
@@ -136,10 +127,8 @@ def submit_exam_view(request, attempt_id):
     for q in questions:
         selected = answers.get(str(q.id))
         if selected:
-            # Buscar opción correcta
             correct = next((o for o in (q.options or []) if o.get('correct')), None)
             if correct and correct.get('text') == selected:
-                # Buscar puntaje de la pregunta
                 link = exam.examitemlink_set.filter(item=q).first()
                 score += link.points if link else 1.0
 
@@ -154,3 +143,29 @@ def submit_exam_view(request, attempt_id):
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/finished.html', {'attempt': attempt})
+
+
+# 7. LOG DE SEGURIDAD (NUEVO)
+@require_POST
+def log_event(request, attempt_id):
+    try:
+        attempt = get_object_or_404(Attempt, id=attempt_id)
+        data = json.loads(request.body)
+        
+        event_type = data.get('event_type')
+        metadata = data.get('metadata', {})
+        
+        # Validar que el tipo de evento exista en nuestro modelo
+        valid_types = [t[0] for t in AttemptEvent.EVENT_TYPES]
+        if event_type not in valid_types:
+            return JsonResponse({'status': 'ignored'}, status=200)
+
+        AttemptEvent.objects.create(
+            attempt=attempt,
+            event_type=event_type,
+            metadata=metadata
+        )
+        
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
