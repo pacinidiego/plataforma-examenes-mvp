@@ -119,7 +119,7 @@
     <script>
         function examRunner(attemptId, serverRemainingSeconds, timePerItem, totalQuestions, startStep) {
             return {
-                currentStep: startStep, // <-- Arranca en el paso calculado por el server
+                currentStep: startStep,
                 total: totalQuestions,
                 saveStatus: '', 
                 answers: {},
@@ -131,48 +131,79 @@
                 itemProgress: 100,
 
                 initTimer() {
-                    // Global Timer
+                    // 1. Iniciar Vigilancia (NUEVO)
+                    this.startProctoring();
+
+                    // 2. Timers normales
                     setInterval(() => {
-                        if (this.globalSeconds > 0) {
-                            this.globalSeconds--;
-                        } else {
-                            // Se acabó el tiempo total -> Enviar
-                            window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
-                        }
+                        if (this.globalSeconds > 0) this.globalSeconds--;
+                        else window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
                     }, 1000);
 
-                    // Item Timer
                     setInterval(() => {
                         if (this.currentStep < this.total) { 
                             if (this.itemSeconds > 0) {
                                 this.itemSeconds--;
                                 this.itemProgress = (this.itemSeconds / this.maxItemSeconds) * 100;
                             } else {
-                                // Se acabó tiempo de pregunta -> Siguiente
                                 this.nextQuestion(true); 
                             }
                         }
                     }, 1000);
                 },
 
+                // --- SEGURIDAD (NUEVAS FUNCIONES) ---
+                startProctoring() {
+                    // A. Cambio de pestaña (Minimizar / Otra pestaña)
+                    document.addEventListener("visibilitychange", () => {
+                        if (document.hidden) {
+                            this.logSecurityEvent('FOCUS_LOST', { reason: 'tab_hidden' });
+                            // Opcional: Descomenta para asustar al alumno
+                            // alert("⚠️ ALERTA: No salgas de la pantalla del examen.");
+                        }
+                    });
+
+                    // B. Pérdida de foco (Clic afuera / Alt-Tab)
+                    window.addEventListener("blur", () => {
+                        this.logSecurityEvent('FOCUS_LOST', { reason: 'window_blur' });
+                    });
+                },
+
+                async logSecurityEvent(type, meta = {}) {
+                    console.warn("Evento de Seguridad:", type);
+                    try {
+                        await fetch(`/room/log/${attemptId}/`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': '{{ csrf_token }}'
+                            },
+                            body: JSON.stringify({
+                                event_type: type,
+                                metadata: meta
+                            })
+                        });
+                    } catch (e) {
+                        console.error("Error enviando log:", e);
+                    }
+                },
+                // ------------------------------------
+
                 formatTime(seconds) {
                     const h = Math.floor(seconds / 3600);
                     const m = Math.floor((seconds % 3600) / 60);
                     const s = seconds % 60;
-                    if (h > 0) {
-                        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-                    }
-                    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                    return `${m}:${s.toString().padStart(2, '0')}`;
                 },
 
                 nextQuestion(auto = false) {
                     if (this.currentStep < this.total - 1) {
                         this.currentStep++;
-                        this.itemSeconds = this.maxItemSeconds; // Reset timer pregunta
+                        this.itemSeconds = this.maxItemSeconds;
                         this.itemProgress = 100;
                         document.querySelector('main').scrollTo({top: 0, behavior: 'smooth'});
                     } else if (auto) {
-                        // Si es la última y se acabó el tiempo, enviar
                         window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
                     }
                 },
@@ -180,28 +211,15 @@
                 async saveAnswer(questionId, answer) {
                     this.answers[questionId] = answer;
                     this.saveStatus = 'saving';
-
                     try {
                         const response = await fetch(`/room/save/${attemptId}/`, {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': '{{ csrf_token }}'
-                            },
-                            body: JSON.stringify({
-                                question_id: questionId,
-                                answer: answer
-                            })
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+                            body: JSON.stringify({ question_id: questionId, answer: answer })
                         });
-
-                        if (response.ok) {
-                            setTimeout(() => this.saveStatus = 'saved', 300);
-                        } else {
-                            this.saveStatus = 'error';
-                        }
-                    } catch (error) {
-                        this.saveStatus = 'error';
-                    }
+                        if (response.ok) setTimeout(() => this.saveStatus = 'saved', 300);
+                        else this.saveStatus = 'error';
+                    } catch (error) { this.saveStatus = 'error'; }
                 }
             }
         }
