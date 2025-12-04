@@ -38,6 +38,7 @@ def lobby_view(request, access_code):
         if active_attempt:
             active_attempt.student_name = nombre
             active_attempt.save()
+            # Redirige al Tech Check primero
             return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=active_attempt.id)
 
         # C. Es nuevo -> CREAR
@@ -52,14 +53,54 @@ def lobby_view(request, access_code):
     return render(request, 'runner/lobby.html', {'exam': exam})
 
 
-# 2. TECH CHECK
+# 2. TECH CHECK (Hardware)
 def tech_check_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/tech_check.html', {'exam': exam, 'attempt': attempt})
 
 
-# 3. RUNNER (Examen)
+# 3. BIOMETRIC GATE (Identidad - NUEVO)
+def biometric_gate_view(request, access_code, attempt_id):
+    """
+    PANTALLA INTERMEDIA: Validación de Identidad y Captura de Ancla.
+    """
+    exam = get_object_or_404(Exam, access_code=access_code)
+    attempt = get_object_or_404(Attempt, id=attempt_id)
+    
+    if attempt.completed_at:
+        return redirect('runner:exam_finished', attempt_id=attempt.id)
+
+    return render(request, 'runner/biometric_gate.html', {
+        'exam': exam, 
+        'attempt': attempt
+    })
+
+
+# 4. API REGISTRO BIOMÉTRICO (NUEVO)
+@require_POST
+def register_biometrics(request, attempt_id):
+    """
+    Recibe la foto de referencia del Lobby y la guarda en el Attempt.
+    """
+    try:
+        attempt = get_object_or_404(Attempt, id=attempt_id)
+        data = json.loads(request.body)
+        
+        # Guardamos las imágenes en Base64
+        if 'reference_face' in data:
+            attempt.reference_face_url = data['reference_face']
+        
+        if 'photo_id' in data:
+            attempt.photo_id_url = data['photo_id']
+            
+        attempt.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+# 5. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -96,7 +137,7 @@ def exam_runner_view(request, access_code, attempt_id):
     })
 
 
-# 4. GUARDAR RESPUESTA
+# 6. GUARDAR RESPUESTA
 @require_POST
 def save_answer(request, attempt_id):
     try:
@@ -113,7 +154,7 @@ def save_answer(request, attempt_id):
         return JsonResponse({'status': 'error'}, status=400)
 
 
-# 5. FINALIZAR
+# 7. FINALIZAR
 def submit_exam_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     if attempt.completed_at:
@@ -139,13 +180,13 @@ def submit_exam_view(request, attempt_id):
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
 
-# 6. PANTALLA FINAL
+# 8. PANTALLA FINAL
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/finished.html', {'attempt': attempt})
 
 
-# 7. LOG DE SEGURIDAD (NUEVO)
+# 9. LOG DE SEGURIDAD
 @require_POST
 def log_event(request, attempt_id):
     try:
