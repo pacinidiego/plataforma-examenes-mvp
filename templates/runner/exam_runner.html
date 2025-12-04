@@ -313,5 +313,110 @@
             }
         }
     </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<div x-data="proctoringSystem" class="hidden"></div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('proctoringSystem', () => ({
+        anchorDescriptor: null,
+        status: 'active',
+        
+        async init() {
+            console.log("Iniciando Proctoring Continuo...");
+            
+            // 1. Recuperar el Ancla del Gate
+            const stored = localStorage.getItem('exam_anchor_descriptor');
+            if (!stored) {
+                console.warn("ALERTA: No hay ancla biométrica. El alumno saltó el Gate.");
+                this.logEvent('NO_FACE', { reason: 'missing_anchor' });
+                return; 
+            }
+            this.anchorDescriptor = new Float32Array(JSON.parse(stored));
+
+            // 2. Cargar Modelos
+            const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+            ]);
+
+            // 3. Iniciar Monitoreo
+            this.startMonitoring();
+        },
+
+        async startMonitoring() {
+            // Video en memoria (invisible)
+            const video = document.createElement('video');
+            video.width = 320; 
+            video.height = 240;
+            video.autoplay = true;
+            video.muted = true;
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    // Chequeo cada 5 segundos
+                    setInterval(() => this.checkIdentity(video), 5000);
+                };
+            } catch (e) {
+                console.error("Error cámara proctoring:", e);
+                this.logEvent('NO_FACE', { reason: 'camera_error' });
+            }
+        },
+
+        async checkIdentity(video) {
+            if (document.hidden) return; // Ya se maneja con FOCUS_LOST
+
+            // Detección
+            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+            const detection = await faceapi.detectSingleFace(video, options)
+                                           .withFaceLandmarks()
+                                           .withFaceDescriptor();
+
+            if (!detection) {
+                console.warn("Proctoring: No Face");
+                this.logEvent('NO_FACE', { confidence: 0 });
+                return;
+            }
+
+            // Comparación de Identidad
+            const distance = faceapi.euclideanDistance(this.anchorDescriptor, detection.descriptor);
+            
+            // Umbral 0.6
+            if (distance > 0.6) {
+                console.warn("Proctoring: IDENTITY MISMATCH. Distancia:", distance);
+                this.logEvent('IDENTITY_MISMATCH', { distance: distance });
+            } else {
+                // Identidad OK
+                // console.log("Proctoring: OK", distance);
+            }
+        },
+
+        async logEvent(type, meta) {
+            // Enviamos al backend (usando el CSRF del form principal si existe, o cookie)
+            const token = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+            if(!token) return;
+
+            await fetch("{% url 'runner:log_event' attempt.id %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': token
+                },
+                body: JSON.stringify({
+                    event_type: type,
+                    metadata: meta
+                })
+            });
+        }
+    }));
+});
+</script>
 </body>
 </html>
