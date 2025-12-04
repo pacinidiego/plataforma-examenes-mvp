@@ -6,7 +6,7 @@
     <title>Verificación Técnica</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/vision_bundle.js" crossorigin="anonymous"></script>
+    
     <style>
         [x-cloak] { display: none !important; }
         .bg-exam { background-color: #f3f4f6; }
@@ -41,17 +41,25 @@
                             <p class="text-xs text-gray-500 mt-2">Esto puede tomar unos segundos.</p>
                         </div>
 
-                        <div x-show="faceStatus === 'error'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-30">
-                            <svg class="w-12 h-12 text-red-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <p class="text-lg font-bold">Error de Sistema</p>
-                            <p class="text-sm opacity-70 text-center px-6">No pudimos cargar el detector de rostros. Revisa tu conexión o intenta en otro navegador.</p>
-                            <button @click="location.reload()" class="mt-4 px-4 py-2 bg-white text-gray-900 rounded-lg text-xs font-bold hover:bg-gray-100">Recargar Página</button>
+                        <div x-show="faceStatus === 'error'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-30 px-6 text-center">
+                            <svg class="w-12 h-12 text-red-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            <p class="text-lg font-bold">La IA no respondió</p>
+                            <p class="text-xs opacity-70 mb-4">Tu conexión o dispositivo no cargó el modelo de rostros a tiempo.</p>
+                            
+                            <div class="flex gap-2">
+                                <button @click="location.reload()" class="px-4 py-2 bg-white text-gray-900 rounded-lg text-xs font-bold hover:bg-gray-100">
+                                    Reintentar
+                                </button>
+                                <button @click="forceBypass()" class="px-4 py-2 border border-white/20 text-white rounded-lg text-xs hover:bg-white/10">
+                                    Continuar sin IA
+                                </button>
+                            </div>
                         </div>
 
-                        <div x-show="faceStatus === 'no_face'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/80 z-20 transition-opacity duration-300">
-                            <svg class="w-12 h-12 mb-3 text-orange-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <p class="text-lg font-bold">No detectamos tu rostro</p>
-                            <p class="text-sm opacity-80 text-center px-4">Ubícate frente a la cámara y asegúrate de tener buena luz.</p>
+                        <div x-show="faceStatus === 'no_face'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/90 z-20 transition-opacity duration-300">
+                            <svg class="w-12 h-12 mb-3 text-orange-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
+                            <p class="text-lg font-bold">Rostro No Detectado</p>
+                            <p class="text-sm opacity-80 text-center px-4">Destapa la cámara y muestra tu cara.</p>
                         </div>
 
                         <div x-show="faceStatus === 'ok'" class="absolute top-4 left-4 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-black/40 text-white flex items-center gap-2 z-30 border border-white/10 transition-all">
@@ -92,7 +100,7 @@
                             <div class="w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 mr-4 transition-colors"
                                  :class="checks.camera ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'">
                                 <svg x-show="checks.camera" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                <svg x-show="!checks.camera" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <svg x-show="!checks.camera" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
                             </div>
                             <div class="flex-1">
                                 <h4 class="font-bold text-gray-900 flex items-center justify-between">
@@ -102,7 +110,7 @@
                                           x-text="checks.camera ? 'OK' : (faceStatus === 'loading' ? 'Cargando...' : 'Error')"></span>
                                 </h4>
                                 <p class="text-sm text-gray-500 leading-snug mt-1" 
-                                   x-text="checks.camera ? 'Rostro detectado correctamente.' : 'Debes mostrar tu rostro para continuar.'"></p>
+                                   x-text="checks.camera ? 'Rostro validado.' : 'Debes mostrar tu rostro.'"></p>
                             </div>
                         </div>
 
@@ -123,8 +131,7 @@
                              :class="checks.network ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
                             <div class="w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 mr-4 transition-colors"
                                  :class="checks.network ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
-                                <svg x-show="checks.network" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                <svg x-show="!checks.network" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
+                                <svg x-show="checks.network" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
                             </div>
                              <div class="flex-1">
                                 <h4 class="font-bold text-gray-900 flex items-center justify-between">Conexión <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.network ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.network ? 'OK' : 'Pendiente'"></span></h4>
@@ -146,12 +153,17 @@
         </main>
     </div>
 
-    <script>
-        function techCheck() {
+    <script type="module">
+        import { FilesetResolver, FaceDetector } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/+esm";
+
+        // Función Global de Alpine
+        window.techCheck = function() {
             return {
                 checks: { camera: false, audio: false, network: false },
                 audioLevel: 0,
                 faceStatus: 'loading',
+                cameras: [],
+                selectedCamera: '',
                 faceDetector: null,
                 
                 get allChecksPassed() {
@@ -160,13 +172,26 @@
 
                 init() {
                     if(navigator.onLine) { setTimeout(() => this.checks.network = true, 1000); }
-                    window.addEventListener('online', () => this.checks.network = true);
-                    window.addEventListener('offline', () => this.checks.network = false);
+                    
+                    // Temporizador de Seguridad (Timeout 10s)
+                    setTimeout(() => {
+                        if (this.faceStatus === 'loading') {
+                            console.error("Timeout de IA");
+                            this.faceStatus = 'error';
+                        }
+                    }, 10000);
 
-                    // 1. ARRANCAR TODO
                     this.initAI().then(() => {
-                        this.startCamera();
+                        this.startCamera().then(() => {
+                            this.listCameras();
+                        });
                     });
+                },
+
+                // Bypass de emergencia (si falla mucho la IA)
+                forceBypass() {
+                    this.checks.camera = true;
+                    this.faceStatus = 'ok';
                 },
 
                 async initAI() {
@@ -177,12 +202,11 @@
                         this.faceDetector = await FaceDetector.createFromOptions(vision, {
                             baseOptions: {
                                 modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite`,
-                                delegate: "CPU" // <--- ¡CAMBIO CLAVE! Usar CPU para máxima compatibilidad
+                                delegate: "CPU" // CPU para máxima compatibilidad
                             },
                             runningMode: "VIDEO",
                             minDetectionConfidence: 0.5
                         });
-                        // Arrancamos loop aunque no haya video aun
                         this.detectLoop();
                     } catch(e) { 
                         console.error("Error cargando IA:", e);
@@ -205,19 +229,34 @@
                                 this.checks.camera = false;
                             }
                         } catch (e) {
-                            // Errores de frame sueltos se ignoran
+                            // Ignorar frames rotos
                         }
                     }
-                    // Loop infinito
                     setTimeout(() => requestAnimationFrame(() => this.detectLoop()), 200);
                 },
 
-                async startCamera() {
+                async listCameras() {
                     try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ 
-                            audio: true, 
-                            video: { width: 640, height: 480 } // Resolución baja para velocidad
-                        });
+                        const devices = await navigator.mediaDevices.enumerateDevices();
+                        this.cameras = devices.filter(d => d.kind === 'videoinput');
+                        if (!this.selectedCamera && this.cameras.length > 0) {
+                            this.selectedCamera = this.cameras[0].deviceId;
+                        }
+                    } catch (e) { console.error(e); }
+                },
+
+                async startCamera() {
+                    if (this.$refs.video.srcObject) {
+                        this.$refs.video.srcObject.getTracks().forEach(track => track.stop());
+                    }
+                    
+                    try {
+                        const constraints = {
+                            audio: true,
+                            video: this.selectedCamera ? { deviceId: { exact: this.selectedCamera }, width: {ideal: 640}, height: {ideal: 480} } : { width: {ideal: 640}, height: {ideal: 480} }
+                        };
+
+                        const stream = await navigator.mediaDevices.getUserMedia(constraints);
                         this.$refs.video.srcObject = stream;
                         
                         // Audio setup
@@ -242,8 +281,7 @@
 
                     } catch (err) {
                         console.error("Error acceso cámara:", err);
-                        this.faceStatus = 'error';
-                        alert("Error de acceso a cámara/micrófono.");
+                        alert("Error de acceso a cámara. Revisa permisos.");
                     }
                 }
             }
