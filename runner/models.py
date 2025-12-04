@@ -20,6 +20,11 @@ class Attempt(models.Model):
     student_name = models.CharField(max_length=255, blank=True, verbose_name="Nombre del Alumno")
     student_legajo = models.CharField(max_length=100, blank=True, verbose_name="Legajo/DNI")
     
+    # BIOMETRÍA Y SEGURIDAD (NUEVO)
+    # Guardamos la foto base para auditoría manual
+    photo_id_url = models.TextField(null=True, blank=True, verbose_name="Foto DNI (Base64)")
+    reference_face_url = models.TextField(null=True, blank=True, verbose_name="Foto Cara Ref (Base64)")
+    
     # Tiempos
     start_time = models.DateTimeField(auto_now_add=True, verbose_name="Inicio")
     end_time = models.DateTimeField(null=True, blank=True, verbose_name="Fin")
@@ -58,6 +63,7 @@ class AttemptEvent(models.Model):
         ('MULTI_FACE', 'Múltiples rostros detectados'),
         ('NO_FACE', 'Rostro no detectado'),
         ('AUDIO_SPIKE', 'Sonido/Voz detectada'),
+        ('IDENTITY_MISMATCH', 'Suplantación de Identidad (Cara incorrecta)'), # NUEVO
     ]
     event_type = models.CharField(max_length=50, choices=EVENT_TYPES)
     
