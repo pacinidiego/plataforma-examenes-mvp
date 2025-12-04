@@ -6,11 +6,10 @@
     <title>Verificación Técnica</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
     <style>
         [x-cloak] { display: none !important; }
-        .bg-exam {
-            background-color: #f3f4f6;
-        }
+        .bg-exam { background-color: #f3f4f6; }
     </style>
 </head>
 <body class="h-full flex items-center justify-center bg-exam p-4" x-data="techCheck()">
@@ -24,7 +23,7 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-xl text-gray-800">Verificación de Sistema</h1>
-                    <p class="text-sm text-gray-500">Prueba de hardware y entorno.</p>
+                    <p class="text-sm text-gray-500">Prueba de hardware e identidad.</p>
                 </div>
             </div>
         </header>
@@ -36,16 +35,10 @@
                     <div class="relative bg-gray-900 rounded-2xl overflow-hidden aspect-video shadow-sm border border-gray-300">
                         <video x-ref="video" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1]"></video>
                         
-                        <div class="absolute inset-0 pointer-events-none shadow-[inset_0_0_80px_rgba(0,0,0,0.3)] rounded-2xl z-10"></div>
-
-                        <div x-show="cameraStatus === 'dark'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/80 z-20">
-                            <svg class="w-12 h-12 mb-3 text-orange-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                            <p class="text-lg font-bold">Imagen demasiado oscura</p>
-                            <p class="text-sm opacity-80">Destapa la cámara o enciende una luz.</p>
-                        </div>
-
-                        <div x-show="cameraStatus === 'error'" class="absolute inset-0 flex flex-col items-center justify-center text-white/50 bg-gray-800/80 z-20">
-                            <p class="text-sm font-medium">No se detecta cámara</p>
+                        <div x-show="faceStatus === 'no_face'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/80 z-20 transition-opacity duration-300">
+                            <svg class="w-12 h-12 mb-3 text-orange-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <p class="text-lg font-bold">No detectamos tu rostro</p>
+                            <p class="text-sm opacity-80 text-center px-4">Ubícate frente a la cámara y asegúrate de tener buena luz.</p>
                         </div>
 
                         <div class="absolute top-4 left-4 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-black/40 text-white flex items-center gap-2 z-30 border border-white/10">
@@ -53,7 +46,7 @@
                               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" x-show="checks.camera"></span>
                               <span class="relative inline-flex rounded-full h-2 w-2" :class="checks.camera ? 'bg-green-500' : 'bg-red-500'"></span>
                             </span>
-                            <span x-text="checks.camera ? 'Imagen OK' : (cameraStatus === 'dark' ? 'Cámara Tapada' : 'Sin Señal')"></span>
+                            <span x-text="checks.camera ? 'Rostro Identificado' : 'Buscando Rostro...'"></span>
                         </div>
                     </div>
 
@@ -85,7 +78,7 @@
                              :class="checks.camera ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
                             <div class="w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 mr-4 transition-colors"
                                  :class="checks.camera ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'">
-                                <svg x-show="checks.camera" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                <svg x-show="checks.camera" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 <svg x-show="!checks.camera" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
                             </div>
                             <div class="flex-1">
@@ -93,10 +86,10 @@
                                     Cámara Web
                                     <span class="text-xs font-medium px-2 py-0.5 rounded-full" 
                                           :class="checks.camera ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'" 
-                                          x-text="checks.camera ? 'OK' : (cameraStatus === 'dark' ? 'Tapada' : 'Error')"></span>
+                                          x-text="checks.camera ? 'OK' : 'Error'"></span>
                                 </h4>
                                 <p class="text-sm text-gray-500 leading-snug mt-1" 
-                                   x-text="checks.camera ? 'Imagen clara y visible.' : (cameraStatus === 'dark' ? 'La imagen está muy oscura. Destapa la cámara.' : 'Verifica los permisos.')"></p>
+                                   x-text="checks.camera ? 'Rostro detectado correctamente.' : 'Debes mostrar tu rostro para continuar.'"></p>
                             </div>
                         </div>
 
@@ -104,7 +97,7 @@
                              :class="checks.audio ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
                             <div class="w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 mr-4 transition-colors"
                                  :class="checks.audio ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
-                                <svg x-show="checks.audio" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                <svg x-show="checks.audio" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
                                 <svg x-show="!checks.audio" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
                             </div>
                              <div class="flex-1">
@@ -117,8 +110,7 @@
                              :class="checks.network ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
                             <div class="w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 mr-4 transition-colors"
                                  :class="checks.network ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
-                                <svg x-show="checks.network" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                <svg x-show="!checks.network" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
+                                <svg x-show="checks.network" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
                             </div>
                              <div class="flex-1">
                                 <h4 class="font-bold text-gray-900 flex items-center justify-between">Conexión <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.network ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.network ? 'OK' : 'Pendiente'"></span></h4>
@@ -145,10 +137,10 @@
             return {
                 checks: { camera: false, audio: false, network: false },
                 audioLevel: 0,
-                cameraStatus: 'checking', // checking, ok, dark, error
+                faceStatus: 'checking', // checking, ok, no_face
                 cameras: [],
                 selectedCamera: '',
-                brightnessCheckInterval: null,
+                faceDetector: null,
                 
                 get allChecksPassed() {
                     return this.checks.camera && this.checks.audio && this.checks.network;
@@ -161,7 +153,7 @@
 
                     this.startCamera().then(() => {
                         this.listCameras();
-                        this.startBrightnessCheck(); // INICIAR EL OJO DE LUZ
+                        this.initAI(); // Arrancamos la IA en lugar del brillo
                     });
                 },
 
@@ -180,12 +172,12 @@
                         this.$refs.video.srcObject.getTracks().forEach(track => track.stop());
                     }
                     this.checks.camera = false;
-                    this.cameraStatus = 'checking';
+                    this.faceStatus = 'checking';
 
                     try {
                         const constraints = {
                             audio: true,
-                            video: this.selectedCamera ? { deviceId: { exact: this.selectedCamera } } : true
+                            video: this.selectedCamera ? { deviceId: { exact: this.selectedCamera }, width: {ideal: 640}, height: {ideal: 480} } : { width: {ideal: 640}, height: {ideal: 480} }
                         };
 
                         const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -213,52 +205,46 @@
 
                     } catch (err) {
                         console.error("Error acceso cámara:", err);
-                        this.cameraStatus = 'error';
+                        this.faceStatus = 'error';
                         alert("Error de acceso a cámara/micrófono.");
                     }
                 },
 
-                // --- NUEVO: DETECTOR DE BRILLO ---
-                startBrightnessCheck() {
-                    if (this.brightnessCheckInterval) clearInterval(this.brightnessCheckInterval);
-                    
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
+                // --- IA DE ROSTROS ---
+                async initAI() {
+                    try {
+                        const vision = await FilesetResolver.forVisionTasks(
+                            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+                        );
+                        this.faceDetector = await FaceDetector.createFromOptions(vision, {
+                            baseOptions: {
+                                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite`,
+                                delegate: "GPU"
+                            },
+                            runningMode: "VIDEO",
+                            minDetectionConfidence: 0.5
+                        });
+                        this.detectLoop();
+                    } catch(e) { console.error("Error IA", e); }
+                },
 
-                    this.brightnessCheckInterval = setInterval(() => {
-                        const video = this.$refs.video;
+                async detectLoop() {
+                    const video = this.$refs.video;
+                    if (video.videoWidth > 0 && this.faceDetector) {
+                        const startTimeMs = performance.now();
+                        const result = this.faceDetector.detectForVideo(video, startTimeMs);
                         
-                        // Solo procesar si el video está corriendo
-                        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                            canvas.width = 50; // Resolución baja para velocidad
-                            canvas.height = 50;
-                            context.drawImage(video, 0, 0, 50, 50);
-                            
-                            const frame = context.getImageData(0, 0, 50, 50);
-                            const data = frame.data;
-                            let r, g, b, avg;
-                            let colorSum = 0;
-
-                            for (let i = 0; i < data.length; i += 4) {
-                                r = data[i];
-                                g = data[i + 1];
-                                b = data[i + 2];
-                                avg = Math.floor((r + g + b) / 3);
-                                colorSum += avg;
-                            }
-
-                            const brightness = Math.floor(colorSum / (50 * 50));
-
-                            // UMBRAL: Si el brillo es menor a 15 (sobre 255), está tapada
-                            if (brightness < 15) {
-                                this.cameraStatus = 'dark';
-                                this.checks.camera = false; // BLOQUEAR EL PASO
-                            } else {
-                                this.cameraStatus = 'ok';
-                                this.checks.camera = true; // HABILITAR
-                            }
+                        // Si hay al menos 1 cara detectada -> VALIDADO
+                        if (result.detections.length > 0) {
+                            this.faceStatus = 'ok';
+                            this.checks.camera = true;
+                        } else {
+                            // Si no hay cara -> INVALIDADO
+                            this.faceStatus = 'no_face';
+                            this.checks.camera = false;
                         }
-                    }, 1000); // Chequear cada 1 segundo
+                    }
+                    setTimeout(() => requestAnimationFrame(() => this.detectLoop()), 500); // 2 veces por seg
                 }
             }
         }
