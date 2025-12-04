@@ -7,8 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/vision_bundle.js" crossorigin="anonymous"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+
     <style>
         [x-cloak] { display: none !important; }
         .bg-exam { background-color: #f3f4f6; }
@@ -43,25 +44,26 @@
                         </div>
 
                         <div x-show="faceStatus === 'error'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-30 px-6 text-center">
-                            <p class="text-lg font-bold text-red-400">Error de IA</p>
-                            <p class="text-xs opacity-70 mb-4">No se pudo cargar el detector.</p>
-                            <button @click="forceBypass()" class="px-4 py-2 border border-white/20 text-white rounded-lg text-xs hover:bg-white/10">
-                                Continuar sin IA
-                            </button>
+                            <p class="text-lg font-bold text-red-400">La IA no responde</p>
+                            <p class="text-xs opacity-70 mb-4">Es posible que tu conexión sea lenta o bloquee el modelo.</p>
+                            <div class="flex gap-2">
+                                <button @click="location.reload()" class="px-3 py-2 bg-white text-gray-900 rounded-lg text-xs font-bold hover:bg-gray-100">Reintentar</button>
+                                <button @click="forceBypass()" class="px-3 py-2 border border-white/20 text-white rounded-lg text-xs hover:bg-white/10">Continuar sin IA</button>
+                            </div>
                         </div>
 
                         <div x-show="faceStatus === 'no_face'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/90 z-20">
                             <svg class="w-12 h-12 mb-3 text-orange-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
-                            <p class="text-lg font-bold">Rostro No Detectado</p>
-                            <p class="text-sm opacity-80 text-center px-4">Destapa la cámara.</p>
+                            <p class="text-lg font-bold">No vemos tu cara</p>
+                            <p class="text-sm opacity-80 text-center px-4">Destapa la cámara o mejora la luz.</p>
                         </div>
 
-                        <div x-show="faceStatus === 'ok'" class="absolute top-4 left-4 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-black/40 text-white flex items-center gap-2 z-30 border border-white/10">
+                        <div x-show="checks.camera" class="absolute top-4 left-4 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-black/40 text-white flex items-center gap-2 z-30 border border-white/10">
                             <span class="relative flex h-2 w-2">
                               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                               <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                             </span>
-                            <span>Rostro Identificado</span>
+                            <span x-text="faceStatus === 'ok' ? 'Rostro Identificado' : 'Cámara Conectada'"></span>
                         </div>
                     </div>
 
@@ -104,7 +106,7 @@
                                           x-text="checks.camera ? 'OK' : (faceStatus === 'loading' ? 'Cargando...' : 'Error')"></span>
                                 </h4>
                                 <p class="text-sm text-gray-500 leading-snug mt-1" 
-                                   x-text="checks.camera ? 'Rostro detectado correctamente.' : 'Debes mostrar tu rostro para continuar.'"></p>
+                                   x-text="checks.camera ? 'Dispositivo listo.' : 'Esperando imagen válida...'"></p>
                             </div>
                         </div>
 
@@ -153,7 +155,7 @@
                 checks: { camera: false, audio: false, network: false },
                 audioLevel: 0,
                 faceStatus: 'loading',
-                faceDetector: null,
+                model: null,
                 
                 get allChecksPassed() {
                     return this.checks.camera && this.checks.audio && this.checks.network;
@@ -164,96 +166,90 @@
                     window.addEventListener('online', () => this.checks.network = true);
                     window.addEventListener('offline', () => this.checks.network = false);
 
-                    // Timeout de seguridad por si la IA nunca carga (10s)
+                    // Timeout de seguridad: Si en 10 seg no carga la IA, muestra error
                     setTimeout(() => {
-                        if(this.faceStatus === 'loading') this.faceStatus = 'error';
+                        if (this.faceStatus === 'loading') this.faceStatus = 'error';
                     }, 10000);
 
-                    this.startCamera().then(() => {
-                        this.initAI();
-                    });
+                    this.loadModel();
                 },
 
-                // Bypass de emergencia
-                forceBypass() {
-                    this.checks.camera = true;
-                    this.faceStatus = 'ok';
-                },
-
-                async initAI() {
+                async loadModel() {
                     try {
-                        // Accedemos a las clases globales cargadas por el script del <head>
-                        const vision = await mediapipe.tasks.vision.FilesetResolver.forVisionTasks(
-                            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
-                        );
-                        this.faceDetector = await mediapipe.tasks.vision.FaceDetector.createFromOptions(vision, {
-                            baseOptions: {
-                                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite`,
-                                delegate: "CPU" // CPU para compatibilidad total
-                            },
-                            runningMode: "VIDEO",
-                            minDetectionConfidence: 0.5
-                        });
-                        this.detectLoop();
-                    } catch(e) { 
-                        console.error("Error cargando IA:", e);
-                        this.faceStatus = 'error'; 
+                        // Cargamos BlazeFace (muy rápido)
+                        this.model = await blazeface.load();
+                        this.startCamera();
+                    } catch (e) {
+                        console.error("Error cargando BlazeFace:", e);
+                        this.faceStatus = 'error';
                     }
                 },
 
-                async detectLoop() {
+                // Bypass manual si la IA falla
+                forceBypass() {
+                    this.checks.camera = true;
+                    this.faceStatus = 'bypassed'; // Estado especial
+                },
+
+                async startCamera() {
                     const video = this.$refs.video;
-                    // Asegurar que el detector y video existen
-                    if (video && video.videoWidth > 0 && this.faceDetector) {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 640, height: 480 } });
+                        video.srcObject = stream;
+                        
+                        // Esperar a que el video cargue datos
+                        video.onloadeddata = () => {
+                            this.detectFaces(); // Arrancar loop de detección
+                            this.setupAudio(stream);
+                        };
+
+                    } catch (err) {
+                        console.error("Error cámara:", err);
+                        alert("No pudimos acceder a tu cámara.");
+                        this.faceStatus = 'error';
+                    }
+                },
+
+                async detectFaces() {
+                    const video = this.$refs.video;
+                    // Solo detectar si tenemos modelo y video
+                    if (this.model && video.readyState === 4) {
                         try {
-                            const startTimeMs = performance.now();
-                            const result = this.faceDetector.detectForVideo(video, startTimeMs);
+                            const predictions = await this.model.estimateFaces(video, false);
                             
-                            if (result.detections.length > 0) {
+                            if (predictions.length > 0) {
                                 this.faceStatus = 'ok';
                                 this.checks.camera = true;
                             } else {
                                 this.faceStatus = 'no_face';
                                 this.checks.camera = false;
                             }
-                        } catch (e) {
-                            // Ignorar errores de frames sueltos
-                        }
+                        } catch (e) { console.error(e); }
                     }
-                    // Bucle continuo
-                    requestAnimationFrame(() => this.detectLoop());
+                    // Loop (BlazeFace es muy rápido, podemos ir a 100ms)
+                    if (this.faceStatus !== 'error' && this.faceStatus !== 'bypassed') {
+                        setTimeout(() => requestAnimationFrame(() => this.detectFaces()), 100);
+                    }
                 },
 
-                async startCamera() {
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 640, height: 480 } });
-                        this.$refs.video.srcObject = stream;
-                        
-                        // Audio
-                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                        const analyser = audioContext.createAnalyser();
-                        const microphone = audioContext.createMediaStreamSource(stream);
-                        const javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
-                        analyser.smoothingTimeConstant = 0.8;
-                        analyser.fftSize = 1024;
-                        microphone.connect(analyser);
-                        analyser.connect(javascriptNode);
-                        javascriptNode.connect(audioContext.destination);
-
-                        javascriptNode.onaudioprocess = () => {
-                            const array = new Uint8Array(analyser.frequencyBinCount);
-                            analyser.getByteFrequencyData(array);
-                            let values = 0;
-                            for (let i = 0; i < array.length; i++) values += array[i];
-                            this.audioLevel = Math.min(100, Math.round((values / array.length) * 2));
-                            if ((values / array.length) > 5 && !this.checks.audio) this.checks.audio = true;
-                        }
-
-                    } catch (err) {
-                        console.error("Error cámara:", err);
-                        this.faceStatus = 'error';
-                        alert("No pudimos acceder a tu cámara.");
-                    }
+                setupAudio(stream) {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const analyser = audioContext.createAnalyser();
+                    const microphone = audioContext.createMediaStreamSource(stream);
+                    const scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+                    analyser.smoothingTimeConstant = 0.8;
+                    analyser.fftSize = 1024;
+                    microphone.connect(analyser);
+                    analyser.connect(scriptProcessor);
+                    scriptProcessor.connect(audioContext.destination);
+                    scriptProcessor.onaudioprocess = () => {
+                        const array = new Uint8Array(analyser.frequencyBinCount);
+                        analyser.getByteFrequencyData(array);
+                        let values = 0;
+                        for (let i = 0; i < array.length; i++) values += array[i];
+                        this.audioLevel = Math.min(100, Math.round((values / array.length) * 2));
+                        if ((values / array.length) > 5 && !this.checks.audio) this.checks.audio = true;
+                    };
                 }
             }
         }
