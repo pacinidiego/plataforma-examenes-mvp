@@ -6,13 +6,9 @@
     <title>Verificación Técnica</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    
-    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-
     <style>
         [x-cloak] { display: none !important; }
         .bg-exam { background-color: #f3f4f6; }
-        /* Animación suave para las barras */
         .bar-transition { transition: all 0.2s ease; }
     </style>
 </head>
@@ -26,8 +22,8 @@
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
                 <div>
-                    <h1 class="font-bold text-xl text-gray-800">Verificación de Identidad</h1>
-                    <p class="text-sm text-gray-500">El sistema debe validar tu presencia.</p>
+                    <h1 class="font-bold text-xl text-gray-800">Chequeo de Hardware</h1>
+                    <p class="text-sm text-gray-500">Paso 1: Validación de dispositivos.</p>
                 </div>
             </div>
         </header>
@@ -38,34 +34,6 @@
                 <div class="lg:col-span-7 flex flex-col gap-5">
                     <div class="relative bg-gray-900 rounded-2xl overflow-hidden aspect-video shadow-sm border border-gray-300">
                         <video id="videoInput" x-ref="video" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1]"></video>
-                        
-                        <div x-show="faceStatus === 'loading'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-30">
-                            <svg class="w-10 h-10 animate-spin text-indigo-500 mb-3" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            <p class="text-sm font-medium animate-pulse">Cargando Inteligencia Artificial...</p>
-                        </div>
-
-                        <div x-show="faceStatus === 'error'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-30 px-6 text-center">
-                            <svg class="w-12 h-12 text-red-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                            <p class="text-lg font-bold text-red-400">Fallo de Seguridad</p>
-                            <p class="text-xs opacity-70 mb-4">No se pudo iniciar el sistema de detección. Verifica tu conexión.</p>
-                            <button @click="location.reload()" class="px-4 py-2 bg-white text-gray-900 rounded-lg text-xs font-bold hover:bg-gray-100">
-                                Reintentar
-                            </button>
-                        </div>
-
-                        <div x-show="faceStatus === 'no_face'" class="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/95 z-20">
-                            <svg class="w-16 h-16 mb-4 text-red-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <p class="text-xl font-bold">Rostro No Detectado</p>
-                            <p class="text-sm opacity-80 text-center px-4 mt-2">Por seguridad, debes permanecer frente a la cámara.</p>
-                        </div>
-
-                        <div x-show="faceStatus === 'ok'" class="absolute top-4 left-4 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-black/40 text-white flex items-center gap-2 z-30 border border-white/10 transition-all">
-                            <span class="relative flex h-2 w-2">
-                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                              <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                            </span>
-                            <span>Validado por IA</span>
-                        </div>
                     </div>
 
                     <div class="bg-gray-50 pl-4 pr-5 py-3 rounded-xl border border-gray-200 flex items-center gap-4">
@@ -89,60 +57,37 @@
                 </div>
 
                 <div class="lg:col-span-5 flex flex-col h-full justify-center py-4 bg-gray-50/50 rounded-2xl px-6 border border-gray-100">
-                    <h3 class="text-base font-bold text-gray-800 mb-6 uppercase tracking-wider">Requisitos de Seguridad</h3>
+                    <h3 class="text-base font-bold text-gray-800 mb-6 uppercase tracking-wider">Estado del Equipo</h3>
                     <div class="space-y-3 flex-1">
-
-                        <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
-                             :class="faceStatus === 'ok' ? 'border-green-500 shadow-green-50' : 'border-red-100 bg-red-50'">
-                            <div class="w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 mr-4 transition-colors"
-                                 :class="faceStatus === 'ok' ? 'bg-green-100 text-green-600' : 'bg-red-200 text-red-600'">
-                                <svg x-show="faceStatus === 'ok'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                <svg x-show="faceStatus !== 'ok'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
-                            </div>
-                            <div class="flex-1">
-                                <h4 class="font-bold text-gray-900 flex items-center justify-between">
-                                    Reconocimiento Facial
-                                    <span class="text-xs font-medium px-2 py-0.5 rounded-full" 
-                                          :class="faceStatus === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-200 text-red-700'" 
-                                          x-text="faceStatus === 'ok' ? 'OK' : 'Error'"></span>
-                                </h4>
-                                <p class="text-sm text-gray-500 leading-snug mt-1" 
-                                   x-text="faceStatus === 'ok' ? 'Identidad validada.' : 'No se detecta un rostro humano válido.'"></p>
-                            </div>
-                        </div>
-
                         <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
                              :class="checks.audio ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
-                            <div class="w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 mr-4 transition-colors" :class="checks.audio ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
-                            </div>
                              <div class="flex-1">
                                 <h4 class="font-bold text-gray-900 flex items-center justify-between">Micrófono <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.audio ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.audio ? 'OK' : 'Pendiente'"></span></h4>
-                                <p class="text-sm text-gray-500 mt-1" x-text="checks.audio ? 'Sonido detectado.' : 'Haz ruido para probar.'"></p>
                             </div>
                         </div>
-
                         <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
                              :class="checks.network ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
-                            <div class="w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 mr-4 transition-colors" :class="checks.network ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
-                            </div>
                              <div class="flex-1">
-                                <h4 class="font-bold text-gray-900 flex items-center justify-between">Conexión <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.network ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.network ? 'OK' : 'Pendiente'"></span></h4>
-                                <p class="text-sm text-gray-500 mt-1">Conexión estable.</p>
+                                <h4 class="font-bold text-gray-900 flex items-center justify-between">Conexión <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.network ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.network ? 'OK' : '...'"></span></h4>
+                            </div>
+                        </div>
+                         <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
+                             :class="checks.camera ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
+                             <div class="flex-1">
+                                <h4 class="font-bold text-gray-900 flex items-center justify-between">Cámara <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.camera ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.camera ? 'OK' : 'Pendiente'"></span></h4>
                             </div>
                         </div>
                     </div>
 
                     <div class="mt-8">
-                        <a href="{% url 'runner:take' exam.access_code attempt.id %}"
+                        <a href="{% url 'runner:gate' exam.access_code attempt.id %}"
                            class="block w-full py-4 rounded-xl font-bold text-lg text-center transition-all shadow-sm flex items-center justify-center gap-3 relative overflow-hidden group"
                            :class="allChecksPassed ? 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md cursor-pointer' : 'bg-gray-200 text-gray-400 cursor-not-allowed pointer-events-none'">
-                            <span>Ingresar al Examen</span>
+                            <span>Siguiente: Verificación de Identidad</span>
                             <svg x-show="allChecksPassed" class="w-6 h-6 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
                         </a>
                         <p class="text-center text-xs text-gray-400 mt-2" x-show="!allChecksPassed">
-                            Debes cumplir todos los requisitos de seguridad.
+                            Verifica tus dispositivos para continuar.
                         </p>
                     </div>
                 </div>
@@ -153,35 +98,15 @@
     <script>
         function techCheck() {
             return {
-                checks: { camera: false, audio: false, network: true }, // Red asumimos OK por defecto
+                checks: { camera: false, audio: false, network: true },
                 audioLevel: 0,
-                faceStatus: 'loading',
                 
-                // CONDICIÓN ESTRICTA:
                 get allChecksPassed() {
-                    return this.faceStatus === 'ok' && this.checks.audio && this.checks.network;
+                    return this.checks.camera && this.checks.audio && this.checks.network;
                 },
 
                 init() {
-                    // Cargar Modelos de IA primero
-                    this.loadModels();
-                },
-
-                async loadModels() {
-                    try {
-                        // Usamos un CDN público fiable para los modelos
-                        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-                        
-                        // Cargamos solo el detector liviano (Tiny Face)
-                        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-                        console.log("IA Cargada");
-                        
-                        // Una vez cargada la IA, iniciamos cámara
-                        this.startCamera();
-                    } catch (e) {
-                        console.error("Error cargando modelos:", e);
-                        this.faceStatus = 'error';
-                    }
+                    this.startCamera();
                 },
 
                 async startCamera() {
@@ -189,43 +114,12 @@
                     try {
                         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 640, height: 480 } });
                         video.srcObject = stream;
-                        
-                        // Audio Monitor
+                        this.checks.camera = true; 
                         this.setupAudio(stream);
-
-                        // IA Monitor
-                        video.onloadedmetadata = () => {
-                            this.detectFaceLoop();
-                        };
-
                     } catch (err) {
                         console.error("Error cámara:", err);
-                        alert("Error de acceso a cámara. Revisa permisos.");
-                        this.faceStatus = 'error';
-                    }
-                },
-
-                async detectFaceLoop() {
-                    const video = document.getElementById('videoInput');
-                    
-                    if (video && !video.paused && !video.ended) {
-                        // Detección usando TinyFaceDetector (Rápido y CPU friendly)
-                        // inputSize 224 es rápido. scoreThreshold 0.5 filtra falsos positivos.
-                        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
-                        const detections = await faceapi.detectAllFaces(video, options);
-                        
-                        if (detections.length > 0) {
-                            this.faceStatus = 'ok'; // HAY CARA -> VERDE
-                            this.checks.camera = true;
-                        } else {
-                            this.faceStatus = 'no_face'; // NO HAY CARA -> ROJO
-                            this.checks.camera = false;
-                        }
-                    }
-                    
-                    // Loop suave (cada 200ms para no saturar)
-                    if (this.faceStatus !== 'error') {
-                        setTimeout(() => this.detectFaceLoop(), 200);
+                        this.checks.camera = false;
+                        alert("Error de acceso a cámara/mic. Revisa permisos.");
                     }
                 },
 
@@ -244,8 +138,9 @@
                         analyser.getByteFrequencyData(array);
                         let values = 0;
                         for (let i = 0; i < array.length; i++) values += array[i];
-                        this.audioLevel = Math.min(100, Math.round((values / array.length) * 2));
-                        if ((values / array.length) > 5) this.checks.audio = true;
+                        const average = values / array.length;
+                        this.audioLevel = Math.min(100, Math.round(average * 2));
+                        if (average > 10) this.checks.audio = true;
                     };
                 }
             }
