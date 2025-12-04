@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4" x-data="biometricGate()">
+    
+    <div class="bg-white max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+        
+        <div class="bg-gray-50 p-6 border-b border-gray-100 text-center">
+            <h1 class="text-2xl font-bold text-gray-800">Paso 2: Registro Biométrico</h1>
+            <p class="text-gray-500 text-sm mt-1">
+                Necesitamos registrar tu rostro para validar tu identidad durante el examen.
+            </p>
+        </div>
+
+        <div class="relative bg-black h-80 flex justify-center items-center overflow-hidden">
+            <video x-ref="video" autoplay muted playsinline class="absolute w-full h-full object-cover transform scale-x-[-1] opacity-50 transition-opacity duration-700" :class="{'opacity-100': cameraReady}"></video>
+            
+            <div class="absolute inset-0 border-4 border-dashed border-white/30 m-12 rounded-3xl pointer-events-none transition-colors duration-300" :class="{'border-green-400': status === 'success', 'border-red-400': status === 'error'}"></div>
+            
+            <div class="absolute bottom-4 bg-black/70 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md z-30">
+                <span x-text="message">Iniciando cámara...</span>
+            </div>
+
+            <div x-show="status === 'loading'" class="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
+                <div class="flex flex-col items-center">
+                    <svg class="animate-spin h-10 w-10 text-indigo-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span class="text-white text-xs">Cargando Modelos IA...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-8 flex flex-col items-center gap-4 bg-white">
+            
+            <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden relative" x-show="status === 'scanning'">
+                <div class="h-full bg-blue-600 transition-all duration-200" :style="`width: ${progress}%`"></div>
+            </div>
+
+            <div x-show="status === 'success'" class="w-full" x-cloak>
+                <a href="{% url 'runner:take' exam.access_code attempt.id %}" 
+                   class="block w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-center text-lg shadow-lg transition-transform hover:-translate-y-1">
+                    Confirmar Identidad y Comenzar
+                </a>
+            </div>
+
+            <p class="text-xs text-gray-400 text-center mt-2 max-w-md">
+                Tus datos biométricos se analizan en tu dispositivo y se utilizan únicamente para garantizar la integridad de este examen.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<script>
+    function biometricGate() {
+        return {
+            status: 'loading', // loading, scanning, success, error
+            message: 'Cargando Inteligencia Artificial...',
+            cameraReady: false,
+            progress: 0,
+            consecutiveFrames: 0,
+            REQUIRED_FRAMES: 25, // Aprox 2 segundos de estabilidad
+
+            async init() {
+                try {
+                    // 1. Cargar Modelos desde CDN confiable
+                    const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+                    
+                    await Promise.all([
+                        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL) 
+                    ]);
+
+                    // 2. Iniciar Cámara
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                    this.$refs.video.srcObject = stream;
+                    
+                    this.$refs.video.onloadedmetadata = () => {
+                        this.$refs.video.play();
+                        this.cameraReady = true;
+                        this.status = 'scanning';
+                        this.message = 'Mantén tu rostro centrado y quieto';
+                        this.startScanning();
+                    };
+
+                } catch (e) {
+                    console.error(e);
+                    this.status = 'error';
+                    this.message = 'Error: No se pudo acceder a la cámara o IA.';
+                }
+            },
+
+            startScanning() {
+                const video = this.$refs.video;
+                
+                // Intervalo de chequeo rápido para UX fluida (100ms)
+                const interval = setInterval(async () => {
+                    if (this.status === 'success' || this.status === 'error') {
+                        clearInterval(interval);
+                        return;
+                    }
+
+                    // Detección
+                    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+                    const detection = await faceapi.detectSingleFace(video, options)
+                                           .withFaceLandmarks()
+                                           .withFaceDescriptor();
+
+                    if (detection) {
+                        this.consecutiveFrames++;
+                        this.progress = Math.min(100, (this.consecutiveFrames / this.REQUIRED_FRAMES) * 100);
+
+                        if (this.consecutiveFrames >= this.REQUIRED_FRAMES) {
+                            // !!! CAPTURA DEL ANCLA !!!
+                            await this.captureAndSaveIdentity(detection, video);
+                            this.status = 'success';
+                            this.message = 'Identidad Registrada Correctamente';
+                        }
+                    } else {
+                        // Si se mueve o hay más de una cara, reiniciamos
+                        this.consecutiveFrames = 0;
+                        this.progress = 0;
+                        this.message = 'No se detecta rostro. Ubícate en el centro.';
+                    }
+                }, 100);
+            },
+
+            async captureAndSaveIdentity(detection, video) {
+                this.message = 'Guardando perfil biométrico...';
+                
+                // 1. Guardar Descriptor en LocalStorage (Pasamanos al Examen)
+                const descriptorArray = Array.from(detection.descriptor);
+                localStorage.setItem('exam_anchor_descriptor', JSON.stringify(descriptorArray));
+
+                // 2. Capturar Foto (Snapshot) para enviar al Server
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+                // 3. Enviar al Backend (AJAX)
+                try {
+                    await fetch("{% url 'runner:register_biometrics' attempt.id %}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        body: JSON.stringify({
+                            reference_face: imageData
+                        })
+                    });
+                } catch (err) {
+                    console.error("Error subiendo foto:", err);
+                    // No bloqueamos por fallo de red en subida de foto, 
+                    // pero el descriptor local sí es crítico.
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}
