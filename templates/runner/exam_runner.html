@@ -130,22 +130,20 @@
         </footer>
     </div>
 
-    <script>
-        function examRunner(attemptId, serverRemainingSeconds, timePerItem, totalQuestions, initialStep) {
+   <script>
+        function examRunner(attemptId, serverRemainingSeconds, timePerItem, totalQuestions, startStep) {
             return {
-                currentStep: initialStep,
-                initialStep: initialStep,
+                currentStep: startStep,
                 total: totalQuestions,
                 saveStatus: '', 
                 answers: {},
                 isFullScreen: false,
                 
-                // IA States
-                aiStatus: 'ok', // ok, warning, error
+                // Estados de IA
+                aiStatus: 'ok', 
                 aiMessage: 'Monitor Activo',
                 faceDetector: null,
-                lastDetectionTime: 0,
-                warningCounter: 0, // Para debounce
+                warningCounter: 0, 
 
                 // Tiempos
                 globalSeconds: serverRemainingSeconds,
@@ -155,13 +153,15 @@
 
                 init() {
                     this.setupSecurity();
-                    this.startAI(); // INICIAMOS LA IA
+                    this.startAI(); 
                     
+                    // Timer Global
                     setInterval(() => {
                         if (this.globalSeconds > 0) this.globalSeconds--;
                         else window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
                     }, 1000);
 
+                    // Timer Pregunta
                     setInterval(() => {
                         if (this.currentStep < this.total && this.currentStep >= this.initialStep) { 
                             if (this.itemSeconds > 0) {
@@ -174,26 +174,27 @@
                     }, 1000);
                 },
 
-                // --- SEGURIDAD E IA ---
+                // --- IA RECALIBRADA ---
                 async startAI() {
                     try {
-                        // 1. Obtener la cámara (si falló en el tech check, aquí pedimos de nuevo)
-                        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        // Forzamos resolución baja para velocidad (640x480)
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
                         this.$refs.webcam.srcObject = stream;
 
-                        // 2. Cargar el modelo de MediaPipe
                         const vision = await FilesetResolver.forVisionTasks(
                             "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
                         );
+                        
+                        // Configuración "Paranoica"
                         this.faceDetector = await FaceDetector.createFromOptions(vision, {
                             baseOptions: {
                                 modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite`,
                                 delegate: "GPU"
                             },
-                            runningMode: "VIDEO"
+                            runningMode: "VIDEO",
+                            minDetectionConfidence: 0.6 // Exigimos 60% de certeza para decir que es una cara
                         });
 
-                        // 3. Loop de Detección
                         this.detectLoop();
 
                     } catch (e) {
@@ -207,43 +208,44 @@
                     const video = this.$refs.webcam;
                     if (video.videoWidth > 0 && this.faceDetector) {
                         const startTimeMs = performance.now();
-                        const detections = this.faceDetector.detectForVideo(video, startTimeMs).detections;
-                        const faceCount = detections.length;
-
-                        this.handleFaceCount(faceCount);
+                        const result = this.faceDetector.detectForVideo(video, startTimeMs);
+                        
+                        // DEBUG: Abre la consola (F12) para ver esto
+                        // console.log("Caras vistas:", result.detections.length);
+                        
+                        this.handleFaceCount(result.detections.length);
                     }
-                    // Correr cada 500ms para no saturar CPU
-                    setTimeout(() => requestAnimationFrame(() => this.detectLoop()), 500);
+                    // Loop rápido: cada 200ms (5 veces por segundo)
+                    setTimeout(() => requestAnimationFrame(() => this.detectLoop()), 200);
                 },
 
                 handleFaceCount(count) {
                     if (count === 1) {
-                        // Todo OK
-                        this.warningCounter = Math.max(0, this.warningCounter - 1);
-                        if(this.warningCounter === 0) {
-                            this.aiStatus = 'ok';
-                            this.aiMessage = 'Monitor Activo';
-                        }
+                        // Si ve una cara, resetea el contador de advertencia inmediatamente
+                        this.warningCounter = 0;
+                        this.aiStatus = 'ok';
+                        this.aiMessage = 'Monitor Activo';
                     } else {
-                        // Anomalía detectada (0 o >1 caras)
+                        // Si ve 0 caras o más de 1
                         this.warningCounter++;
                         
-                        // Solo reportar si persiste por 3 segundos (6 ciclos de 500ms)
-                        if (this.warningCounter > 6) {
+                        // UMBRAL REDUCIDO: Solo esperamos 1 segundo (5 ciclos de 200ms)
+                        if (this.warningCounter > 5) {
                             const type = count === 0 ? 'NO_FACE' : 'MULTI_FACE';
                             const msg = count === 0 ? 'Rostro no detectado' : 'Múltiples rostros';
                             
                             this.aiStatus = 'warning';
                             this.aiMessage = msg;
                             
-                            // Loguear solo una vez cada tanto para no spammear
-                            if (this.warningCounter % 20 === 0 || this.warningCounter === 7) {
+                            // Registramos el evento cada ~3 segundos para no saturar la base
+                            if (this.warningCounter % 15 === 0) {
                                 this.logSecurityEvent(type, { face_count: count });
                             }
                         }
                     }
                 },
-
+                
+                // --- SEGURIDAD (Resto igual) ---
                 setupSecurity() {
                     document.addEventListener("visibilitychange", () => {
                         if (document.hidden) this.logSecurityEvent('FOCUS_LOST', { reason: 'tab_hidden' });
@@ -266,7 +268,7 @@
                 },
 
                 async logSecurityEvent(type, meta = {}) {
-                    // console.warn("Incidente:", type); // Descomentar para debug
+                    // console.warn("Incidente:", type); 
                     try {
                         await fetch(`/room/log/${attemptId}/`, {
                             method: 'POST',
@@ -275,7 +277,7 @@
                         });
                     } catch (e) {}
                 },
-                // ... (FormatTime, NextQuestion, SaveAnswer siguen igual) ...
+
                 formatTime(seconds) {
                     const h = Math.floor(seconds / 3600);
                     const m = Math.floor((seconds % 3600) / 60);
