@@ -6,12 +6,11 @@
     <title>Rindiendo: {{ exam.title }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
     <style>
         [x-cloak] { display: none !important; }
         .timer-bar { transition: width 1s linear; }
         .read-only-mode { opacity: 0.7; pointer-events: none; background-color: #f9fafb; }
-        
-        /* Blur para el contenido cuando hay bloqueo */
         .blur-content { filter: blur(8px); pointer-events: none; user-select: none; }
     </style>
 </head>
@@ -19,27 +18,20 @@
       x-data="examRunner('{{ attempt.id }}', {{ remaining_seconds }}, {{ time_per_item }}, {{ total_questions }}, {{ initial_step }})"
       x-init="init()">
 
+    <video x-ref="webcam" autoplay playsinline muted class="hidden w-64 h-48 fixed bottom-4 right-4 z-50 rounded-lg shadow-lg opacity-50 pointer-events-none"></video>
+
     <div x-show="!isFullScreen" 
          class="fixed inset-0 z-50 bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300">
-        
         <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full animate-bounce-small">
             <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
             </div>
-            
             <h2 class="text-2xl font-bold text-gray-900 mb-2">Modo Seguro Requerido</h2>
-            <p class="text-gray-600 mb-6">
-                Para garantizar la integridad del examen, debes mantener la <b>Pantalla Completa</b> en todo momento.
-            </p>
-
+            <p class="text-gray-600 mb-6">Para garantizar la integridad del examen, debes mantener la <b>Pantalla Completa</b>.</p>
             <button @click="enableFullscreen()" 
                     class="w-full py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transform transition hover:-translate-y-1">
                 Activar Pantalla Completa
             </button>
-            
-            <p class="text-xs text-gray-400 mt-4">
-                Cada vez que sales, se registra un incidente de seguridad.
-            </p>
         </div>
     </div>
 
@@ -52,18 +44,26 @@
                 <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded border border-blue-100">
                     Pregunta <span x-text="currentStep + 1"></span> de {{ total_questions }}
                 </span>
+                
+                <div class="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-colors"
+                     :class="aiStatus === 'ok' ? 'bg-green-100 text-green-700' : (aiStatus === 'warning' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700')">
+                    <span class="relative flex h-2 w-2">
+                      <span x-show="aiStatus === 'ok'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2" 
+                            :class="aiStatus === 'ok' ? 'bg-green-500' : (aiStatus === 'warning' ? 'bg-orange-500' : 'bg-red-500')"></span>
+                    </span>
+                    <span x-text="aiMessage">Monitor Activo</span>
+                </div>
             </div>
             
             <div class="flex items-center gap-4">
                 <div class="text-xs font-medium transition-colors duration-300"
                      :class="saveStatus === 'saving' ? 'text-blue-500' : (saveStatus === 'saved' ? 'text-green-500' : 'text-red-500')">
-                    <span x-show="saveStatus === 'saving'" class="flex items-center gap-1">Guardando...</span>
-                    <span x-show="saveStatus === 'saved'" class="flex items-center gap-1">Guardado</span>
+                    <span x-show="saveStatus === 'saving'">Guardando...</span>
+                    <span x-show="saveStatus === 'saved'">Guardado</span>
                     <span x-show="saveStatus === 'error'">Error</span>
                 </div>
-
                 <div class="h-6 w-px bg-gray-300 mx-2"></div>
-
                 <div class="flex flex-col items-end">
                     <span class="text-xs text-gray-500 uppercase font-bold">Total</span>
                     <div class="font-mono text-xl font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded border border-gray-200"
@@ -71,7 +71,6 @@
                         <span x-text="formatTime(globalSeconds)"></span>
                     </div>
                 </div>
-
                 <a href="{% url 'runner:submit_exam' attempt.id %}" 
                    onclick="return confirm('¿Confirmas finalizar?')"
                    class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-4 rounded transition-colors shadow-sm">
@@ -91,17 +90,14 @@
                 <div x-show="currentStep === {{ forloop.counter0 }}" x-cloak
                      class="bg-white rounded-2xl shadow-md border border-gray-200 p-8 transition-all relative overflow-hidden"
                      :class="currentStep < initialStep ? 'read-only-mode border-orange-200' : ''">
-                    
                     <div class="absolute top-4 right-4 text-xs font-mono text-gray-400 border rounded px-2 py-1">
                         <span x-text="itemSeconds"></span>s
                     </div>
-
                     <div class="mb-6">
                         <span class="text-sm font-bold text-gray-400 uppercase tracking-wider">Pregunta {{ forloop.counter }}</span>
                         <h2 class="text-xl font-medium text-gray-900 mt-2 leading-relaxed">{{ item.stem }}</h2>
                         <p x-show="currentStep < initialStep" class="text-xs text-orange-600 mt-2 font-bold">⚠️ Solo lectura</p>
                     </div>
-
                     <div class="space-y-3">
                         {% for opt in item.options %}
                         <label class="flex items-start p-4 rounded-xl border cursor-pointer transition-all group"
@@ -142,8 +138,15 @@
                 total: totalQuestions,
                 saveStatus: '', 
                 answers: {},
-                isFullScreen: false, // Variable de control de pantalla
+                isFullScreen: false,
                 
+                // IA States
+                aiStatus: 'ok', // ok, warning, error
+                aiMessage: 'Monitor Activo',
+                faceDetector: null,
+                lastDetectionTime: 0,
+                warningCounter: 0, // Para debounce
+
                 // Tiempos
                 globalSeconds: serverRemainingSeconds,
                 itemSeconds: timePerItem,
@@ -151,10 +154,9 @@
                 itemProgress: 100,
 
                 init() {
-                    // 1. Detectores de Seguridad
                     this.setupSecurity();
+                    this.startAI(); // INICIAMOS LA IA
                     
-                    // 2. Timers
                     setInterval(() => {
                         if (this.globalSeconds > 0) this.globalSeconds--;
                         else window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
@@ -172,49 +174,108 @@
                     }, 1000);
                 },
 
-                // --- SEGURIDAD ---
+                // --- SEGURIDAD E IA ---
+                async startAI() {
+                    try {
+                        // 1. Obtener la cámara (si falló en el tech check, aquí pedimos de nuevo)
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        this.$refs.webcam.srcObject = stream;
+
+                        // 2. Cargar el modelo de MediaPipe
+                        const vision = await FilesetResolver.forVisionTasks(
+                            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+                        );
+                        this.faceDetector = await FaceDetector.createFromOptions(vision, {
+                            baseOptions: {
+                                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite`,
+                                delegate: "GPU"
+                            },
+                            runningMode: "VIDEO"
+                        });
+
+                        // 3. Loop de Detección
+                        this.detectLoop();
+
+                    } catch (e) {
+                        console.error("Error iniciando IA:", e);
+                        this.aiMessage = "Monitor IA Inactivo";
+                        this.aiStatus = "error";
+                    }
+                },
+
+                async detectLoop() {
+                    const video = this.$refs.webcam;
+                    if (video.videoWidth > 0 && this.faceDetector) {
+                        const startTimeMs = performance.now();
+                        const detections = this.faceDetector.detectForVideo(video, startTimeMs).detections;
+                        const faceCount = detections.length;
+
+                        this.handleFaceCount(faceCount);
+                    }
+                    // Correr cada 500ms para no saturar CPU
+                    setTimeout(() => requestAnimationFrame(() => this.detectLoop()), 500);
+                },
+
+                handleFaceCount(count) {
+                    if (count === 1) {
+                        // Todo OK
+                        this.warningCounter = Math.max(0, this.warningCounter - 1);
+                        if(this.warningCounter === 0) {
+                            this.aiStatus = 'ok';
+                            this.aiMessage = 'Monitor Activo';
+                        }
+                    } else {
+                        // Anomalía detectada (0 o >1 caras)
+                        this.warningCounter++;
+                        
+                        // Solo reportar si persiste por 3 segundos (6 ciclos de 500ms)
+                        if (this.warningCounter > 6) {
+                            const type = count === 0 ? 'NO_FACE' : 'MULTI_FACE';
+                            const msg = count === 0 ? 'Rostro no detectado' : 'Múltiples rostros';
+                            
+                            this.aiStatus = 'warning';
+                            this.aiMessage = msg;
+                            
+                            // Loguear solo una vez cada tanto para no spammear
+                            if (this.warningCounter % 20 === 0 || this.warningCounter === 7) {
+                                this.logSecurityEvent(type, { face_count: count });
+                            }
+                        }
+                    }
+                },
+
                 setupSecurity() {
-                    // A. Cambio de pestaña
                     document.addEventListener("visibilitychange", () => {
                         if (document.hidden) this.logSecurityEvent('FOCUS_LOST', { reason: 'tab_hidden' });
                     });
                     window.addEventListener("blur", () => {
                         this.logSecurityEvent('FOCUS_LOST', { reason: 'window_blur' });
                     });
-
-                    // B. Pantalla Completa (Listener)
                     document.addEventListener('fullscreenchange', () => {
                         this.isFullScreen = !!document.fullscreenElement;
-                        if (!this.isFullScreen) {
-                            this.logSecurityEvent('FULLSCREEN_EXIT');
-                        }
+                        if (!this.isFullScreen) this.logSecurityEvent('FULLSCREEN_EXIT');
                     });
-                    
-                    // Verificación inicial (por si recarga y el navegador lo saca de fullscreen)
                     this.isFullScreen = !!document.fullscreenElement;
                 },
 
                 enableFullscreen() {
                     const elem = document.documentElement;
                     if (elem.requestFullscreen) {
-                        elem.requestFullscreen().catch(err => {
-                            console.error("Error al activar fullscreen:", err);
-                            alert("Por favor habilita la pantalla completa manualmente (F11)");
-                        });
+                        elem.requestFullscreen().catch(err => alert("Usa F11 para pantalla completa"));
                     }
                 },
 
                 async logSecurityEvent(type, meta = {}) {
+                    // console.warn("Incidente:", type); // Descomentar para debug
                     try {
                         await fetch(`/room/log/${attemptId}/`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
                             body: JSON.stringify({ event_type: type, metadata: meta })
                         });
-                    } catch (e) { console.error("Error logging", e); }
+                    } catch (e) {}
                 },
-                // -----------------
-
+                // ... (FormatTime, NextQuestion, SaveAnswer siguen igual) ...
                 formatTime(seconds) {
                     const h = Math.floor(seconds / 3600);
                     const m = Math.floor((seconds % 3600) / 60);
