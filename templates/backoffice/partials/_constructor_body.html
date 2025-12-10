@@ -78,16 +78,30 @@
                     <div class="flex-grow">
                         <div class="flex justify-between items-start">
                             <div class="w-full">
-                                {% if link.item.tags %}
-                                <div class="mb-2">
-                                    {% for tag in link.item.tags.split|slice:":3" %} 
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-600 border border-gray-300 mr-1">
-                                        {{ tag }}
-                                    </span>
-                                    {% endfor %}
-                                </div>
-                                {% endif %}
                                 
+                                <div class="mb-2 flex items-center flex-wrap gap-2">
+                                    {% if link.item.tags %}
+                                        {% for tag in link.item.tags.split|slice:":3" %} 
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-600 border border-gray-300">
+                                            {{ tag }}
+                                        </span>
+                                        {% endfor %}
+                                    {% endif %}
+
+                                    <button type="button" 
+                                            onclick="rotarDificultad(this, {{ link.item.id }})"
+                                            class="inline-flex items-center px-2 py-0.5 text-[10px] font-bold text-white rounded cursor-pointer transition hover:opacity-80 select-none shadow-sm
+                                            {% if link.item.difficulty == 1 %}bg-green-500
+                                            {% elif link.item.difficulty == 2 %}bg-yellow-500
+                                            {% elif link.item.difficulty == 3 %}bg-red-500
+                                            {% else %}bg-green-500{% endif %}"
+                                            title="Clic para cambiar dificultad">
+                                        {% if link.item.difficulty == 1 %}Fácil
+                                        {% elif link.item.difficulty == 2 %}Media
+                                        {% elif link.item.difficulty == 3 %}Difícil
+                                        {% else %}Fácil{% endif %}
+                                    </button>
+                                </div>
                                 <h3 class="text-gray-900 font-semibold text-base leading-snug mb-3">
                                     {{ link.item.stem }}
                                 </h3>
@@ -238,3 +252,47 @@
         title="Ir Arriba">
     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
 </button>
+
+<script>
+    function rotarDificultad(btn, itemId) {
+        // Efecto visual de "cargando"
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'wait';
+        
+        // URL al endpoint que creamos en backoffice
+        const url = `/backoffice/item/${itemId}/rotate-difficulty/`;
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}', // Seguridad de Django
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Error en red');
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'ok') {
+                // 1. Actualizar el texto del botón
+                btn.innerText = data.text;
+                
+                // 2. Limpiar las clases de colores viejos
+                btn.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500');
+                
+                // 3. Poner el color nuevo
+                btn.classList.add(data.css_class);
+            }
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            alert('No se pudo cambiar la dificultad. Revisa tu conexión.');
+        })
+        .finally(() => {
+            // Restaurar estado visual
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+        });
+    }
+</script>
