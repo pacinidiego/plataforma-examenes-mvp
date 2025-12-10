@@ -611,3 +611,48 @@ def exam_unpublish(request, exam_id):
 
     context = { 'exam': exam, 'total_points': total_points }
     return render(request, 'backoffice/partials/_constructor_header.html', context)
+
+# --- backoffice/views.py ---
+
+# ... (resto del código anterior) ...
+
+@login_required
+@require_http_methods(["POST"])
+def item_rotate_difficulty(request, item_id):
+    """
+    Rota la dificultad de una pregunta: Fácil (1) -> Media (2) -> Difícil (3) -> Fácil (1).
+    Devuelve JSON para actualizar la UI sin recargar.
+    """
+    try:
+        # Buscamos el item asegurando que pertenezca al tenant del usuario
+        item = get_object_or_404(Item, id=item_id, tenant__memberships__user=request.user)
+        
+        # Lógica de rotación
+        # Asumimos: 1=Fácil (Green), 2=Media (Yellow), 3=Difícil (Red)
+        current = item.difficulty or 1 # Si es None, empezamos en 1
+        
+        if current == 1:
+            item.difficulty = 2
+            text = "Media"
+            css_class = "bg-yellow-500"
+        elif current == 2:
+            item.difficulty = 3
+            text = "Difícil"
+            css_class = "bg-red-500"
+        else:
+            # Si es 3 o cualquier otro valor raro, volvemos a 1
+            item.difficulty = 1
+            text = "Fácil"
+            css_class = "bg-green-500"
+            
+        item.save()
+        
+        return JsonResponse({
+            'status': 'ok',
+            'difficulty': item.difficulty,
+            'text': text,
+            'css_class': css_class
+        })
+
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
