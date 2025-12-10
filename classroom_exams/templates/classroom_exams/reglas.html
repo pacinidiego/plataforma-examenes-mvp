@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reglas del Examen</title>
+    <style>
+        body { background-color: #1a202c; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background-color: #2d3748; padding: 40px; border-radius: 10px; max-width: 600px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        h1 { color: #f6ad55; margin-bottom: 20px; }
+        ul { text-align: left; margin: 30px 0; font-size: 1.2em; line-height: 1.6; }
+        li { margin-bottom: 15px; }
+        .btn-start { background-color: #48bb78; color: white; border: none; padding: 15px 40px; font-size: 1.5em; border-radius: 5px; cursor: pointer; width: 100%; transition: transform 0.2s; }
+        .btn-start:hover { transform: scale(1.02); background-color: #38a169; }
+        .alert { color: #fc8181; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>⚠️ Importante: Reglas del Examen</h1>
+        
+        <p>Hola <strong>{{ sesion.alumno_nombre }}</strong>. Antes de comenzar, lee con atención:</p>
+
+        <ul>
+            <li>⏱️ Tienes <strong>{{ sesion.config.duracion_minutos }} minutos</strong> en total.</li>
+            <li>🚫 <strong>NO SE PUEDE VOLVER ATRÁS</strong>. Una vez que avanzas de pregunta, tu respuesta queda guardada y no podrás cambiarla.</li>
+            <li>🖥️ El examen debe realizarse en pantalla completa.</li>
+            <li>🏁 Al finalizar el tiempo, el examen se enviará automáticamente.</li>
+        </ul>
+
+        <form method="POST">
+            {% csrf_token %}
+            <p class="alert">Al presionar el botón, el tiempo comenzará a correr.</p>
+            <button type="submit" class="btn-start">ENTENDIDO, COMENZAR</button>
+        </form>
+    </div>
+    
+    <script>
+        document.querySelector('form').addEventListener('submit', function() {
+            document.documentElement.requestFullscreen().catch(e=>{});
+        });
+    </script>
+</body>
+</html>
