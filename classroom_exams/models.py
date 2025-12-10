@@ -8,6 +8,10 @@ class KioskConfig(models.Model):
     nombre = models.CharField(max_length=200, help_text="Ej: Final Matemática")
     pin_profesor = models.CharField(max_length=4, help_text="PIN para cerrar sesión")
     
+    # --- NUEVO CAMPO AGREGADO ---
+    duracion_minutos = models.PositiveIntegerField(default=60, help_text="Tiempo límite en minutos")
+    # ----------------------------
+
     # Reglas de mezcla
     cantidad_faciles = models.PositiveIntegerField(default=5)
     cantidad_medias = models.PositiveIntegerField(default=3)
