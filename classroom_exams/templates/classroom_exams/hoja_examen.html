@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Examen en Curso</title>
+    <style>
+        body {
+            background-color: #f7fafc; /* Fondo claro para leer mejor */
+            color: #2d3748;
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: #2b6cb0;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .pregunta-card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .enunciado {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 15px;
+        }
+        .opcion {
+            display: block;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .opcion:hover { background-color: #ebf8ff; }
+        
+        button.finalizar {
+            background-color: #e53e3e;
+            color: white;
+            width: 100%;
+            padding: 20px;
+            font-size: 1.5em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>Alumno: <strong>{{ sesion.alumno_nombre }}</strong></div>
+        <div>DNI: {{ sesion.alumno_dni }}</div>
+    </div>
+
+    <form method="POST">
+        {% csrf_token %}
+        
+        {% for p in preguntas %}
+        <div class="pregunta-card">
+            <div class="enunciado">
+                {{ forloop.counter }}. {{ p.texto }}
+            </div>
+            
+            {% for op in p.opciones %}
+            <label class="opcion">
+                <input type="radio" name="pregunta_{{ p.id }}" value="{{ op.id|default:op.text }}">
+                {{ op.text }}
+            </label>
+            {% endfor %}
+        </div>
+        {% empty %}
+            <p>No se encontraron preguntas disponibles para generar este examen.</p>
+        {% endfor %}
+
+        <button type="submit" class="finalizar">FINALIZAR EXAMEN</button>
+    </form>
+
+</body>
+</html>
