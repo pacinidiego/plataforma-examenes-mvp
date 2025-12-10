@@ -9,7 +9,6 @@ import random
 # --- FUNCIONES AUXILIARES ---
 
 def generar_examen(config):
-    # (Esta función queda igual que antes)
     items_seleccionados = []
     pool_faciles = list(Item.objects.filter(tenant=config.tenant, difficulty=1))
     pool_medias = list(Item.objects.filter(tenant=config.tenant, difficulty=2))
@@ -31,8 +30,8 @@ def generar_examen(config):
             "texto": item.stem,
             "opciones": opciones,
             "tipo": item.item_type,
-            "respuesta_alumno": None, # Nuevo campo
-            "es_correcta": False      # Nuevo campo
+            "respuesta_alumno": None,
+            "es_correcta": False
         }
         examen_data.append(pregunta_struct)
     
@@ -45,12 +44,11 @@ def calcular_nota(sesion, datos_post):
     total_preguntas = len(preguntas)
 
     for p in preguntas:
-        # Obtenemos qué respondió el alumno (el ID o texto de la opción)
+        # Obtenemos qué respondió el alumno
         respuesta_id = datos_post.get(f'pregunta_{p["id"]}')
         p['respuesta_alumno'] = respuesta_id
         
         # Verificamos si es correcta
-        # Buscamos la opción en la lista de opciones de esa pregunta
         opcion_elegida = next((op for op in p['opciones'] if str(op.get('id', op.get('text'))) == str(respuesta_id)), None)
         
         if opcion_elegida and opcion_elegida.get('correct') is True:
@@ -59,7 +57,6 @@ def calcular_nota(sesion, datos_post):
         else:
             p['es_correcta'] = False
             
-    # Calculamos nota del 1 al 10
     if total_preguntas > 0:
         nota = (respuestas_correctas / total_preguntas) * 10
     else:
@@ -90,7 +87,7 @@ def acceso_alumno(request):
                 indice_pregunta_actual=1 # Empezamos en la 1
             )
             request.session['kiosk_session_id'] = sesion.id
-            # CAMBIO: Vamos a las reglas, no al examen directo
+            # Vamos a las reglas
             return redirect('classroom_exams:instrucciones') 
             
     return render(request, 'classroom_exams/acceso.html', {'examen': config})
@@ -130,12 +127,16 @@ def rendir_examen(request):
         calcular_nota(sesion, {}) 
         return redirect('classroom_exams:resultado_examen')
 
-    # 4. Obtener la pregunta CORRECTA (La que toca, ni una más ni una menos)
+    # 4. Obtener la pregunta CORRECTA
     idx = sesion.indice_pregunta_actual
     preguntas = sesion.examen_snapshot
     total = len(preguntas)
     
-    pregunta_actual = preguntas[idx - 1] # -1 porque lista empieza en 0
+    # Validación de índice
+    if idx > total:
+        return redirect('classroom_exams:resultado_examen')
+
+    pregunta_actual = preguntas[idx - 1]
 
     if request.method == 'POST':
         respuesta = request.POST.get(f'pregunta_{pregunta_actual["id"]}')
@@ -144,18 +145,18 @@ def rendir_examen(request):
         pregunta_actual['respuesta_alumno'] = respuesta
         sesion.examen_snapshot = preguntas
         
-        # AVANZAMOS EL ÍNDICE (El paso de no retorno)
+        # AVANZAMOS EL ÍNDICE
         if idx < total:
             sesion.indice_pregunta_actual = idx + 1
             sesion.save()
-            return redirect('classroom_exams:rendir_examen') # Recarga para mostrar la nueva
+            return redirect('classroom_exams:rendir_examen')
         else:
-            # Fin del examen
-            # Simulamos el dict de respuestas para calcular
+            # Fin del examen: Calcular nota
             respuestas_full = {}
             for p in preguntas:
                  if p.get('respuesta_alumno'):
                     respuestas_full[f'pregunta_{p["id"]}'] = p['respuesta_alumno']
+            
             calcular_nota(sesion, respuestas_full)
             return redirect('classroom_exams:resultado_examen')
 
@@ -167,6 +168,33 @@ def rendir_examen(request):
         'tiempo_restante': int(tiempo_restante),
         'es_ultima': (idx == total)
     })
+
+def resultado_examen(request):
+    sesion_id = request.session.get('kiosk_session_id')
+    if not sesion_id:
+        return redirect('classroom_exams:acceso')
+        
+    sesion = get_object_or_404(KioskSession, id=sesion_id)
+    return render(request, 'classroom_exams/resultado.html', {'sesion': sesion})
+
+def accion_profesor(request):
+    sesion_id = request.session.get('kiosk_session_id')
+    sesion = get_object_or_404(KioskSession, id=sesion_id)
+    
+    if request.method == 'POST':
+        pin_ingresado = request.POST.get('pin')
+        accion = request.POST.get('accion')
+        
+        if pin_ingresado == sesion.config.pin_profesor:
+            if accion == 'reiniciar':
+                request.session.flush()
+                return redirect('classroom_exams:acceso')
+            elif accion == 'revisar':
+                return render(request, 'classroom_exams/hoja_examen.html', {
+                    'sesion': sesion,
+                    'preguntas': sesion.examen_snapshot,
+                    'modo_revision': True
+                })
         else:
             messages.error(request, "PIN Incorrecto")
             
