@@ -23,8 +23,9 @@ class KioskSession(models.Model):
     config = models.ForeignKey(KioskConfig, on_delete=models.CASCADE)
     alumno_nombre = models.CharField(max_length=200)
     alumno_dni = models.CharField(max_length=50)
-    fecha_inicio = models.DateTimeField(auto_now_add=True)
+    fecha_inicio = models.DateTimeField(null=True, blank=True)
     nota_final = models.FloatField(null=True, blank=True)
+    indice_pregunta_actual = models.PositiveIntegerField(default=1)
     
     # Aquí guardamos la estructura exacta que vio el alumno
     examen_snapshot = models.JSONField(default=dict)
