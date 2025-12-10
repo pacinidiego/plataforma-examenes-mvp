@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ingreso al Examen</title>
+    <style>
+        body {
+            background-color: #1a202c; /* Fondo oscuro */
+            color: #edf2f7;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background-color: #2d3748;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        h1 { color: #63b3ed; margin-bottom: 1.5rem; }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #4a5568;
+            background-color: #1a202c;
+            color: white;
+            box-sizing: border-box; /* Para que el padding no rompa el ancho */
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #48bb78;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover { background-color: #38a169; }
+        .info-examen {
+            background-color: #2c5282;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        {% if examen %}
+            <div class="info-examen">
+                Estás por rendir: <br>
+                <strong>{{ examen.nombre }}</strong>
+            </div>
+
+            <form method="POST">
+                {% csrf_token %}
+                
+                <label for="nombre" style="display:block; text-align:left; margin-bottom:5px;">Nombre y Apellido</label>
+                <input type="text" name="nombre" id="nombre" required placeholder="Ej: Juan Pérez">
+
+                <label for="dni" style="display:block; text-align:left; margin-bottom:5px;">DNI / Identificación</label>
+                <input type="text" name="dni" id="dni" required placeholder="Sin puntos">
+
+                <button type="submit">COMENZAR EXAMEN</button>
+            </form>
+        {% else %}
+            <p style="color: red;">Error: No se encontró la información del examen.</p>
+        {% endif %}
+    </div>
+
+</body>
+</html>
