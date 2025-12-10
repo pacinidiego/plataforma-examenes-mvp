@@ -9,13 +9,16 @@
         .pregunta-card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .enunciado { font-weight: bold; font-size: 1.1em; margin-bottom: 15px; }
         .opcion { display: block; margin: 10px 0; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; cursor: pointer; }
+        .opcion:hover { background-color: #edf2f7; }
         
         /* ESTILOS DE REVISIÓN */
         .correcta { background-color: #c6f6d5 !important; border-color: #48bb78 !important; }
         .incorrecta { background-color: #fed7d7 !important; border-color: #f56565 !important; }
-        .info-revision { font-weight: bold; margin-bottom: 10px; }
         
-        button.finalizar { background-color: #e53e3e; color: white; width: 100%; padding: 20px; font-size: 1.5em; border: none; border-radius: 8px; cursor: pointer; margin-top: 30px; }
+        /* Botones */
+        button.action-btn { color: white; width: 100%; padding: 20px; font-size: 1.5em; border: none; border-radius: 8px; cursor: pointer; margin-top: 30px; }
+        .btn-siguiente { background-color: #4299e1; }
+        .btn-finalizar { background-color: #e53e3e; }
     </style>
 </head>
 <body>
@@ -23,42 +26,59 @@
     <div class="header">
         <div>Alumno: <strong>{{ sesion.alumno_nombre }}</strong></div>
         {% if modo_revision %}
-            <div style="background:white; color:black; padding:2px 10px; border-radius:4px;">MODO REVISIÓN - NOTA: {{ sesion.nota_final }}</div>
-            <a href="{% url 'classroom_exams:resultado_examen' %}" style="color:white; margin-left:10px;">Volver</a>
+            <div style="background:white; color:black; padding:2px 10px; border-radius:4px;">NOTA: {{ sesion.nota_final }}</div>
+            <a href="{% url 'classroom_exams:resultado_examen' %}" style="color:white; margin-left:10px;">Salir</a>
         {% else %}
-            <div>DNI: {{ sesion.alumno_dni }}</div>
+            <div>Tiempo restante: {{ tiempo_restante|default:"--" }} seg</div>
         {% endif %}
     </div>
 
     <form method="POST">
         {% csrf_token %}
         
-        {% for p in preguntas %}
-        <div class="pregunta-card" style="{% if modo_revision and not p.es_correcta %}border-left: 5px solid red;{% endif %}">
-            <div class="enunciado">
-                {{ forloop.counter }}. {{ p.texto }}
+        {% if pregunta %}
+            <div class="pregunta-card">
+                <div class="enunciado">
+                    Pregunta {{ indice_actual }} de {{ total_preguntas }}: <br>
+                    {{ pregunta.texto }}
+                </div>
+                
+                {% for op in pregunta.opciones %}
+                <label class="opcion">
+                    <input type="radio" name="pregunta_{{ pregunta.id }}" value="{{ op.id|default:op.text }}"
+                        {% if pregunta.respuesta_alumno == op.id|default:op.text %}checked{% endif %}>
+                    {{ op.text }}
+                </label>
+                {% endfor %}
             </div>
-            
-            {% for op in p.opciones %}
-            <label class="opcion 
-                {% if modo_revision %}
-                    {% if op.correct %}correcta{% endif %}
-                    {% if p.respuesta_alumno == op.id|default:op.text and not op.correct %}incorrecta{% endif %}
-                {% endif %}">
-                
-                <input type="radio" name="pregunta_{{ p.id }}" value="{{ op.id|default:op.text }}"
-                    {% if p.respuesta_alumno == op.id|default:op.text %}checked{% endif %}
-                    {% if modo_revision %}disabled{% endif %}>
-                
-                {{ op.text }}
-            </label>
-            {% endfor %}
-        </div>
-        {% endfor %}
 
-        {% if not modo_revision %}
-            <button type="submit" class="finalizar">FINALIZAR EXAMEN</button>
+            {% if es_ultima %}
+                <button type="submit" class="action-btn btn-finalizar">FINALIZAR EXAMEN</button>
+            {% else %}
+                <button type="submit" class="action-btn btn-siguiente">SIGUIENTE PREGUNTA</button>
+            {% endif %}
+
+        {% elif preguntas %}
+            {% for p in preguntas %}
+            <div class="pregunta-card" style="{% if not p.es_correcta %}border-left: 5px solid red;{% endif %}">
+                <div class="enunciado">
+                    {{ forloop.counter }}. {{ p.texto }}
+                </div>
+                
+                {% for op in p.opciones %}
+                <label class="opcion 
+                    {% if op.correct %}correcta{% endif %}
+                    {% if p.respuesta_alumno == op.id|default:op.text and not op.correct %}incorrecta{% endif %}">
+                    
+                    <input type="radio" disabled
+                        {% if p.respuesta_alumno == op.id|default:op.text %}checked{% endif %}>
+                    {{ op.text }}
+                </label>
+                {% endfor %}
+            </div>
+            {% endfor %}
         {% endif %}
+
     </form>
 </body>
 </html>
