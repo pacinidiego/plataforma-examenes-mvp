@@ -27,6 +27,8 @@ urlpatterns = [
     # Runner (Alumno) - Esta es la puerta nueva
     path('room/', include('runner.urls')),
 
+    path('aula/', include('classroom_exams.urls')),
+
     # TODO: Redirección de la raíz ('/') al backoffice si está logueado,
     # o al login si no lo está.
 ]
