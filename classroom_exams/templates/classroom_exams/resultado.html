@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Resultados</title>
+    <style>
+        body { background-color: #1a202c; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
+        .card { background-color: #2d3748; padding: 40px; border-radius: 10px; max-width: 500px; margin: 0 auto; }
+        .nota-grande { font-size: 6em; font-weight: bold; margin: 20px 0; color: #63b3ed; }
+        .datos { font-size: 1.5em; margin-bottom: 30px; }
+        .btn-group { display: flex; gap: 10px; justify-content: center; }
+        button { padding: 15px 30px; font-size: 1.2em; border: none; border-radius: 5px; cursor: pointer; }
+        .btn-restart { background-color: #48bb78; color: white; }
+        .btn-review { background-color: #ecc94b; color: black; }
+        
+        /* Modal simple para el PIN */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }
+        .modal-content { background: #2d3748; margin: 15% auto; padding: 20px; width: 300px; border-radius: 10px; }
+        input.pin { font-size: 2em; width: 100px; text-align: center; margin: 10px 0; color: black;}
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Examen Finalizado</h1>
+        
+        <div class="datos">
+            {{ sesion.alumno_nombre }}<br>
+            <small>DNI: {{ sesion.alumno_dni }}</small>
+        </div>
+
+        <div class="nota-grande">
+            {{ sesion.nota_final }}
+        </div>
+        
+        <p>Llame al profesor para finalizar.</p>
+
+        <div class="btn-group">
+            <button class="btn-review" onclick="pedirPin('revisar')">🔍 Revisar</button>
+            <button class="btn-restart" onclick="pedirPin('reiniciar')">🔄 Siguiente Alumno</button>
+        </div>
+        
+        {% if messages %}
+            <p style="color: #fc8181; margin-top: 10px;">PIN INCORRECTO</p>
+        {% endif %}
+    </div>
+
+    <div id="modalPin" class="modal">
+        <div class="modal-content">
+            <h3>Ingrese PIN de Profesor</h3>
+            <form action="{% url 'classroom_exams:accion_profesor' %}" method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="accion" id="inputAccion">
+                <input type="password" name="pin" class="pin" maxlength="4" autofocus required>
+                <br><br>
+                <button type="submit" class="btn-restart">Confirmar</button>
+                <button type="button" onclick="cerrarModal()" style="background:#e53e3e; color:white;">Cancelar</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function pedirPin(accion) {
+            document.getElementById('inputAccion').value = accion;
+            document.getElementById('modalPin').style.display = 'block';
+        }
+        function cerrarModal() {
+            document.getElementById('modalPin').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
