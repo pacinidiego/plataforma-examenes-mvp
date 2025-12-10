@@ -11,6 +11,8 @@ urlpatterns = [
     path('dashboard/', views.dashboard, name='dashboard'),
     path('items/filter/', views.filter_items, name='filter_items'),
 
+    path('item/<int:item_id>/rotate-difficulty/', views.item_rotate_difficulty, name='item_rotate_difficulty'),
+
     # --- CRUD de Ítems (Preguntas) ---
     path('item/create/', views.item_create, name='item_create'),
     path('item/<int:pk>/edit/', views.item_edit, name='item_edit'),
