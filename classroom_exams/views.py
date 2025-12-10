@@ -1,8 +1,10 @@
-import random
+from django.utils import timezone
+from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from .models import KioskConfig, KioskSession
 from exams.models import Item
+import random
 
 # --- FUNCIONES AUXILIARES ---
 
@@ -70,10 +72,7 @@ def calcular_nota(sesion, datos_post):
 # --- VISTAS ---
 
 def acceso_alumno(request):
-    # Limpiamos sesión anterior por seguridad si entran directo
-    if 'kiosk_session_id' in request.session:
-        del request.session['kiosk_session_id']
-        
+    request.session.flush() # Limpieza total al entrar
     config = KioskConfig.objects.filter(activo=True).first()
     if not config:
         return render(request, 'classroom_exams/error_no_examen.html', {'mensaje': "No hay examen activo."})
@@ -87,66 +86,87 @@ def acceso_alumno(request):
                 config=config,
                 alumno_nombre=nombre,
                 alumno_dni=dni,
-                examen_snapshot=snapshot
+                examen_snapshot=snapshot,
+                indice_pregunta_actual=1 # Empezamos en la 1
             )
             request.session['kiosk_session_id'] = sesion.id
-            return redirect('classroom_exams:rendir_examen') 
+            # CAMBIO: Vamos a las reglas, no al examen directo
+            return redirect('classroom_exams:instrucciones') 
             
     return render(request, 'classroom_exams/acceso.html', {'examen': config})
 
+def instrucciones_examen(request):
+    sesion_id = request.session.get('kiosk_session_id')
+    if not sesion_id: return redirect('classroom_exams:acceso')
+    sesion = get_object_or_404(KioskSession, id=sesion_id)
+
+    if request.method == 'POST':
+        # AQUÍ EMPIEZA EL TIEMPO REALMENTE
+        sesion.fecha_inicio = timezone.now()
+        sesion.save()
+        return redirect('classroom_exams:rendir_examen')
+
+    return render(request, 'classroom_exams/reglas.html', {'sesion': sesion})
+
 def rendir_examen(request):
     sesion_id = request.session.get('kiosk_session_id')
-    if not sesion_id:
-        return redirect('classroom_exams:acceso')
-
+    if not sesion_id: return redirect('classroom_exams:acceso')
     sesion = get_object_or_404(KioskSession, id=sesion_id)
     
-    # Si ya tiene nota, lo mandamos al resultado (evita volver atrás y rendir de nuevo)
+    # 1. Seguridad: Si no aceptó las reglas (no tiene fecha inicio), volver a reglas
+    if not sesion.fecha_inicio:
+        return redirect('classroom_exams:instrucciones')
+
+    # 2. Seguridad: Si ya terminó, al resultado
     if sesion.nota_final is not None:
          return redirect('classroom_exams:resultado_examen')
 
-    if request.method == 'POST':
-        # 1. Calculamos la nota
-        calcular_nota(sesion, request.POST)
-        # 2. Redirigimos a la pantalla de resultados
+    # 3. Control de Tiempo
+    duracion = sesion.config.duracion_minutos
+    hora_fin = sesion.fecha_inicio + timedelta(minutes=duracion)
+    tiempo_restante = (hora_fin - timezone.now()).total_seconds()
+    
+    if tiempo_restante <= 0:
+        calcular_nota(sesion, {}) 
         return redirect('classroom_exams:resultado_examen')
+
+    # 4. Obtener la pregunta CORRECTA (La que toca, ni una más ni una menos)
+    idx = sesion.indice_pregunta_actual
+    preguntas = sesion.examen_snapshot
+    total = len(preguntas)
+    
+    pregunta_actual = preguntas[idx - 1] # -1 porque lista empieza en 0
+
+    if request.method == 'POST':
+        respuesta = request.POST.get(f'pregunta_{pregunta_actual["id"]}')
+        
+        # Guardamos respuesta
+        pregunta_actual['respuesta_alumno'] = respuesta
+        sesion.examen_snapshot = preguntas
+        
+        # AVANZAMOS EL ÍNDICE (El paso de no retorno)
+        if idx < total:
+            sesion.indice_pregunta_actual = idx + 1
+            sesion.save()
+            return redirect('classroom_exams:rendir_examen') # Recarga para mostrar la nueva
+        else:
+            # Fin del examen
+            # Simulamos el dict de respuestas para calcular
+            respuestas_full = {}
+            for p in preguntas:
+                 if p.get('respuesta_alumno'):
+                    respuestas_full[f'pregunta_{p["id"]}'] = p['respuesta_alumno']
+            calcular_nota(sesion, respuestas_full)
+            return redirect('classroom_exams:resultado_examen')
 
     return render(request, 'classroom_exams/hoja_examen.html', {
         'sesion': sesion,
-        'preguntas': sesion.examen_snapshot
+        'pregunta': pregunta_actual,
+        'indice_actual': idx,
+        'total_preguntas': total,
+        'tiempo_restante': int(tiempo_restante),
+        'es_ultima': (idx == total)
     })
-
-def resultado_examen(request):
-    """Pantalla congelada con la nota y opciones para el profesor"""
-    sesion_id = request.session.get('kiosk_session_id')
-    if not sesion_id:
-        return redirect('classroom_exams:acceso')
-        
-    sesion = get_object_or_404(KioskSession, id=sesion_id)
-    
-    return render(request, 'classroom_exams/resultado.html', {'sesion': sesion})
-
-def accion_profesor(request):
-    """Verifica el PIN y ejecuta Reinicio o Revisión"""
-    sesion_id = request.session.get('kiosk_session_id')
-    sesion = get_object_or_404(KioskSession, id=sesion_id)
-    
-    if request.method == 'POST':
-        pin_ingresado = request.POST.get('pin')
-        accion = request.POST.get('accion') # 'reiniciar' o 'revisar'
-        
-        # Verificamos PIN contra la config
-        if pin_ingresado == sesion.config.pin_profesor:
-            if accion == 'reiniciar':
-                request.session.flush() # Borramos todo
-                return redirect('classroom_exams:acceso')
-            elif accion == 'revisar':
-                # Mostramos el examen corregido (usamos el mismo template pero con flag)
-                return render(request, 'classroom_exams/hoja_examen.html', {
-                    'sesion': sesion,
-                    'preguntas': sesion.examen_snapshot,
-                    'modo_revision': True
-                })
         else:
             messages.error(request, "PIN Incorrecto")
             
