@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'exams.apps.ExamsConfig',
     'backoffice.apps.BackofficeConfig',
     'runner',  # <-- LA NUEVA APP DEL SPRINT 2
+    'classroom_exams',
 ]
 
 MIDDLEWARE = [
