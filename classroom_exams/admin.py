@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.http import HttpResponse
+from django.utils.html import format_html
+from django.urls import reverse
 import csv
 from .models import KioskConfig, KioskSession
 
@@ -41,19 +43,30 @@ class KioskConfigAdmin(admin.ModelAdmin):
 
 @admin.register(KioskSession)
 class KioskSessionAdmin(admin.ModelAdmin):
-    # Columnas que verás en la lista
-    list_display = ('alumno_nombre', 'alumno_dni', 'nota_final', 'fecha_inicio', 'examen_nombre')
+    # Agregamos 'ver_examen_btn' a la lista de columnas que se muestran
+    list_display = ('alumno_nombre', 'alumno_dni', 'nota_final', 'fecha_inicio', 'examen_nombre', 'ver_examen_btn')
     
-    # Filtros laterales (muy útil para buscar por examen)
     list_filter = ('config', 'fecha_inicio')
-    
-    # Buscador (para encontrar rápido un DNI)
     search_fields = ('alumno_nombre', 'alumno_dni')
-    
-    # AQUÍ AGREGAMOS LA ACCIÓN DE DESCARGA
     actions = [exportar_notas_csv]
 
-    # Un pequeño truco para mostrar el nombre del examen en la tabla
     def examen_nombre(self, obj):
         return obj.config.nombre
     examen_nombre.short_description = 'Examen'
+
+    # --- FUNCIÓN QUE CREA EL BOTÓN ---
+    def ver_examen_btn(self, obj):
+        # Solo mostramos el botón si el examen tiene preguntas guardadas (snapshot)
+        if obj.examen_snapshot:
+            # Generamos la URL dinámicamente
+            url = reverse('classroom_exams:admin_review_exam', args=[obj.id])
+            
+            # Devolvemos un botón HTML bonito
+            return format_html(
+                '<a class="button" href="{}" target="_blank" style="background-color:#4299e1; color:white; padding:5px 10px; border-radius:4px; font-weight:bold;">Ver Examen</a>',
+                url
+            )
+        return "-"
+    
+    # Nombre de la columna en el admin
+    ver_examen_btn.short_description = "Revisión"
