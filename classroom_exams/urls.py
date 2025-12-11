@@ -9,4 +9,5 @@ urlpatterns = [
     path('rendir/', views.rendir_examen, name='rendir_examen'), # Quitamos el número de la URL para que no hagan trampa escribiendo /rendir/5
     path('resultado/', views.resultado_examen, name='resultado_examen'),
     path('accion-profesor/', views.accion_profesor, name='accion_profesor'),
+    path('admin-review/<int:session_id>/', views.admin_review_exam, name='admin_review_exam'),
 ]
