@@ -4,6 +4,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from .models import KioskConfig, KioskSession
 from exams.models import Item
+from django.contrib.admin.views.decorators import staff_member_required
 import random
 
 # --- FUNCIONES AUXILIARES ---
@@ -199,3 +200,19 @@ def accion_profesor(request):
             messages.error(request, "PIN Incorrecto")
             
     return redirect('classroom_exams:resultado_examen')
+
+@staff_member_required
+def admin_review_exam(request, session_id):
+    """
+    Vista exclusiva para administradores.
+    Permite ver el examen rendido sin necesitar PIN.
+    """
+    sesion = get_object_or_404(KioskSession, id=session_id)
+    
+    # Reutilizamos tu template 'hoja_examen.html' activando el modo revisión
+    return render(request, 'classroom_exams/hoja_examen.html', {
+        'sesion': sesion,
+        'preguntas': sesion.examen_snapshot, # Pasamos todas las preguntas
+        'modo_revision': True, # Activamos el modo corrección (colores verde/rojo)
+        'total_preguntas': len(sesion.examen_snapshot)
+    })
