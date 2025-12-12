@@ -221,60 +221,58 @@ def admin_review_exam(request, session_id):
         'modo_revision': True, # Activamos el modo corrección (colores verde/rojo)
         'total_preguntas': len(sesion.examen_snapshot)
     })
+
+
 @staff_member_required
 def descargar_pdf_variantes(request, config_id):
     config = get_object_or_404(KioskConfig, id=config_id)
     
-    # Configuración: Generamos 3 temas (A, B, C)
-    cantidad_temas = 3
-    letras_temas = ['A', 'B', 'C', 'D', 'E']
+    # 1. LEEMOS LA CANTIDAD DESDE LA URL (Si no hay nada, usa 3 por defecto)
+    try:
+        cantidad_temas = int(request.GET.get('cantidad', 3))
+    except ValueError:
+        cantidad_temas = 3
+        
+    # Validamos límites (para que nadie pida 1000 temas y rompa el servidor)
+    if cantidad_temas < 1: cantidad_temas = 1
+    if cantidad_temas > 10: cantidad_temas = 10
+
+    letras_temas = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
     
     examenes_generados = []
 
+    # El bucle ahora usa la variable dinámica
     for i in range(cantidad_temas):
-        tema_letra = letras_temas[i]
+        tema_letra = letras_temas[i] if i < len(letras_temas) else str(i+1)
         
-        # 1. Usamos tu lógica existente para mezclar preguntas
-        # Esto nos devuelve una lista de preguntas aleatorias según la config
+        # ... (EL RESTO DE TU CÓDIGO SIGUE IGUAL: generar_examen, claves, etc.) ...
+        # (Copia exactamente lo que tenías adentro del bucle for anterior)
         preguntas = generar_examen(config)
-        
-        claves_tema = [] # Aquí guardaremos las respuestas correctas para el profe
+        claves_tema = []
 
-        # 2. Pre-procesamos las preguntas para agregar letras (A, B, C)
         for idx_preg, p in enumerate(preguntas, 1):
-            
             letra_correcta_pregunta = "?"
-            
             for idx_op, op in enumerate(p['opciones']):
-                # Calculamos la letra: 0->A, 1->B, 2->C...
                 letra = chr(65 + idx_op) 
-                op['letra'] = letra # Guardamos la letra dentro de la opción
-                
+                op['letra'] = letra 
                 if op.get('correct'):
                     letra_correcta_pregunta = letra
-            
-            # Guardamos la clave: "1-C", "2-A", etc.
             claves_tema.append(f"{idx_preg}-{letra_correcta_pregunta}")
 
-        # Agregamos este tema completo a la lista general
         examenes_generados.append({
             'tema': tema_letra,
             'preguntas': preguntas,
             'claves': claves_tema
         })
 
-    # 3. Renderizamos el HTML enviando todos los datos
     html_string = render_to_string('classroom_exams/pdf_variantes.html', {
         'config': config,
         'examenes_generados': examenes_generados,
     })
 
-    # 4. Convertimos a PDF con WeasyPrint
-    # base_url=request.build_absolute_uri() ayuda si usaras imágenes locales
     pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri()).write_pdf()
 
-    # 5. Generamos la respuesta de descarga
-    filename = f"Examenes_{config.nombre.replace(' ', '_')}.pdf"
+    filename = f"Examenes_{config.nombre.replace(' ', '_')}_{cantidad_temas}Temas.pdf"
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
