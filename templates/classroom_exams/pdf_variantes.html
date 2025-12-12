@@ -4,14 +4,13 @@
     <meta charset="UTF-8">
     <title>Examen PDF</title>
     <style>
-        /* 1. MÁRGENES SÚPER REDUCIDOS */
+        /* MÁRGENES Y FUENTE COMPACTA (Igual que antes) */
         @page {
             size: A4;
-            margin: 0.6cm; /* Muy cerca del borde para aprovechar espacio */
+            margin: 0.6cm;
         }
 
         body {
-            /* Fuente compacta y tamaño 9pt solicitado */
             font-family: 'Arial Narrow', 'Helvetica', sans-serif;
             font-size: 9pt;
             line-height: 1.15;
@@ -22,19 +21,18 @@
             page-break-after: always;
         }
 
-        /* --- CABECERA OPTIMIZADA --- */
+        /* --- HEADER REAJUSTADO --- */
         .header-examen {
             border-bottom: 1px solid #000;
             padding-bottom: 5px;
             margin-bottom: 10px;
         }
         
-        /* Fila Superior: Título a la izquierda, TEMA a la derecha */
         .top-row {
-            display: flex; /* WeasyPrint soporta flex básico */
+            display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 15px; /* Un poco más de aire antes de los datos */
         }
         
         .titulo-principal {
@@ -53,45 +51,47 @@
             white-space: nowrap;
         }
 
-        /* Fila de Datos: Apellido y Nombre con mucho espacio */
+        /* NUEVA DISTRIBUCIÓN DE DATOS: Nombre | DNI | Fecha */
         .datos-row {
             font-size: 10pt;
             padding-top: 5px;
+            width: 100%;
         }
         
         .campo-nombre {
             display: inline-block;
-            width: 70%; /* Ocupa el 70% del ancho */
+            width: 50%; /* Mitad de la hoja */
         }
         .campo-dni {
             display: inline-block;
-            width: 28%;
+            width: 20%; /* DNI a la izquierda/centro */
+            padding-left: 10px;
+        }
+        .campo-fecha {
+            display: inline-block;
+            width: 25%; /* Fecha a la derecha */
             text-align: right;
         }
+        
+        /* Línea punteada para escribir */
         .linea-escribir {
-            border-bottom: 1px solid #999;
             display: inline-block;
-            width: 100%;
+            border-bottom: 1px dotted #000; 
+            height: 12px;
         }
 
-        /* --- PREGUNTAS COMPRIMIDAS --- */
+        /* --- PREGUNTAS --- */
         .pregunta-block {
-            margin-bottom: 8px; /* Poco espacio entre preguntas */
+            margin-bottom: 8px;
             page-break-inside: avoid;
         }
         
-        /* Solo el número en negrita */
         .numero-pregunta {
             font-weight: bold;
             font-size: 9pt;
             margin-right: 2px;
         }
         
-        /* Texto de la pregunta normal (sin negrita) */
-        .texto-pregunta {
-            font-weight: normal;
-        }
-
         .opcion {
             margin-left: 15px;
             margin-top: 1px;
@@ -99,7 +99,7 @@
         
         .check-box {
             display: inline-block;
-            width: 8px; /* Cuadradito más chico para acompañar la letra 9pt */
+            width: 8px;
             height: 8px;
             border: 1px solid #000;
             margin-right: 4px;
@@ -107,7 +107,7 @@
             top: 1px;
         }
 
-        /* --- HOJA DE RESPUESTAS --- */
+        /* --- HOJA DE RESPUESTAS (VERTICAL) --- */
         .titulo-claves {
             text-align: center;
             font-size: 12pt;
@@ -119,17 +119,19 @@
         .tabla-claves {
             width: 100%;
             border-collapse: collapse;
-            font-size: 8pt; /* Aún más chico para que entre todo */
+            font-size: 9pt; /* Un poquito más grande para leer mejor */
         }
         .tabla-claves th {
             border: 1px solid #000;
-            padding: 4px;
+            padding: 5px;
             background: #eee;
+            text-align: center;
         }
         .tabla-claves td {
             border: 1px solid #000;
-            padding: 4px;
+            padding: 10px;
             vertical-align: top;
+            text-align: center; /* Centramos el contenido de la columna */
         }
     </style>
 </head>
@@ -146,10 +148,13 @@
             
             <div class="datos-row">
                 <div class="campo-nombre">
-                    Apellido y Nombre: <span style="display:inline-block; border-bottom:1px dotted #000; width: 80%;"></span>
+                    Apellido y Nombre: <span class="linea-escribir" style="width: 65%;"></span>
                 </div>
                 <div class="campo-dni">
-                    DNI: <span style="display:inline-block; border-bottom:1px dotted #000; width: 60%;"></span>
+                    DNI: <span class="linea-escribir" style="width: 70%;"></span>
+                </div>
+                <div class="campo-fecha">
+                    Fecha: <span class="linea-escribir" style="width: 70%;"></span>
                 </div>
             </div>
         </div>
@@ -158,7 +163,7 @@
         <div class="pregunta-block">
             <div>
                 <span class="numero-pregunta">{{ forloop.counter }}.</span>
-                <span class="texto-pregunta">{{ p.texto }}</span>
+                <span>{{ p.texto }}</span>
             </div>
             
             {% for op in p.opciones %}
@@ -188,10 +193,10 @@
                 <tr>
                     {% for examen in examenes_generados %}
                     <td>
-                        <div style="column-count: 4; column-gap: 10px;">
+                        <div style="text-align: left; display: inline-block;">
                             {% for clave in examen.claves %}
-                            <div style="margin-bottom: 2px;">
-                                <strong>{{ clave|slice:":2" }}</strong>{{ clave|slice:"2:" }}
+                            <div style="margin-bottom: 4px; border-bottom: 1px dotted #ccc; padding-bottom: 2px;">
+                                <strong style="display:inline-block; width:20px;">{{ clave|slice:":2" }}</strong> {{ clave|slice:"2:" }}
                             </div>
                             {% endfor %}
                         </div>
