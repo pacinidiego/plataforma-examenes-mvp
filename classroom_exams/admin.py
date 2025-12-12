@@ -5,7 +5,7 @@ from django.urls import reverse
 import csv
 from .models import KioskConfig, KioskSession
 
-# --- 1. Definimos la función de exportación ---
+# --- 1. Definimos la función de exportación (CSV) ---
 def exportar_notas_csv(modeladmin, request, queryset):
     """
     Esta función toma los elementos seleccionados en el admin 
@@ -30,7 +30,7 @@ def exportar_notas_csv(modeladmin, request, queryset):
         
     return response
 
-# Texto que aparecerá en el menú desplegable
+# Texto que aparecerá en el menú desplegable "Action"
 exportar_notas_csv.short_description = "Descargar notas seleccionadas (CSV)"
 
 
@@ -38,8 +38,26 @@ exportar_notas_csv.short_description = "Descargar notas seleccionadas (CSV)"
 
 @admin.register(KioskConfig)
 class KioskConfigAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'tenant', 'duracion_minutos', 'activo')
+    # Agregamos 'btn_pdf' al final de la lista
+    list_display = ('nombre', 'tenant', 'duracion_minutos', 'activo', 'btn_pdf')
     list_filter = ('tenant', 'activo')
+    search_fields = ('nombre',)
+
+    # --- FUNCIÓN QUE CREA EL BOTÓN PDF ---
+    def btn_pdf(self, obj):
+        # Generamos la URL dinámicamente apuntando a la vista del PDF
+        try:
+            url = reverse('classroom_exams:pdf_variantes', args=[obj.id])
+            
+            return format_html(
+                '<a class="button" href="{}" style="background-color:#79aec8; color:white; padding: 4px 10px; border-radius: 4px; font-weight: bold;">🖨️ PDF 3 Temas</a>',
+                url
+            )
+        except Exception:
+            return "-"
+
+    btn_pdf.short_description = "Descargar Examen"
+
 
 @admin.register(KioskSession)
 class KioskSessionAdmin(admin.ModelAdmin):
@@ -54,7 +72,7 @@ class KioskSessionAdmin(admin.ModelAdmin):
         return obj.config.nombre
     examen_nombre.short_description = 'Examen'
 
-    # --- FUNCIÓN QUE CREA EL BOTÓN ---
+    # --- FUNCIÓN QUE CREA EL BOTÓN VER REVISIÓN ---
     def ver_examen_btn(self, obj):
         # Solo mostramos el botón si el examen tiene preguntas guardadas (snapshot)
         if obj.examen_snapshot:
