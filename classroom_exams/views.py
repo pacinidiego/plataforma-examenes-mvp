@@ -227,26 +227,20 @@ def admin_review_exam(request, session_id):
 def descargar_pdf_variantes(request, config_id):
     config = get_object_or_404(KioskConfig, id=config_id)
     
-    # 1. LEEMOS LA CANTIDAD DESDE LA URL (Si no hay nada, usa 3 por defecto)
     try:
         cantidad_temas = int(request.GET.get('cantidad', 3))
     except ValueError:
         cantidad_temas = 3
         
-    # Validamos límites (para que nadie pida 1000 temas y rompa el servidor)
     if cantidad_temas < 1: cantidad_temas = 1
     if cantidad_temas > 10: cantidad_temas = 10
 
-    letras_temas = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
-    
     examenes_generados = []
 
-    # El bucle ahora usa la variable dinámica
     for i in range(cantidad_temas):
-        tema_letra = letras_temas[i] if i < len(letras_temas) else str(i+1)
+        # CAMBIO 1: Usamos números en lugar de letras
+        tema_numero = i + 1 
         
-        # ... (EL RESTO DE TU CÓDIGO SIGUE IGUAL: generar_examen, claves, etc.) ...
-        # (Copia exactamente lo que tenías adentro del bucle for anterior)
         preguntas = generar_examen(config)
         claves_tema = []
 
@@ -260,7 +254,7 @@ def descargar_pdf_variantes(request, config_id):
             claves_tema.append(f"{idx_preg}-{letra_correcta_pregunta}")
 
         examenes_generados.append({
-            'tema': tema_letra,
+            'tema': tema_numero, # Ahora pasamos un número
             'preguntas': preguntas,
             'claves': claves_tema
         })
@@ -272,6 +266,7 @@ def descargar_pdf_variantes(request, config_id):
 
     pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri()).write_pdf()
 
+    # CAMBIO EN EL NOMBRE DEL ARCHIVO TAMBIÉN
     filename = f"Examenes_{config.nombre.replace(' ', '_')}_{cantidad_temas}Temas.pdf"
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
