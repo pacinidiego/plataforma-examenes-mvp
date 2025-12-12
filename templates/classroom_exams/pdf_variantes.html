@@ -4,100 +4,100 @@
     <meta charset="UTF-8">
     <title>Examen PDF</title>
     <style>
-        /* Configuración de la hoja A4 */
+        /* 1. OPTIMIZACIÓN DE ESPACIO EN LA HOJA */
         @page {
             size: A4;
-            margin: 2cm;
-            /* Pie de página automático con número de hoja */
+            margin: 1cm; /* Margen reducido al mínimo seguro */
             @bottom-right {
-                content: "Página " counter(page);
+                content: "Pág. " counter(page);
                 font-family: Helvetica, sans-serif;
-                font-size: 10pt;
+                font-size: 9pt;
             }
         }
 
         body {
-            font-family: Helvetica, sans-serif;
-            font-size: 11pt;
-            line-height: 1.4;
+            /* Usamos fuentes "Narrow" para que entre más texto a lo ancho */
+            font-family: 'Arial Narrow', 'Helvetica', sans-serif;
+            font-size: 10pt; /* Letra más chica */
+            line-height: 1.2; /* Menos espacio entre renglones */
             color: #000;
         }
 
-        /* Clase para cortar la hoja entre cada tema */
         .salto-pagina {
             page-break-after: always;
         }
 
-        /* Encabezados */
+        /* Encabezado Compacto */
         .header-examen {
             border-bottom: 2px solid #333;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
         }
         .titulo-principal {
-            font-size: 18pt;
+            font-size: 14pt;
             font-weight: bold;
             text-align: center;
             text-transform: uppercase;
+            margin-bottom: 10px;
         }
-        .datos-alumno {
-            margin-top: 15px;
-            font-size: 12pt;
-            display: flex;
-            justify-content: space-between;
+        
+        /* Fila de Datos del Alumno (Flex simulado) */
+        .datos-alumno-row {
+            margin-top: 10px;
+            font-size: 11pt;
+            width: 100%;
+        }
+        .campo-alumno {
+            display: inline-block;
+            margin-right: 20px;
         }
         .tema-badge {
+            float: right;
             font-weight: bold;
+            font-size: 12pt;
             background-color: #eee;
             padding: 2px 8px;
             border: 1px solid #ccc;
             border-radius: 4px;
         }
 
-        /* Preguntas */
+        /* Preguntas Compactas */
         .pregunta-block {
-            margin-bottom: 20px;
-            page-break-inside: avoid; /* Intenta no cortar una pregunta a la mitad */
+            margin-bottom: 10px; /* Menos espacio entre preguntas */
+            page-break-inside: avoid; 
         }
         .enunciado {
             font-weight: bold;
-            margin-bottom: 8px;
+            margin-bottom: 3px;
         }
         .opcion {
-            margin-left: 20px;
-            margin-bottom: 4px;
+            margin-left: 15px;
+            margin-bottom: 2px;
+        }
+        
+        /* 2. EL CASILLERO PARA TILDAR */
+        .check-box {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border: 1px solid #000;
+            margin-right: 5px;
+            position: relative;
+            top: 1px; /* Ajuste fino vertical */
         }
 
-        /* Hoja de Respuestas del Profesor */
+        /* Hoja de Respuestas (Compacta) */
         .titulo-claves {
             text-align: center;
-            font-size: 16pt;
+            font-size: 14pt;
             font-weight: bold;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             text-decoration: underline;
-        }
-        .grid-claves {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
-        .columna-tema {
-            width: 30%;
-            border: 1px solid #000;
-            padding: 15px;
-            border-radius: 5px;
-        }
-        .tema-titulo {
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 10px;
-            background: #ddd;
-            padding: 5px;
         }
         .item-clave {
             border-bottom: 1px dotted #ccc;
             padding: 2px 0;
-            font-size: 10pt;
+            font-size: 9pt;
         }
     </style>
 </head>
@@ -108,8 +108,11 @@
         
         <div class="header-examen">
             <div class="titulo-principal">{{ config.nombre }}</div>
-            <div class="datos-alumno">
-                <span>Alumno: ________________________________________________</span>
+            
+            <div class="datos-alumno-row">
+                <span class="campo-alumno">Alumno: __________________________</span>
+                <span class="campo-alumno">DNI: __________________</span>
+                
                 <span class="tema-badge">TEMA {{ examen.tema }}</span>
             </div>
         </div>
@@ -120,6 +123,7 @@
             
             {% for op in p.opciones %}
                 <div class="opcion">
+                    <span class="check-box"></span>
                     <strong>{{ op.letra }})</strong> {{ op.text }}
                 </div>
             {% endfor %}
@@ -131,27 +135,26 @@
 
 
     <div>
-        <div class="titulo-claves">HOJA DE RESPUESTAS (USO DOCENTE)</div>
+        <div class="titulo-claves">HOJA DE CLAVES (DOCENTE)</div>
         
-        <p style="text-align: center; margin-bottom: 20px;">
-            Estas son las claves de corrección para las variantes generadas.
-        </p>
-
         <table style="width: 100%; border-collapse: collapse;">
             <thead>
                 <tr>
                     {% for examen in examenes_generados %}
-                    <th style="border: 1px solid black; padding: 10px; background: #eee;">TEMA {{ examen.tema }}</th>
+                    <th style="border: 1px solid black; padding: 5px; background: #eee; font-size: 10pt;">
+                        TEMA {{ examen.tema }}
+                    </th>
                     {% endfor %}
                 </tr>
             </thead>
             <tbody>
                 <tr>
                     {% for examen in examenes_generados %}
-                    <td style="border: 1px solid black; padding: 10px; vertical-align: top;">
+                    <td style="border: 1px solid black; padding: 5px; vertical-align: top;">
                         {% for clave in examen.claves %}
                         <div class="item-clave">
-                            <strong>{{ clave|slice:":2" }}</strong> {{ clave|slice:"2:" }} </div>
+                            <strong>{{ clave|slice:":2" }}</strong> {{ clave|slice:"2:" }}
+                        </div>
                         {% endfor %}
                     </td>
                     {% endfor %}
