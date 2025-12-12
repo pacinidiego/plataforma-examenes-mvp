@@ -32,7 +32,7 @@ google-generativeai==0.7.2
 # (Activaremos esto cuando lleguemos a S3b/S5/S7)
 
 # PDF (S5a)
-WeasyPrint==62.1
+WeasyPrint>=63.0
 
 # Anti-Leak (S3b / S7)
 # opencv-python-headless==4.10.0.82
