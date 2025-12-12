@@ -26,11 +26,13 @@ openpyxl==3.1.2
 google-generativeai==0.7.2
 
 
+
+
 # === LIBRERÍAS PESADAS (COMENTADAS HASTA SU SPRINT) ===
 # (Activaremos esto cuando lleguemos a S3b/S5/S7)
 
 # PDF (S5a)
-# WeasyPrint==62.1
+WeasyPrint==62.1
 
 # Anti-Leak (S3b / S7)
 # opencv-python-headless==4.10.0.82
