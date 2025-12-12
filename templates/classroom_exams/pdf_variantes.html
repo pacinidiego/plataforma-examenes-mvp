@@ -4,22 +4,17 @@
     <meta charset="UTF-8">
     <title>Examen PDF</title>
     <style>
-        /* 1. OPTIMIZACIÓN DE ESPACIO EN LA HOJA */
+        /* 1. MÁRGENES SÚPER REDUCIDOS */
         @page {
             size: A4;
-            margin: 1cm; /* Margen reducido al mínimo seguro */
-            @bottom-right {
-                content: "Pág. " counter(page);
-                font-family: Helvetica, sans-serif;
-                font-size: 9pt;
-            }
+            margin: 0.6cm; /* Muy cerca del borde para aprovechar espacio */
         }
 
         body {
-            /* Usamos fuentes "Narrow" para que entre más texto a lo ancho */
+            /* Fuente compacta y tamaño 9pt solicitado */
             font-family: 'Arial Narrow', 'Helvetica', sans-serif;
-            font-size: 10pt; /* Letra más chica */
-            line-height: 1.2; /* Menos espacio entre renglones */
+            font-size: 9pt;
+            line-height: 1.15;
             color: #000;
         }
 
@@ -27,77 +22,114 @@
             page-break-after: always;
         }
 
-        /* Encabezado Compacto */
+        /* --- CABECERA OPTIMIZADA --- */
         .header-examen {
-            border-bottom: 2px solid #333;
+            border-bottom: 1px solid #000;
             padding-bottom: 5px;
-            margin-bottom: 15px;
-        }
-        .titulo-principal {
-            font-size: 14pt;
-            font-weight: bold;
-            text-align: center;
-            text-transform: uppercase;
             margin-bottom: 10px;
         }
         
-        /* Fila de Datos del Alumno (Flex simulado) */
-        .datos-alumno-row {
-            margin-top: 10px;
-            font-size: 11pt;
-            width: 100%;
-        }
-        .campo-alumno {
-            display: inline-block;
-            margin-right: 20px;
-        }
-        .tema-badge {
-            float: right;
-            font-weight: bold;
-            font-size: 12pt;
-            background-color: #eee;
-            padding: 2px 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-
-        /* Preguntas Compactas */
-        .pregunta-block {
-            margin-bottom: 10px; /* Menos espacio entre preguntas */
-            page-break-inside: avoid; 
-        }
-        .enunciado {
-            font-weight: bold;
-            margin-bottom: 3px;
-        }
-        .opcion {
-            margin-left: 15px;
-            margin-bottom: 2px;
+        /* Fila Superior: Título a la izquierda, TEMA a la derecha */
+        .top-row {
+            display: flex; /* WeasyPrint soporta flex básico */
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
         }
         
-        /* 2. EL CASILLERO PARA TILDAR */
-        .check-box {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border: 1px solid #000;
-            margin-right: 5px;
-            position: relative;
-            top: 1px; /* Ajuste fino vertical */
+        .titulo-principal {
+            font-size: 12pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            width: 80%;
         }
 
-        /* Hoja de Respuestas (Compacta) */
-        .titulo-claves {
-            text-align: center;
+        .tema-box {
             font-size: 14pt;
             font-weight: bold;
-            margin-bottom: 20px;
-            text-decoration: underline;
+            border: 2px solid #000;
+            padding: 2px 8px;
+            background-color: #f0f0f0;
+            white-space: nowrap;
         }
-        .item-clave {
-            border-bottom: 1px dotted #ccc;
-            padding: 2px 0;
+
+        /* Fila de Datos: Apellido y Nombre con mucho espacio */
+        .datos-row {
+            font-size: 10pt;
+            padding-top: 5px;
+        }
+        
+        .campo-nombre {
+            display: inline-block;
+            width: 70%; /* Ocupa el 70% del ancho */
+        }
+        .campo-dni {
+            display: inline-block;
+            width: 28%;
+            text-align: right;
+        }
+        .linea-escribir {
+            border-bottom: 1px solid #999;
+            display: inline-block;
+            width: 100%;
+        }
+
+        /* --- PREGUNTAS COMPRIMIDAS --- */
+        .pregunta-block {
+            margin-bottom: 8px; /* Poco espacio entre preguntas */
+            page-break-inside: avoid;
+        }
+        
+        /* Solo el número en negrita */
+        .numero-pregunta {
+            font-weight: bold;
             font-size: 9pt;
+            margin-right: 2px;
+        }
+        
+        /* Texto de la pregunta normal (sin negrita) */
+        .texto-pregunta {
+            font-weight: normal;
+        }
+
+        .opcion {
+            margin-left: 15px;
+            margin-top: 1px;
+        }
+        
+        .check-box {
+            display: inline-block;
+            width: 8px; /* Cuadradito más chico para acompañar la letra 9pt */
+            height: 8px;
+            border: 1px solid #000;
+            margin-right: 4px;
+            position: relative;
+            top: 1px;
+        }
+
+        /* --- HOJA DE RESPUESTAS --- */
+        .titulo-claves {
+            text-align: center;
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-decoration: underline;
+            margin-top: 20px;
+        }
+        .tabla-claves {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 8pt; /* Aún más chico para que entre todo */
+        }
+        .tabla-claves th {
+            border: 1px solid #000;
+            padding: 4px;
+            background: #eee;
+        }
+        .tabla-claves td {
+            border: 1px solid #000;
+            padding: 4px;
+            vertical-align: top;
         }
     </style>
 </head>
@@ -107,19 +139,27 @@
     <div class="salto-pagina">
         
         <div class="header-examen">
-            <div class="titulo-principal">{{ config.nombre }}</div>
+            <div class="top-row">
+                <div class="titulo-principal">{{ config.nombre }}</div>
+                <div class="tema-box">TEMA {{ examen.tema }}</div>
+            </div>
             
-            <div class="datos-alumno-row">
-                <span class="campo-alumno">Alumno: __________________________</span>
-                <span class="campo-alumno">DNI: __________________</span>
-                
-                <span class="tema-badge">TEMA {{ examen.tema }}</span>
+            <div class="datos-row">
+                <div class="campo-nombre">
+                    Apellido y Nombre: <span style="display:inline-block; border-bottom:1px dotted #000; width: 80%;"></span>
+                </div>
+                <div class="campo-dni">
+                    DNI: <span style="display:inline-block; border-bottom:1px dotted #000; width: 60%;"></span>
+                </div>
             </div>
         </div>
 
         {% for p in examen.preguntas %}
         <div class="pregunta-block">
-            <div class="enunciado">{{ forloop.counter }}. {{ p.texto }}</div>
+            <div>
+                <span class="numero-pregunta">{{ forloop.counter }}.</span>
+                <span class="texto-pregunta">{{ p.texto }}</span>
+            </div>
             
             {% for op in p.opciones %}
                 <div class="opcion">
@@ -133,29 +173,28 @@
     </div>
     {% endfor %}
 
-
     <div>
-        <div class="titulo-claves">HOJA DE CLAVES (DOCENTE)</div>
+        <div class="titulo-claves">CLAVES DE CORRECCIÓN (DOCENTE)</div>
         
-        <table style="width: 100%; border-collapse: collapse;">
+        <table class="tabla-claves">
             <thead>
                 <tr>
                     {% for examen in examenes_generados %}
-                    <th style="border: 1px solid black; padding: 5px; background: #eee; font-size: 10pt;">
-                        TEMA {{ examen.tema }}
-                    </th>
+                    <th>TEMA {{ examen.tema }}</th>
                     {% endfor %}
                 </tr>
             </thead>
             <tbody>
                 <tr>
                     {% for examen in examenes_generados %}
-                    <td style="border: 1px solid black; padding: 5px; vertical-align: top;">
-                        {% for clave in examen.claves %}
-                        <div class="item-clave">
-                            <strong>{{ clave|slice:":2" }}</strong> {{ clave|slice:"2:" }}
+                    <td>
+                        <div style="column-count: 4; column-gap: 10px;">
+                            {% for clave in examen.claves %}
+                            <div style="margin-bottom: 2px;">
+                                <strong>{{ clave|slice:":2" }}</strong>{{ clave|slice:"2:" }}
+                            </div>
+                            {% endfor %}
                         </div>
-                        {% endfor %}
                     </td>
                     {% endfor %}
                 </tr>
