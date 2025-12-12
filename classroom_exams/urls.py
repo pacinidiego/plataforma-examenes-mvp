@@ -10,4 +10,5 @@ urlpatterns = [
     path('resultado/', views.resultado_examen, name='resultado_examen'),
     path('accion-profesor/', views.accion_profesor, name='accion_profesor'),
     path('admin-review/<int:session_id>/', views.admin_review_exam, name='admin_review_exam'),
+    path('config/<int:config_id>/pdf-variantes/', views.descargar_pdf_variantes, name='pdf_variantes'),
 ]
