@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+            @bottom-right {
+                content: "Página " counter(page);
+                font-size: 10px;
+            }
+        }
+        body { font-family: Helvetica, sans-serif; font-size: 12px; line-height: 1.4; }
+        .salto-pagina { page-break-after: always; }
+        .titulo { text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+        .subtitulo { text-align: center; font-size: 14px; margin-bottom: 20px; border-bottom: 1px solid #000; padding-bottom: 10px;}
+        .pregunta-container { margin-bottom: 15px; }
+        .pregunta-texto { font-weight: bold; margin-bottom: 5px; }
+        .opcion { margin-left: 20px; }
+        .hoja-respuestas { margin-top: 30px; }
+        .fila-respuesta { margin-bottom: 5px; border-bottom: 1px dotted #ccc; }
+    </style>
+</head>
+<body>
+
+    {% for examen in examenes_generados %}
+    <div class="salto-pagina">
+        <div class="titulo">Examen: {{ config.nombre }}</div>
+        <div class="subtitulo">
+            TEMA {{ examen.tema }} &nbsp;&nbsp;|&nbsp;&nbsp; 
+            Alumno: __________________________________________________
+        </div>
+
+        {% for p in examen.preguntas %}
+        <div class="pregunta-container">
+            <div class="pregunta-texto">{{ forloop.counter }}. {{ p.texto }}</div>
+            {% for op in p.opciones %}
+                <div class="opcion">
+                    {{ forloop.counter0|add:65|chr }}) {{ op.text }}
+                </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+
+    <div>
+        <div class="titulo">HOJA DE RESPUESTAS (USO INTERNO)</div>
+        <div class="subtitulo">Claves de Corrección</div>
+        
+        {% for examen in examenes_generados %}
+        <div style="margin-bottom: 20px;">
+            <h3>TEMA {{ examen.tema }}</h3>
+            <div style="column-count: 3;"> {% for clave in examen.claves %}
+                <div class="fila-respuesta">
+                    <strong>{{ forloop.counter }}</strong>: {{ clave }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</body>
+</html>
