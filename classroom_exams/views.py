@@ -5,6 +5,8 @@ from django.contrib import messages
 from .models import KioskConfig, KioskSession
 from exams.models import Item
 from django.contrib.admin.views.decorators import staff_member_required
+from weasyprint import HTML, CSS # Importante: WeasyPrint
+from .models import KioskConfig, KioskSession
 import random
 
 # --- FUNCIONES AUXILIARES ---
@@ -216,3 +218,61 @@ def admin_review_exam(request, session_id):
         'modo_revision': True, # Activamos el modo corrección (colores verde/rojo)
         'total_preguntas': len(sesion.examen_snapshot)
     })
+@staff_member_required
+def descargar_pdf_variantes(request, config_id):
+    config = get_object_or_404(KioskConfig, id=config_id)
+    
+    # Configuración: Generamos 3 temas (A, B, C)
+    cantidad_temas = 3
+    letras_temas = ['A', 'B', 'C', 'D', 'E']
+    
+    examenes_generados = []
+
+    for i in range(cantidad_temas):
+        tema_letra = letras_temas[i]
+        
+        # 1. Usamos tu lógica existente para mezclar preguntas
+        # Esto nos devuelve una lista de preguntas aleatorias según la config
+        preguntas = generar_examen(config)
+        
+        claves_tema = [] # Aquí guardaremos las respuestas correctas para el profe
+
+        # 2. Pre-procesamos las preguntas para agregar letras (A, B, C)
+        for idx_preg, p in enumerate(preguntas, 1):
+            
+            letra_correcta_pregunta = "?"
+            
+            for idx_op, op in enumerate(p['opciones']):
+                # Calculamos la letra: 0->A, 1->B, 2->C...
+                letra = chr(65 + idx_op) 
+                op['letra'] = letra # Guardamos la letra dentro de la opción
+                
+                if op.get('correct'):
+                    letra_correcta_pregunta = letra
+            
+            # Guardamos la clave: "1-C", "2-A", etc.
+            claves_tema.append(f"{idx_preg}-{letra_correcta_pregunta}")
+
+        # Agregamos este tema completo a la lista general
+        examenes_generados.append({
+            'tema': tema_letra,
+            'preguntas': preguntas,
+            'claves': claves_tema
+        })
+
+    # 3. Renderizamos el HTML enviando todos los datos
+    html_string = render_to_string('classroom_exams/pdf_variantes.html', {
+        'config': config,
+        'examenes_generados': examenes_generados,
+    })
+
+    # 4. Convertimos a PDF con WeasyPrint
+    # base_url=request.build_absolute_uri() ayuda si usaras imágenes locales
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri()).write_pdf()
+
+    # 5. Generamos la respuesta de descarga
+    filename = f"Examenes_{config.nombre.replace(' ', '_')}.pdf"
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
