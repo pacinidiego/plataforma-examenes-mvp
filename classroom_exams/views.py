@@ -7,6 +7,9 @@ from exams.models import Item
 from django.contrib.admin.views.decorators import staff_member_required
 from weasyprint import HTML, CSS # Importante: WeasyPrint
 from .models import KioskConfig, KioskSession
+from django.template.loader import render_to_string  # <--- Esta es la que te falta
+from weasyprint import HTML, CSS                   # <--- Esta la necesitarás para generar el PDF
+from django.http import HttpResponse
 import random
 
 # --- FUNCIONES AUXILIARES ---
