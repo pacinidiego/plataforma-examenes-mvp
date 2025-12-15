@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-extrabold text-gray-900 sm:text-5xl">
+                Portal Docente
+            </h1>
+            <p class="mt-4 text-xl text-gray-600">
+                Bienvenido, {{ user.first_name|default:user.username }}. ¿Qué deseas hacer hoy?
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            <a href="{% url 'runner:teacher_home' %}" class="group block p-8 bg-white rounded-2xl shadow-md border border-gray-200 hover:shadow-xl hover:border-indigo-500 transition-all duration-300">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="p-3 rounded-full bg-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                    </span>
+                    <span class="text-sm font-medium text-gray-400 group-hover:text-indigo-500">Módulo Runner &rarr;</span>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 mb-2">Vigilancia Online</h3>
+                <p class="text-gray-500">
+                    Monitorea exámenes en tiempo real, revisa las alertas de la IA y audita intentos sospechosos.
+                </p>
+            </a>
+
+            <a href="/admin/classroom_exams/exam/add/" class="group block p-8 bg-white rounded-2xl shadow-md border border-gray-200 hover:shadow-xl hover:border-emerald-500 transition-all duration-300">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="p-3 rounded-full bg-emerald-100 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    </span>
+                    <span class="text-sm font-medium text-gray-400 group-hover:text-emerald-500">Módulo Classroom &rarr;</span>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 mb-2">Generador PDF</h3>
+                <p class="text-gray-500">
+                    Crea exámenes escritos con temas mezclados aleatoriamente (Tema 1, 2, 3...) listos para imprimir.
+                </p>
+            </a>
+
+            <a href="/admin/" class="group block p-8 bg-white rounded-2xl shadow-md border border-gray-200 hover:shadow-xl hover:border-gray-500 transition-all duration-300 md:col-span-2">
+                <div class="flex items-center">
+                    <span class="p-3 rounded-full bg-gray-100 text-gray-600 group-hover:bg-gray-800 group-hover:text-white transition-colors mr-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </span>
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900">Configuración Avanzada</h3>
+                        <p class="text-sm text-gray-500">Gestionar usuarios, preguntas y ajustes globales.</p>
+                    </div>
+                </div>
+            </a>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
