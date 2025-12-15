@@ -49,7 +49,7 @@
     </div>
 </div>
 
-<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
 
 <script>
     function biometricGate() {
@@ -63,7 +63,8 @@
 
             async init() {
                 try {
-                    // 1. Cargar Modelos desde CDN confiable
+                    // 1. Cargar Modelos
+                    // Usamos los modelos alojados en GitHub pages que son públicos y funcionan bien
                     const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
                     
                     await Promise.all([
@@ -85,16 +86,16 @@
                     };
 
                 } catch (e) {
-                    console.error(e);
+                    console.error("Error en init:", e);
                     this.status = 'error';
-                    this.message = 'Error: No se pudo acceder a la cámara o IA.';
+                    this.message = 'Error: No se pudo acceder a la cámara o cargar la IA.';
                 }
             },
 
             startScanning() {
                 const video = this.$refs.video;
                 
-                // Intervalo de chequeo rápido para UX fluida (100ms)
+                // Intervalo de chequeo rápido (100ms)
                 const interval = setInterval(async () => {
                     if (this.status === 'success' || this.status === 'error') {
                         clearInterval(interval);
@@ -102,26 +103,33 @@
                     }
 
                     // Detección
+                    // Ajustamos el inputSize a 224 o 320 para mayor velocidad en TinyFaceDetector
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
-                    const detection = await faceapi.detectSingleFace(video, options)
-                                           .withFaceLandmarks()
-                                           .withFaceDescriptor();
+                    
+                    try {
+                        const detection = await faceapi.detectSingleFace(video, options)
+                                            .withFaceLandmarks()
+                                            .withFaceDescriptor();
 
-                    if (detection) {
-                        this.consecutiveFrames++;
-                        this.progress = Math.min(100, (this.consecutiveFrames / this.REQUIRED_FRAMES) * 100);
+                        if (detection) {
+                            this.consecutiveFrames++;
+                            this.progress = Math.min(100, (this.consecutiveFrames / this.REQUIRED_FRAMES) * 100);
 
-                        if (this.consecutiveFrames >= this.REQUIRED_FRAMES) {
-                            // !!! CAPTURA DEL ANCLA !!!
-                            await this.captureAndSaveIdentity(detection, video);
-                            this.status = 'success';
-                            this.message = 'Identidad Registrada Correctamente';
+                            if (this.consecutiveFrames >= this.REQUIRED_FRAMES) {
+                                // !!! CAPTURA DEL ANCLA !!!
+                                await this.captureAndSaveIdentity(detection, video);
+                                this.status = 'success';
+                                this.message = 'Identidad Registrada Correctamente';
+                            }
+                        } else {
+                            // Si se pierde la cara, reseteamos el progreso
+                            this.consecutiveFrames = 0;
+                            this.progress = 0;
+                            this.message = 'No se detecta rostro. Ubícate en el centro.';
                         }
-                    } else {
-                        // Si se mueve o hay más de una cara, reiniciamos
-                        this.consecutiveFrames = 0;
-                        this.progress = 0;
-                        this.message = 'No se detecta rostro. Ubícate en el centro.';
+                    } catch (err) {
+                        console.error("Error detectando rostro:", err);
+                        // No rompemos el ciclo, solo lo intentamos de nuevo en el siguiente frame
                     }
                 }, 100);
             },
