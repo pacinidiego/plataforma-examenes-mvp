@@ -42,11 +42,13 @@ def lobby_view(request, access_code):
             return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=active_attempt.id)
 
         # C. Es nuevo -> CREAR
+        # IMPORTANTE: Al crear, 'start_time' debe quedar vacío (None) hasta que empiece a rendir.
         attempt = Attempt.objects.create(
             exam=exam,
             student_name=nombre,
             student_legajo=legajo,
             ip_address=request.META.get('REMOTE_ADDR')
+            # start_time se deja en None por defecto
         )
         return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=attempt.id)
         
@@ -60,7 +62,7 @@ def tech_check_view(request, access_code, attempt_id):
     return render(request, 'runner/tech_check.html', {'exam': exam, 'attempt': attempt})
 
 
-# 3. BIOMETRIC GATE (Identidad - NUEVO)
+# 3. BIOMETRIC GATE (Identidad)
 def biometric_gate_view(request, access_code, attempt_id):
     """
     PANTALLA INTERMEDIA: Validación de Identidad y Captura de Ancla.
@@ -77,7 +79,7 @@ def biometric_gate_view(request, access_code, attempt_id):
     })
 
 
-# 4. API REGISTRO BIOMÉTRICO (NUEVO)
+# 4. API REGISTRO BIOMÉTRICO
 @require_POST
 def register_biometrics(request, attempt_id):
     """
@@ -100,7 +102,7 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
-# 5. RUNNER (Examen)
+# 5. RUNNER (Examen) - AQUÍ ESTÁ LA CORRECCIÓN DEL TIEMPO
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -108,18 +110,29 @@ def exam_runner_view(request, access_code, attempt_id):
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
+    # --- CORRECCIÓN CRÍTICA: INICIO DEL RELOJ ---
+    # Si start_time es None (es la primera vez que entra a las preguntas),
+    # iniciamos el cronómetro AHORA.
+    if not attempt.start_time:
+        attempt.start_time = timezone.now()
+        attempt.save(update_fields=['start_time'])
+    # --------------------------------------------
+
     items = list(exam.items.all())
     if exam.shuffle_items:
+        # Usamos el ID del intento como semilla para que el orden sea siempre el mismo para este alumno
         random.Random(str(attempt.id)).shuffle(items)
         
     total_duration = exam.get_total_duration_seconds()
+    
+    # Calculamos el tiempo transcurrido desde que SE MOSTRARON LAS PREGUNTAS
     elapsed = (timezone.now() - attempt.start_time).total_seconds()
     remaining = max(0, total_duration - elapsed)
 
     if remaining <= 0:
         return redirect('runner:submit_exam', attempt_id=attempt.id)
 
-    # Lógica de Salto Directo
+    # Lógica de Salto Directo (retomar donde dejó)
     saved_answers = attempt.answers or {}
     initial_step = len(saved_answers)
     
@@ -148,6 +161,7 @@ def save_answer(request, attempt_id):
         current_answers[str(data.get('question_id'))] = data.get('answer')
         
         attempt.answers = current_answers
+        # Actualizamos heartbeat para saber que sigue vivo
         attempt.save(update_fields=['answers', 'last_heartbeat']) 
         return JsonResponse({'status': 'ok'})
     except Exception as e:
@@ -168,8 +182,10 @@ def submit_exam_view(request, attempt_id):
     for q in questions:
         selected = answers.get(str(q.id))
         if selected:
+            # Buscamos la opción correcta
             correct = next((o for o in (q.options or []) if o.get('correct')), None)
             if correct and correct.get('text') == selected:
+                # Buscamos el puntaje específico de esa pregunta en este examen
                 link = exam.examitemlink_set.filter(item=q).first()
                 score += link.points if link else 1.0
 
