@@ -311,3 +311,18 @@ def attempt_detail_view(request, attempt_id):
         'attempt': attempt,
         'events': events
     })
+
+
+# 12. HOME DOCENTE (Lista de Exámenes)
+@login_required
+@user_passes_test(is_staff)
+def teacher_home_view(request):
+    """
+    Pantalla principal ("Mis Exámenes"): Muestra la lista para elegir cuál corregir.
+    """
+    # Trae todos los exámenes ordenados por el más nuevo
+    exams = Exam.objects.all().order_by('-id') 
+    
+    return render(request, 'runner/teacher_home.html', {
+        'exams': exams
+    })
