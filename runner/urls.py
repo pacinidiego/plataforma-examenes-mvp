@@ -22,4 +22,7 @@ urlpatterns = [
     # --- RUTAS DE DOCENTE ---
     path('dashboard/<int:exam_id>/', views.teacher_dashboard_view, name='teacher_dashboard'),
     path('attempt/<uuid:attempt_id>/detail/', views.attempt_detail_view, name='attempt_detail'),
+
+    # LA PUERTA DE ENTRADA
+    path('teacher/', views.teacher_home_view, name='teacher_home'),
 ]
