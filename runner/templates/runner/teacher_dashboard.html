@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-10 px-4">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800">Resultados: {{ exam.title }}</h1>
+            <p class="text-sm text-gray-500 mt-1">Código de acceso: <span class="font-mono bg-gray-100 px-2 py-1 rounded">{{ exam.access_code }}</span></p>
+        </div>
+        <div class="text-right">
+            <a href="javascript:history.back()" class="text-gray-500 hover:text-gray-700">Volver</a>
+        </div>
+    </div>
+    
+    <div class="bg-white shadow-md rounded-lg overflow-hidden">
+        <table class="min-w-full leading-normal">
+            <thead>
+                <tr class="bg-gray-100 text-gray-600 uppercase text-sm leading-normal">
+                    <th class="py-3 px-6 text-left">Alumno</th>
+                    <th class="py-3 px-6 text-left">Legajo</th>
+                    <th class="py-3 px-6 text-center">Fecha Inicio</th>
+                    <th class="py-3 px-6 text-center">Estado Integridad</th>
+                    <th class="py-3 px-6 text-center">Nota Final</th>
+                    <th class="py-3 px-6 text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-600 text-sm font-light">
+                {% for item in results %}
+                <tr class="border-b border-gray-200 hover:bg-gray-50 transition duration-150">
+                    <td class="py-3 px-6 text-left whitespace-nowrap">
+                        <span class="font-medium text-gray-800">{{ item.attempt.student_name|default:"Sin Nombre" }}</span>
+                    </td>
+                    <td class="py-3 px-6 text-left">
+                        {{ item.attempt.student_legajo }}
+                    </td>
+                    <td class="py-3 px-6 text-center">
+                        {{ item.attempt.start_time|date:"d/m H:i" }}
+                    </td>
+                    
+                    <td class="py-3 px-6 text-center">
+                        {% if item.status_color == 'green' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                🟢 {{ item.status_text }}
+                            </span>
+                        {% elif item.status_color == 'yellow' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                🟡 {{ item.status_text }}
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                🔴 {{ item.status_text }}
+                            </span>
+                        {% endif %}
+                        
+                        <div class="text-xs text-gray-400 mt-1" title="Puntaje de Riesgo (más alto = más sospechoso)">
+                            Risk Score: {{ item.risk_score }}
+                        </div>
+                    </td>
+
+                    <td class="py-3 px-6 text-center">
+                        {% if item.show_grade %}
+                            <span class="text-lg font-bold text-gray-800">
+                                {{ item.attempt.score|default_if_none:"-"|floatformat:1 }}
+                            </span>
+                        {% else %}
+                            <div class="flex flex-col items-center">
+                                <span class="text-xs font-bold text-gray-400 italic">Retenida</span>
+                                <span class="text-[10px] text-red-500">Requiere revisión</span>
+                            </div>
+                        {% endif %}
+                    </td>
+
+                    <td class="py-3 px-6 text-center">
+                        <a href="{% url 'runner:attempt_detail' item.attempt.id %}" 
+                           class="inline-block bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold py-1 px-3 rounded text-xs shadow-sm transition">
+                           {% if item.show_grade %}
+                               Ver Examen
+                           {% else %}
+                               🔍 Auditar
+                           {% endif %}
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="py-10 text-center text-gray-500">
+                        No hay intentos registrados para este examen todavía.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
