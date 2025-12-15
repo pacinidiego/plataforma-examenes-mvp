@@ -3,9 +3,19 @@ import json
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
+from django.db.models import Count
 from exams.models import Exam
 from .models import Attempt, AttemptEvent
+
+# --- FUNCIONES AUXILIARES ---
+def is_staff(user):
+    return user.is_staff
+
+# ==========================================
+# SECCIÓN ALUMNO (LOBBY & EXAMEN)
+# ==========================================
 
 # 1. LOBBY: Lógica de Bloqueo y Reanudación
 def lobby_view(request, access_code):
@@ -102,7 +112,7 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
-# 5. RUNNER (Examen) - AQUÍ ESTÁ LA CORRECCIÓN DEL TIEMPO
+# 5. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -226,3 +236,78 @@ def log_event(request, attempt_id):
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+# ==========================================
+# SECCIÓN DOCENTE (DASHBOARD & AUDITORÍA)
+# ==========================================
+
+# 10. DASHBOARD DEL DOCENTE (Listado de Alumnos con Semáforo)
+@login_required
+@user_passes_test(is_staff)
+def teacher_dashboard_view(request, exam_id):
+    exam = get_object_or_404(Exam, id=exam_id)
+    # Traemos los intentos y pre-cargamos los eventos para optimizar DB
+    attempts = Attempt.objects.filter(exam=exam).order_by('-start_time').prefetch_related('events')
+
+    results = []
+    
+    for attempt in attempts:
+        events = attempt.events.all()
+        
+        # --- CÁLCULO DE RIESGO (ANTIFRAUDE IQ) ---
+        risk_score = 0
+        
+        # Pesos basados en la severidad del evento
+        # FOCUS_LOST: Distracción menor/alt-tab
+        # FULLSCREEN_EXIT: Intento de manipular el entorno
+        # NO_FACE: Abandono del puesto
+        # MULTI_FACE: Ayuda externa (Grave)
+        # IDENTITY_MISMATCH: Suplantación (Crítico)
+        
+        risk_score += events.filter(event_type='FOCUS_LOST').count() * 1
+        risk_score += events.filter(event_type='FULLSCREEN_EXIT').count() * 2
+        risk_score += events.filter(event_type='NO_FACE').count() * 3
+        risk_score += events.filter(event_type='MULTI_FACE').count() * 5
+        risk_score += events.filter(event_type='IDENTITY_MISMATCH').count() * 10
+        
+        # Semáforo de Integridad
+        status_color = 'green'
+        status_text = 'Confiable'
+        show_grade = True # Por defecto mostramos la nota
+        
+        if risk_score > 10:
+            status_color = 'red'
+            status_text = 'Crítico'
+            show_grade = False # Riesgo alto: Ocultar nota
+        elif risk_score > 4:
+            status_color = 'yellow'
+            status_text = 'Revisar'
+            show_grade = False # Riesgo medio: Ocultar nota
+            
+        results.append({
+            'attempt': attempt,
+            'risk_score': risk_score,
+            'status_color': status_color,
+            'status_text': status_text,
+            'show_grade': show_grade,
+            'event_count': events.count()
+        })
+
+    return render(request, 'runner/teacher_dashboard.html', {
+        'exam': exam,
+        'results': results
+    })
+
+
+# 11. DETALLE DEL INTENTO (Auditoría Forense)
+@login_required
+@user_passes_test(is_staff)
+def attempt_detail_view(request, attempt_id):
+    attempt = get_object_or_404(Attempt, id=attempt_id)
+    events = attempt.events.all().order_by('timestamp')
+    
+    return render(request, 'runner/attempt_detail.html', {
+        'attempt': attempt,
+        'events': events
+    })
