@@ -74,7 +74,13 @@
                     ]);
 
                     // 2. Iniciar Cámara
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+    video: { 
+        width: { ideal: 1280 }, 
+        height: { ideal: 720 },
+        facingMode: "user" // Asegura usar la cámara frontal (selfie)
+    } 
+});
                     this.$refs.video.srcObject = stream;
                     
                     this.$refs.video.onloadedmetadata = () => {
