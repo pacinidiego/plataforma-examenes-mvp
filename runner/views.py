@@ -326,3 +326,13 @@ def teacher_home_view(request):
     return render(request, 'runner/teacher_home.html', {
         'exams': exams
     })
+
+# 13. PORTAL PRINCIPAL (LANDING PAGE)
+@login_required
+@user_passes_test(is_staff)
+def portal_docente_view(request):
+    """
+    Centro de Comando del Docente.
+    Desde aquí deriva a: Exámenes Online, Generador Papel o Admin.
+    """
+    return render(request, 'runner/portal_docente.html')
