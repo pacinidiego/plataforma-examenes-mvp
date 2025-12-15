@@ -1,28 +1,37 @@
 <!DOCTYPE html>
-<html lang="es" class="h-full bg-gray-100">
+<html lang="es" class="h-full bg-gray-50">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rindiendo: {{ exam.title }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+    
     <style>
         [x-cloak] { display: none !important; }
         .timer-bar { transition: width 1s linear; }
-        .read-only-mode { opacity: 0.7; pointer-events: none; background-color: #f9fafb; }
+        /* Estilo para preguntas bloqueadas (históricas) */
+        .read-only-mode { opacity: 0.8; pointer-events: none; background-color: #f3f4f6; border-color: #fb923c; }
         .blur-content { filter: blur(8px); pointer-events: none; user-select: none; }
     </style>
 </head>
 <body class="h-full flex flex-col overflow-hidden select-none" 
-      x-data="examRunner('{{ attempt.id }}', {{ remaining_seconds }}, {{ time_per_item }}, {{ total_questions }}, {{ initial_step }})"
+      x-data="examRunner({
+          attemptId: '{{ attempt.id }}',
+          serverRemaining: {{ remaining_seconds }},
+          timePerItem: {{ time_per_item }},
+          totalQuestions: {{ total_questions }},
+          initialStep: {{ initial_step|default:0 }},
+          csrfToken: '{{ csrf_token }}'
+      })"
       x-init="init()">
 
-    <video x-ref="webcam" autoplay playsinline muted class="hidden w-64 h-48 fixed bottom-4 right-4 z-50 rounded-lg shadow-lg opacity-50 pointer-events-none"></video>
+    <video x-ref="webcam" autoplay playsinline muted class="fixed bottom-4 right-4 w-32 h-24 object-cover rounded-lg shadow-lg border-2 border-gray-800 z-50 opacity-80 pointer-events-none transform scale-x-[-1]"></video>
 
     <div x-show="!isFullScreen" 
-         class="fixed inset-0 z-50 bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300">
-        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full animate-bounce-small">
+         class="fixed inset-0 z-[60] bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full">
             <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
             </div>
@@ -38,11 +47,12 @@
     <div class="flex-1 flex flex-col h-full transition-all duration-300"
          :class="!isFullScreen ? 'blur-content' : ''">
 
-        <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 z-10 shrink-0 shadow-sm">
+        <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 sm:px-6 z-10 shrink-0 shadow-sm">
             <div class="flex items-center gap-4">
-                <h1 class="text-lg font-bold text-gray-800 truncate max-w-xs">{{ exam.title }}</h1>
-                <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded border border-blue-100">
-                    Pregunta <span x-text="currentStep + 1"></span> de {{ total_questions }}
+                <h1 class="text-lg font-bold text-gray-800 truncate max-w-xs hidden sm:block">{{ exam.title }}</h1>
+                
+                <span class="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded border border-indigo-100">
+                    P <span x-text="currentStep + 1"></span>/<span x-text="total"></span>
                 </span>
                 
                 <div class="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-colors"
@@ -57,227 +67,299 @@
             </div>
             
             <div class="flex items-center gap-4">
-                <div class="text-xs font-medium transition-colors duration-300"
+                <div class="text-xs font-medium transition-colors duration-300 hidden sm:block"
                      :class="saveStatus === 'saving' ? 'text-blue-500' : (saveStatus === 'saved' ? 'text-green-500' : 'text-red-500')">
                     <span x-show="saveStatus === 'saving'">Guardando...</span>
                     <span x-show="saveStatus === 'saved'">Guardado</span>
-                    <span x-show="saveStatus === 'error'">Error</span>
+                    <span x-show="saveStatus === 'error'">Error al guardar</span>
                 </div>
-                <div class="h-6 w-px bg-gray-300 mx-2"></div>
+
+                <div class="h-6 w-px bg-gray-300 mx-2 hidden sm:block"></div>
+
                 <div class="flex flex-col items-end">
-                    <span class="text-xs text-gray-500 uppercase font-bold">Total</span>
-                    <div class="font-mono text-xl font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded border border-gray-200"
-                         :class="globalSeconds < 300 ? 'text-red-600 border-red-200 bg-red-50' : ''">
-                        <span x-text="formatTime(globalSeconds)"></span>
+                    <span class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Tiempo Total</span>
+                    <div class="font-mono text-xl font-bold text-gray-700 leading-none"
+                         :class="globalSeconds < 300 ? 'text-red-600 animate-pulse' : ''">
+                         <span x-text="formatTime(globalSeconds)"></span>
                     </div>
                 </div>
-                <a href="{% url 'runner:submit_exam' attempt.id %}" 
-                   onclick="return confirm('¿Confirmas finalizar?')"
-                   class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-4 rounded transition-colors shadow-sm">
+
+                <a href="#" @click.prevent="finishExam()" 
+                   class="bg-gray-900 hover:bg-black text-white text-sm font-bold py-2 px-4 rounded transition-colors shadow-sm ml-2">
                     Entregar
                 </a>
             </div>
         </header>
 
         <div class="w-full bg-gray-200 h-1.5 relative">
-            <div class="bg-blue-600 h-1.5 timer-bar absolute top-0 left-0" 
+            <div class="bg-blue-600 h-1.5 timer-bar absolute top-0 left-0 transition-all duration-1000 ease-linear" 
                  :style="'width: ' + itemProgress + '%'"></div>
         </div>
 
         <main class="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center bg-gray-50">
-            <div class="w-full max-w-3xl space-y-8">
-                {% for item in items %}
-                <div x-show="currentStep === {{ forloop.counter0 }}" x-cloak
-                     class="bg-white rounded-2xl shadow-md border border-gray-200 p-8 transition-all relative overflow-hidden"
-                     :class="currentStep < initialStep ? 'read-only-mode border-orange-200' : ''">
-                    <div class="absolute top-4 right-4 text-xs font-mono text-gray-400 border rounded px-2 py-1">
-                        <span x-text="itemSeconds"></span>s
+            <div class="w-full max-w-3xl space-y-6">
+                
+                <form id="examForm" method="POST" action="{% url 'runner:submit_exam' attempt.id %}">
+                    {% csrf_token %}
+                    
+                    {% for item in items %}
+                    <div x-show="currentStep === {{ forloop.counter0 }}" x-cloak
+                         class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8 relative"
+                         :class="currentStep < initialStep ? 'read-only-mode' : ''">
+                        
+                        <div class="absolute top-4 right-4 flex items-center gap-1 text-xs font-mono text-gray-500 border rounded px-2 py-1 bg-gray-50">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span x-text="itemSeconds"></span>s
+                        </div>
+
+                        <div x-show="currentStep < initialStep" class="mb-4 p-2 bg-orange-100 text-orange-700 text-xs font-bold rounded flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                            Pregunta bloqueada (Tiempo agotado o ya respondida)
+                        </div>
+
+                        <div class="mb-6 mt-2">
+                            <h2 class="text-xl font-medium text-gray-900 leading-relaxed">{{ item.question_text }}</h2>
+                        </div>
+
+                        <div class="space-y-3">
+                            {% for opt in item.options %}
+                            <label class="flex items-start p-4 rounded-xl border cursor-pointer transition-all group"
+                                   :class="answers['{{ item.id }}'] === '{{ opt.text|escapejs }}' ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'">
+                                
+                                <input type="radio" 
+                                       name="q_{{ item.id }}" 
+                                       value="{{ opt.text }}" 
+                                       :disabled="currentStep < initialStep"
+                                       @change="saveAnswer('{{ item.id }}', '{{ opt.text|escapejs }}')"
+                                       class="mt-1 h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                                
+                                <span class="ml-3 text-gray-700 group-hover:text-indigo-900 font-medium select-text">{{ opt.text }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
                     </div>
-                    <div class="mb-6">
-                        <span class="text-sm font-bold text-gray-400 uppercase tracking-wider">Pregunta {{ forloop.counter }}</span>
-                        <h2 class="text-xl font-medium text-gray-900 mt-2 leading-relaxed">{{ item.stem }}</h2>
-                        <p x-show="currentStep < initialStep" class="text-xs text-orange-600 mt-2 font-bold">⚠️ Solo lectura</p>
-                    </div>
-                    <div class="space-y-3">
-                        {% for opt in item.options %}
-                        <label class="flex items-start p-4 rounded-xl border cursor-pointer transition-all group"
-                               :class="answers['{{ item.id }}'] === '{{ opt.text|escapejs }}' ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'">
-                            <input type="radio" name="q_{{ item.id }}" value="{{ opt.text }}" 
-                                   :disabled="currentStep < initialStep"
-                                   @change="saveAnswer('{{ item.id }}', '{{ opt.text|escapejs }}')"
-                                   class="mt-1 h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
-                            <span class="ml-3 text-gray-700 group-hover:text-indigo-900 font-medium">{{ opt.text }}</span>
-                        </label>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endfor %}
+                    {% endfor %}
+                </form>
+
             </div>
         </main>
 
         <footer class="bg-white border-t border-gray-200 h-20 flex items-center justify-center px-6 shrink-0">
-            <div class="w-full max-w-3xl flex justify-end">
+            <div class="w-full max-w-3xl flex justify-between items-center">
+                <div class="w-24"></div>
+
                 <button @click="nextQuestion()" x-show="currentStep < total - 1"
-                        class="px-6 py-2.5 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors shadow-lg shadow-gray-200 flex items-center gap-2">
-                    Siguiente
+                        class="px-6 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 flex items-center gap-2 transform hover:-translate-y-0.5">
+                    Siguiente Pregunta
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
                 </button>
-                <a x-show="currentStep === total - 1" x-cloak
-                   href="{% url 'runner:submit_exam' attempt.id %}"
-                   class="px-6 py-2.5 rounded-lg bg-green-600 text-white font-bold hover:bg-green-700 transition-colors shadow-lg shadow-green-200">
-                    Finalizar y Enviar
-                </a>
+
+                <button x-show="currentStep === total - 1" x-cloak
+                        @click="finishExam()"
+                        class="px-6 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 transition-colors shadow-lg shadow-green-200 transform hover:-translate-y-0.5">
+                    Finalizar Examen
+                </button>
             </div>
         </footer>
     </div>
 
    <script>
-        function examRunner(attemptId, serverRemainingSeconds, timePerItem, totalQuestions, startStep) {
+        function examRunner(config) {
             return {
-                currentStep: startStep,
-                total: totalQuestions,
-                saveStatus: '', 
+                // Configuración
+                attemptId: config.attemptId,
+                csrfToken: config.csrfToken,
+                
+                // Estado del Examen
+                total: config.totalQuestions,
+                currentStep: config.initialStep,
+                initialStep: config.initialStep, // Variable crítica que faltaba antes
                 answers: {},
+                saveStatus: '', 
                 isFullScreen: false,
                 
-                // Estados de IA
-                aiStatus: 'ok', 
-                aiMessage: 'Monitor Activo',
-                faceDetector: null,
-                warningCounter: 0, 
-
                 // Tiempos
-                globalSeconds: serverRemainingSeconds,
-                itemSeconds: timePerItem,
-                maxItemSeconds: timePerItem,
+                globalSeconds: config.serverRemaining,
+                itemSeconds: config.timePerItem,
+                maxItemSeconds: config.timePerItem,
                 itemProgress: 100,
 
+                // Estado de IA
+                aiStatus: 'loading', 
+                aiMessage: 'Iniciando Monitor...',
+                anchorDescriptor: null,
+
                 init() {
+                    // 1. Configurar Seguridad (Pantalla completa, blur, etc)
                     this.setupSecurity();
-                    this.startAI(); 
                     
+                    // 2. Iniciar Timers
+                    this.startTimers();
+
+                    // 3. Iniciar IA (face-api.js)
+                    this.startProctoring();
+                },
+
+                startTimers() {
                     // Timer Global
                     setInterval(() => {
-                        if (this.globalSeconds > 0) this.globalSeconds--;
-                        else window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
+                        if (this.globalSeconds > 0) {
+                            this.globalSeconds--;
+                        } else {
+                            this.submitForm(); // Se acabó el tiempo total
+                        }
                     }, 1000);
 
-                    // Timer Pregunta
+                    // Timer por Pregunta
                     setInterval(() => {
+                        // Solo corre si no estamos en preguntas "vencidas" y no hemos terminado
                         if (this.currentStep < this.total && this.currentStep >= this.initialStep) { 
                             if (this.itemSeconds > 0) {
                                 this.itemSeconds--;
                                 this.itemProgress = (this.itemSeconds / this.maxItemSeconds) * 100;
                             } else {
+                                // Se acabó el tiempo de la pregunta, avanzamos forzosamente
                                 this.nextQuestion(true); 
                             }
                         }
                     }, 1000);
                 },
 
-                // --- IA RECALIBRADA ---
-                async startAI() {
+                // --- LÓGICA DE PROCTORING (UNIFICADA) ---
+                async startProctoring() {
                     try {
-                        // Forzamos resolución baja para velocidad (640x480)
-                        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                        console.log("Cargando modelos de IA...");
+                        // Usamos CDN confiable para modelos
+                        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+                        
+                        await Promise.all([
+                            faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                        ]);
+
+                        // Intentamos recuperar el ancla (foto del gate)
+                        const stored = localStorage.getItem('exam_anchor_descriptor');
+                        if (stored) {
+                            this.anchorDescriptor = new Float32Array(JSON.parse(stored));
+                        } else {
+                            console.warn("No hay ancla biométrica. Continuando solo con detección de presencia.");
+                        }
+
+                        // Iniciar Webcam
+                        const stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { width: 320, height: 240, facingMode: "user" } 
+                        });
                         this.$refs.webcam.srcObject = stream;
 
-                        const vision = await FilesetResolver.forVisionTasks(
-                            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
-                        );
-                        
-                        // Configuración "Paranoica"
-                        this.faceDetector = await FaceDetector.createFromOptions(vision, {
-                            baseOptions: {
-                                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite`,
-                                delegate: "GPU"
-                            },
-                            runningMode: "VIDEO",
-                            minDetectionConfidence: 0.6 // Exigimos 60% de certeza para decir que es una cara
-                        });
+                        this.aiStatus = 'ok';
+                        this.aiMessage = 'Monitor Activo';
 
+                        // Bucle de detección
                         this.detectLoop();
 
                     } catch (e) {
-                        console.error("Error iniciando IA:", e);
-                        this.aiMessage = "Monitor IA Inactivo";
-                        this.aiStatus = "error";
+                        console.error("Error iniciando proctoring:", e);
+                        this.aiStatus = 'error';
+                        this.aiMessage = 'Error de Cámara';
+                        this.logEvent('CAMERA_ERROR', { error: e.toString() });
                     }
                 },
 
                 async detectLoop() {
                     const video = this.$refs.webcam;
-                    if (video.videoWidth > 0 && this.faceDetector) {
-                        const startTimeMs = performance.now();
-                        const result = this.faceDetector.detectForVideo(video, startTimeMs);
-                        
-                        // DEBUG: Abre la consola (F12) para ver esto
-                        // console.log("Caras vistas:", result.detections.length);
-                        
-                        this.handleFaceCount(result.detections.length);
-                    }
-                    // Loop rápido: cada 200ms (5 veces por segundo)
-                    setTimeout(() => requestAnimationFrame(() => this.detectLoop()), 200);
-                },
+                    
+                    if (!video.paused && !video.ended) {
+                        try {
+                            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+                            const detection = await faceapi.detectSingleFace(video, options)
+                                                   .withFaceLandmarks()
+                                                   .withFaceDescriptor();
 
-                handleFaceCount(count) {
-                    if (count === 1) {
-                        // Si ve una cara, resetea el contador de advertencia inmediatamente
-                        this.warningCounter = 0;
-                        this.aiStatus = 'ok';
-                        this.aiMessage = 'Monitor Activo';
-                    } else {
-                        // Si ve 0 caras o más de 1
-                        this.warningCounter++;
-                        
-                        // UMBRAL REDUCIDO: Solo esperamos 1 segundo (5 ciclos de 200ms)
-                        if (this.warningCounter > 5) {
-                            const type = count === 0 ? 'NO_FACE' : 'MULTI_FACE';
-                            const msg = count === 0 ? 'Rostro no detectado' : 'Múltiples rostros';
-                            
-                            this.aiStatus = 'warning';
-                            this.aiMessage = msg;
-                            
-                            // Registramos el evento cada ~3 segundos para no saturar la base
-                            if (this.warningCounter % 15 === 0) {
-                                this.logSecurityEvent(type, { face_count: count });
+                            if (detection) {
+                                // 1. Hay rostro
+                                this.aiStatus = 'ok';
+                                this.aiMessage = 'Monitor Activo';
+
+                                // 2. Si tenemos ancla, validamos identidad
+                                if (this.anchorDescriptor) {
+                                    const distance = faceapi.euclideanDistance(this.anchorDescriptor, detection.descriptor);
+                                    if (distance > 0.6) { // Umbral de diferencia
+                                        this.aiStatus = 'warning';
+                                        this.aiMessage = 'Identidad dudosa';
+                                        // Loguear solo ocasionalmente para no saturar
+                                        if (Math.random() < 0.05) this.logEvent('IDENTITY_MISMATCH', { distance });
+                                    }
+                                }
+                            } else {
+                                // No hay rostro
+                                this.aiStatus = 'warning';
+                                this.aiMessage = 'Rostro no visible';
+                                if (Math.random() < 0.05) this.logEvent('NO_FACE', {});
                             }
+                        } catch (err) {
+                            // Ignorar errores puntuales de detección
                         }
                     }
-                },
-                
-                // --- SEGURIDAD (Resto igual) ---
-                setupSecurity() {
-                    document.addEventListener("visibilitychange", () => {
-                        if (document.hidden) this.logSecurityEvent('FOCUS_LOST', { reason: 'tab_hidden' });
-                    });
-                    window.addEventListener("blur", () => {
-                        this.logSecurityEvent('FOCUS_LOST', { reason: 'window_blur' });
-                    });
-                    document.addEventListener('fullscreenchange', () => {
-                        this.isFullScreen = !!document.fullscreenElement;
-                        if (!this.isFullScreen) this.logSecurityEvent('FULLSCREEN_EXIT');
-                    });
-                    this.isFullScreen = !!document.fullscreenElement;
+                    
+                    // Repetir cada 1 segundo (ahorra CPU)
+                    setTimeout(() => this.detectLoop(), 1000);
                 },
 
-                enableFullscreen() {
-                    const elem = document.documentElement;
-                    if (elem.requestFullscreen) {
-                        elem.requestFullscreen().catch(err => alert("Usa F11 para pantalla completa"));
+                // --- NAVEGACIÓN Y GUARDADO ---
+                nextQuestion(auto = false) {
+                    if (this.currentStep < this.total - 1) {
+                        // Si avanzamos, actualizamos el "piso" (initialStep) para que no pueda volver atrás y editar
+                        // SOLO si estaba en la pregunta actual (si estaba viendo una vieja, no subimos el piso)
+                        if (this.currentStep === this.initialStep) {
+                            this.initialStep++;
+                        }
+                        
+                        this.currentStep++;
+                        this.itemSeconds = this.maxItemSeconds; // Reset timer
+                        this.itemProgress = 100;
+                        
+                        // Scroll arriba suave
+                        document.querySelector('main').scrollTo({top: 0, behavior: 'smooth'});
+                    } else if (auto) {
+                        // Si era la última y se acabó el tiempo, enviamos
+                        this.submitForm();
                     }
                 },
 
-                async logSecurityEvent(type, meta = {}) {
-                    // console.warn("Incidente:", type); 
+                async saveAnswer(questionId, answer) {
+                    // Validar que no sea una pregunta bloqueada
+                    if (this.currentStep < this.initialStep) return;
+
+                    this.answers[questionId] = answer;
+                    this.saveStatus = 'saving';
                     try {
-                        await fetch(`/room/log/${attemptId}/`, {
+                        const response = await fetch(`/room/save/${this.attemptId}/`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-                            body: JSON.stringify({ event_type: type, metadata: meta })
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
+                            body: JSON.stringify({ question_id: questionId, answer: answer })
                         });
-                    } catch (e) {}
+                        if (response.ok) {
+                            setTimeout(() => this.saveStatus = 'saved', 500);
+                        } else {
+                            this.saveStatus = 'error';
+                        }
+                    } catch (error) { 
+                        this.saveStatus = 'error'; 
+                    }
                 },
 
+                finishExam() {
+                    if(confirm('¿Estás seguro de que quieres finalizar el examen? No podrás volver atrás.')) {
+                        this.submitForm();
+                    }
+                },
+
+                submitForm() {
+                    document.getElementById('examForm').submit();
+                },
+
+                // --- UTILIDADES ---
                 formatTime(seconds) {
                     const h = Math.floor(seconds / 3600);
                     const m = Math.floor((seconds % 3600) / 60);
@@ -286,137 +368,42 @@
                     return `${m}:${s.toString().padStart(2, '0')}`;
                 },
 
-                nextQuestion(auto = false) {
-                    if (this.currentStep < this.total - 1) {
-                        this.currentStep++;
-                        this.itemSeconds = this.maxItemSeconds;
-                        this.itemProgress = 100;
-                        document.querySelector('main').scrollTo({top: 0, behavior: 'smooth'});
-                    } else if (auto) {
-                        window.location.href = "{% url 'runner:submit_exam' attempt.id %}";
+                // --- SEGURIDAD ---
+                setupSecurity() {
+                    // Detectar cambio de tab/minimizar
+                    document.addEventListener("visibilitychange", () => {
+                        if (document.hidden) this.logEvent('FOCUS_LOST', { reason: 'tab_hidden' });
+                    });
+                    window.addEventListener("blur", () => {
+                        this.logEvent('FOCUS_LOST', { reason: 'window_blur' });
+                    });
+                    
+                    // Pantalla completa
+                    document.addEventListener('fullscreenchange', () => {
+                        this.isFullScreen = !!document.fullscreenElement;
+                        if (!this.isFullScreen) this.logEvent('FULLSCREEN_EXIT');
+                    });
+                    this.isFullScreen = !!document.fullscreenElement;
+                },
+
+                enableFullscreen() {
+                    const elem = document.documentElement;
+                    if (elem.requestFullscreen) {
+                        elem.requestFullscreen().catch(err => alert("Por favor presiona F11"));
                     }
                 },
 
-                async saveAnswer(questionId, answer) {
-                    this.answers[questionId] = answer;
-                    this.saveStatus = 'saving';
+                async logEvent(type, meta = {}) {
                     try {
-                        const response = await fetch(`/room/save/${attemptId}/`, {
+                        await fetch(`/room/log/${this.attemptId}/`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-                            body: JSON.stringify({ question_id: questionId, answer: answer })
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
+                            body: JSON.stringify({ event_type: type, metadata: meta })
                         });
-                        if (response.ok) setTimeout(() => this.saveStatus = 'saved', 300);
-                        else this.saveStatus = 'error';
-                    } catch (error) { this.saveStatus = 'error'; }
+                    } catch (e) {}
                 }
             }
         }
     </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-
-<div x-data="proctoringSystem" class="hidden"></div>
-
-<script>
-document.addEventListener('alpine:init', () => {
-    Alpine.data('proctoringSystem', () => ({
-        anchorDescriptor: null,
-        status: 'active',
-        
-        async init() {
-            console.log("Iniciando Proctoring Continuo...");
-            
-            // 1. Recuperar el Ancla del Gate
-            const stored = localStorage.getItem('exam_anchor_descriptor');
-            if (!stored) {
-                console.warn("ALERTA: No hay ancla biométrica. El alumno saltó el Gate.");
-                this.logEvent('NO_FACE', { reason: 'missing_anchor' });
-                return; 
-            }
-            this.anchorDescriptor = new Float32Array(JSON.parse(stored));
-
-            // 2. Cargar Modelos
-            const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-            await Promise.all([
-                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-            ]);
-
-            // 3. Iniciar Monitoreo
-            this.startMonitoring();
-        },
-
-        async startMonitoring() {
-            // Video en memoria (invisible)
-            const video = document.createElement('video');
-            video.width = 320; 
-            video.height = 240;
-            video.autoplay = true;
-            video.muted = true;
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                
-                video.onloadedmetadata = () => {
-                    video.play();
-                    // Chequeo cada 5 segundos
-                    setInterval(() => this.checkIdentity(video), 5000);
-                };
-            } catch (e) {
-                console.error("Error cámara proctoring:", e);
-                this.logEvent('NO_FACE', { reason: 'camera_error' });
-            }
-        },
-
-        async checkIdentity(video) {
-            if (document.hidden) return; // Ya se maneja con FOCUS_LOST
-
-            // Detección
-            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
-            const detection = await faceapi.detectSingleFace(video, options)
-                                           .withFaceLandmarks()
-                                           .withFaceDescriptor();
-
-            if (!detection) {
-                console.warn("Proctoring: No Face");
-                this.logEvent('NO_FACE', { confidence: 0 });
-                return;
-            }
-
-            // Comparación de Identidad
-            const distance = faceapi.euclideanDistance(this.anchorDescriptor, detection.descriptor);
-            
-            // Umbral 0.6
-            if (distance > 0.6) {
-                console.warn("Proctoring: IDENTITY MISMATCH. Distancia:", distance);
-                this.logEvent('IDENTITY_MISMATCH', { distance: distance });
-            } else {
-                // Identidad OK
-                // console.log("Proctoring: OK", distance);
-            }
-        },
-
-        async logEvent(type, meta) {
-            // Enviamos al backend (usando el CSRF del form principal si existe, o cookie)
-            const token = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
-            if(!token) return;
-
-            await fetch("{% url 'runner:log_event' attempt.id %}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': token
-                },
-                body: JSON.stringify({
-                    event_type: type,
-                    metadata: meta
-                })
-            });
-        }
-    }));
-});
-</script>
 </body>
 </html>
