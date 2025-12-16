@@ -1,36 +1,87 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto py-10 px-4">
-    <h1 class="text-3xl font-bold text-gray-800 mb-2">Panel de Control Docente</h1>
-    <p class="text-gray-600 mb-8">Selecciona un examen para monitorear a los alumnos y ver los reportes de integridad.</p>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {% for exam in exams %}
-        <div class="bg-white rounded-lg shadow border border-gray-200 p-6 hover:shadow-md transition">
-            <div class="flex justify-between items-start mb-4">
-                <div>
-                    <h2 class="text-xl font-bold text-indigo-700">{{ exam.title }}</h2>
-                    <span class="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-1 rounded mt-1 inline-block">
-                        CODE: {{ exam.access_code }}
-                    </span>
-                </div>
-                <a href="{% url 'runner:teacher_dashboard' exam.id %}" 
-                   class="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded hover:bg-indigo-700 transition">
-                    Ver Resultados &rarr;
-                </a>
-            </div>
+<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    
+    <header class="mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div class="flex items-center space-x-6 w-full sm:w-auto">
             
-            <div class="text-sm text-gray-500 border-t pt-3 flex justify-between">
-                <span>⏱ {{ exam.duration_minutes }} min</span>
-                <span>📅 Creado: {{ exam.created_at|date:"d/m/Y" }}</span>
+            <a href="{% url 'runner:portal_docente' %}" 
+               class="group flex items-center justify-center w-12 h-12 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-indigo-50 hover:border-indigo-200 transition-all flex-shrink-0" 
+               title="Volver al Portal">
+                <svg class="w-6 h-6 text-gray-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+            </a>
+
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">
+                    Vigilancia Online
+                </h1>
+                <p class="mt-1 text-sm text-gray-500">
+                    Selecciona un examen para monitorear en tiempo real.
+                </p>
             </div>
         </div>
-        {% empty %}
-        <div class="col-span-2 text-center py-12 bg-gray-50 rounded border border-dashed border-gray-300">
-            <p class="text-gray-500 text-lg">No hay exámenes creados todavía.</p>
-        </div>
-        {% endfor %}
+    </header>
+
+    <div class="bg-white shadow overflow-hidden sm:rounded-md border border-gray-200">
+        <ul role="list" class="divide-y divide-gray-200">
+            {% for exam in exams %}
+            <li>
+                <a href="{% url 'runner:teacher_dashboard' exam.id %}" class="block hover:bg-gray-50 transition-colors">
+                    <div class="px-4 py-4 sm:px-6">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <p class="text-sm font-medium text-indigo-600 truncate">
+                                    {{ exam.title }}
+                                </p>
+                                {% if exam.status == 'published' %}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                        Activo
+                                    </span>
+                                {% else %}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                        Borrador
+                                    </span>
+                                {% endif %}
+                            </div>
+                            <div class="ml-2 flex-shrink-0 flex">
+                                <p class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-500">
+                                    {{ exam.items.count }} preguntas
+                                </p>
+                            </div>
+                        </div>
+                        <div class="mt-2 sm:flex sm:justify-between">
+                            <div class="sm:flex">
+                                <p class="flex items-center text-sm text-gray-500">
+                                    <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                    Creado el {{ exam.created_at|date:"d/m/Y" }}
+                                </p>
+                            </div>
+                            <div class="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
+                                <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                <span class="font-bold text-gray-700">Entrar a Sala</span>
+                                <svg class="ml-1 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </li>
+            {% empty %}
+            <li class="px-4 py-12 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No hay exámenes</h3>
+                <p class="mt-1 text-sm text-gray-500">Comienza creando uno desde el Generador.</p>
+                <div class="mt-6">
+                    <a href="{% url 'backoffice:exam_create' %}" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
+                        Ir al Generador
+                    </a>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
     </div>
 </div>
 {% endblock %}
