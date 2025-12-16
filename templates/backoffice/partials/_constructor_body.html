@@ -3,6 +3,90 @@
     .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: flex; }
 </style>
 
+<div class="lg:col-span-3 mb-6">
+    <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 relative overflow-hidden">
+        
+        <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-indigo-50 rounded-full opacity-50 blur-xl"></div>
+
+        <div class="flex justify-between items-center mb-6 relative z-10">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900">Configuración de Impresión (PDF)</h2>
+                    <p class="text-xs text-gray-500">Genera variantes en papel seleccionando preguntas por dificultad.</p>
+                </div>
+            </div>
+        </div>
+
+        <form action="{% url 'runner:descargar_pdf' exam.id %}" method="GET" target="_blank"
+              x-data="{ 
+                  faciles: {{ conteo_faciles|default:0 }},
+                  medias: {{ conteo_medias|default:0 }},
+                  dificiles: {{ conteo_dificiles|default:0 }}
+              }">
+            
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
+                
+                <div class="lg:col-span-3">
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-2">Cantidad de Temas</label>
+                    <select name="cantidad" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm py-2.5">
+                        <option value="1">1 Tema (A)</option>
+                        <option value="2">2 Temas (A, B)</option>
+                        <option value="3">3 Temas (A, B, C)</option>
+                        <option value="4">4 Temas (A..D)</option>
+                        <option value="6" selected>6 Temas (A..F)</option>
+                        <option value="10">10 Temas (Max)</option>
+                    </select>
+                </div>
+
+                <div class="lg:col-span-6 grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div>
+                        <label class="block text-[10px] font-bold text-green-600 uppercase mb-1 text-center">Fáciles</label>
+                        <div class="relative">
+                            <input type="number" name="faciles" x-model="faciles" min="0" max="{{ conteo_faciles }}"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 text-sm py-2">
+                            <span class="text-[10px] text-gray-400 absolute -bottom-5 left-0 w-full text-center">
+                                Disp: <b>{{ conteo_faciles }}</b>
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-yellow-600 uppercase mb-1 text-center">Medias</label>
+                        <div class="relative">
+                            <input type="number" name="medias" x-model="medias" min="0" max="{{ conteo_medias }}"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 text-sm py-2">
+                            <span class="text-[10px] text-gray-400 absolute -bottom-5 left-0 w-full text-center">
+                                Disp: <b>{{ conteo_medias }}</b>
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-red-600 uppercase mb-1 text-center">Difíciles</label>
+                        <div class="relative">
+                            <input type="number" name="dificiles" x-model="dificiles" min="0" max="{{ conteo_dificiles }}"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 text-sm py-2">
+                            <span class="text-[10px] text-gray-400 absolute -bottom-5 left-0 w-full text-center">
+                                Disp: <b>{{ conteo_dificiles }}</b>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-3 flex flex-col justify-end h-full">
+                    <div class="text-center mb-2 text-xs text-gray-500">
+                        Total en PDF: <span class="font-bold text-gray-900 text-sm" x-text="parseInt(faciles||0) + parseInt(medias||0) + parseInt(dificiles||0)"></span> preg.
+                    </div>
+                    <button type="submit" class="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-black text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 text-sm">
+                        <span>🖨️ Descargar PDF</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="lg:col-span-3 mb-2">
     <div class="bg-gradient-to-r from-indigo-50 to-white border border-indigo-100 rounded-lg p-6 shadow-sm relative overflow-hidden">
         
@@ -96,10 +180,10 @@
                                             {% elif link.item.difficulty == 3 %}bg-red-500
                                             {% else %}bg-green-500{% endif %}"
                                             title="Clic para cambiar dificultad">
-                                        {% if link.item.difficulty == 1 %}Fácil
-                                        {% elif link.item.difficulty == 2 %}Media
-                                        {% elif link.item.difficulty == 3 %}Difícil
-                                        {% else %}Fácil{% endif %}
+                                            {% if link.item.difficulty == 1 %}Fácil
+                                            {% elif link.item.difficulty == 2 %}Media
+                                            {% elif link.item.difficulty == 3 %}Difícil
+                                            {% else %}Fácil{% endif %}
                                     </button>
                                 </div>
                                 <h3 class="text-gray-900 font-semibold text-base leading-snug mb-3">
