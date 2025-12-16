@@ -5,45 +5,64 @@
     
     <div class="bg-white max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         
-        <div class="bg-gray-50 p-6 border-b border-gray-100 text-center">
-            <h1 class="text-2xl font-bold text-gray-800">Paso 2: Registro Biométrico</h1>
-            <p class="text-gray-500 text-sm mt-1">
-                Necesitamos registrar tu rostro para validar tu identidad durante el examen.
-            </p>
+        <div class="bg-gray-50 p-6 border-b border-gray-100 text-center transition-colors duration-300"
+             :class="step === 2 ? 'bg-indigo-50' : ''">
+            <h1 class="text-2xl font-bold text-gray-800" x-text="step === 1 ? 'Paso 2a: Rostro' : 'Paso 2b: Documento'"></h1>
+            <p class="text-gray-500 text-sm mt-1" x-text="stepTitle"></p>
         </div>
 
         <div class="relative bg-black h-80 flex justify-center items-center overflow-hidden">
-            <video x-ref="video" autoplay muted playsinline class="absolute w-full h-full object-cover transform scale-x-[-1] opacity-50 transition-opacity duration-700" :class="{'opacity-100': cameraReady}"></video>
+            <video x-ref="video" autoplay muted playsinline class="absolute w-full h-full object-cover transition-opacity duration-700" 
+                   :class="{'opacity-100': cameraReady, 'transform scale-x-[-1]': step === 1}"></video>
             
-            <div class="absolute inset-0 border-4 border-dashed border-white/30 m-12 rounded-3xl pointer-events-none transition-colors duration-300" :class="{'border-green-400': status === 'success', 'border-red-400': status === 'error'}"></div>
-            
-            <div class="absolute bottom-4 bg-black/70 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md z-30">
-                <span x-text="message">Iniciando cámara...</span>
+            <div x-show="step === 1 && status !== 'loading'" 
+                 class="absolute inset-0 border-4 border-dashed border-white/30 m-12 rounded-full pointer-events-none transition-colors duration-300" 
+                 :class="{'border-green-400': faceDetected, 'border-red-400': !faceDetected}"></div>
+
+            <div x-show="step === 2 && status !== 'success'" 
+                 class="absolute inset-0 border-2 border-white/50 m-12 rounded-lg pointer-events-none flex items-center justify-center">
+                 <span class="text-white/50 text-xs bg-black/50 px-2 py-1 rounded">Ubica tu DNI aquí</span>
+            </div>
+
+            <div class="absolute bottom-4 bg-black/70 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md z-30 transition-all"
+                 :class="{'bg-green-600': status === 'success'}">
+                <span x-text="message">Iniciando...</span>
             </div>
 
             <div x-show="status === 'loading'" class="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
                 <div class="flex flex-col items-center">
-                    <svg class="animate-spin h-10 w-10 text-indigo-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <span class="text-white text-xs">Cargando Modelos IA...</span>
+                    <svg class="animate-spin h-10 w-10 text-indigo-500 mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span class="text-white text-xs">Cargando IA...</span>
                 </div>
             </div>
         </div>
 
-        <div class="p-8 flex flex-col items-center gap-4 bg-white">
+        <div class="p-8 flex flex-col items-center gap-4 bg-white min-h-[160px] justify-center">
             
-            <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden relative" x-show="status === 'scanning'">
+            <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden relative" x-show="step === 1 && status === 'scanning'">
                 <div class="h-full bg-blue-600 transition-all duration-200" :style="`width: ${progress}%`"></div>
+            </div>
+
+            <div x-show="step === 2 && status !== 'success'" class="w-full">
+                <button @click="captureDNI()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    Capturar Foto del DNI
+                </button>
+                <button @click="resetToFace()" class="w-full mt-2 text-gray-400 text-sm hover:text-gray-600">
+                    Volver a intentar selfie
+                </button>
             </div>
 
             <div x-show="status === 'success'" class="w-full" x-cloak>
                 <a href="{% url 'runner:exam_runner' exam.access_code attempt.id %}" 
                    class="block w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-center text-lg shadow-lg transition-transform hover:-translate-y-1">
-                    Confirmar Identidad y Comenzar
+                    Comenzar Examen
                 </a>
             </div>
 
-            <p class="text-xs text-gray-400 text-center mt-2 max-w-md">
-                Tus datos biométricos se analizan en tu dispositivo y se utilizan únicamente para garantizar la integridad de este examen.
+            <p class="text-xs text-gray-400 text-center mt-2 max-w-md" x-show="status !== 'success'">
+                <span x-show="step === 1">Mantén tu rostro quieto y centrado para la validación automática.</span>
+                <span x-show="step === 2">Asegúrate de que el texto del DNI sea legible.</span>
             </p>
         </div>
     </div>
@@ -54,95 +73,130 @@
 <script>
     function biometricGate() {
         return {
-            status: 'loading', // loading, scanning, success, error
-            message: 'Cargando Inteligencia Artificial...',
+            step: 1, // 1: Cara, 2: DNI
+            status: 'loading', // loading, scanning, uploading, success, error
+            message: 'Iniciando sistema...',
             cameraReady: false,
+            
+            // Paso 1: Variables de Cara
             progress: 0,
             consecutiveFrames: 0,
-            REQUIRED_FRAMES: 25, // Aprox 2 segundos de estabilidad
+            REQUIRED_FRAMES: 20, 
+            faceDetected: false,
+            
+            // Datos Capturados
+            capturedFace: null,
+            capturedDNI: null,
+
+            get stepTitle() {
+                if (this.step === 1) return 'Validación de identidad facial';
+                return 'Registro fotográfico del documento físico';
+            },
 
             async init() {
                 try {
-                    // 1. Cargar Modelos
+                    // Cargar Modelos
                     const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-                    
                     await Promise.all([
                         faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-                        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL) 
+                        // faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL) // Opcional si solo detectamos presencia
                     ]);
 
-                    // 2. Iniciar Cámara
+                    // Iniciar Cámara
                     const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { 
-                            width: { ideal: 1280 }, 
-                            height: { ideal: 720 },
-                            facingMode: "user"
-                        } 
+                        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
                     });
                     this.$refs.video.srcObject = stream;
                     
                     this.$refs.video.onloadedmetadata = () => {
                         this.$refs.video.play();
                         this.cameraReady = true;
-                        this.status = 'scanning';
-                        this.message = 'Mantén tu rostro centrado y quieto';
-                        this.startScanning();
+                        this.startFaceScanning();
                     };
 
                 } catch (e) {
-                    console.error("Error en init:", e);
+                    console.error("Error init:", e);
                     this.status = 'error';
-                    this.message = 'Error: No se pudo acceder a la cámara o cargar la IA.';
+                    this.message = 'Error: Permiso de cámara denegado.';
                 }
             },
 
-            startScanning() {
+            startFaceScanning() {
+                this.step = 1;
+                this.status = 'scanning';
+                this.message = 'Buscando rostro...';
+                
                 const video = this.$refs.video;
+                const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+
                 const interval = setInterval(async () => {
-                    if (this.status === 'success' || this.status === 'error') {
-                        clearInterval(interval);
-                        return;
-                    }
+                    if (this.step !== 1) { clearInterval(interval); return; }
 
-                    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
-                    
                     try {
-                        const detection = await faceapi.detectSingleFace(video, options)
-                                            .withFaceLandmarks()
-                                            .withFaceDescriptor();
-
+                        const detection = await faceapi.detectSingleFace(video, options);
+                        
                         if (detection) {
+                            this.faceDetected = true;
                             this.consecutiveFrames++;
-                            this.progress = Math.min(100, (this.consecutiveFrames / this.REQUIRED_FRAMES) * 100);
+                            this.progress = (this.consecutiveFrames / this.REQUIRED_FRAMES) * 100;
+                            this.message = 'Perfecto, no te muevas...';
 
                             if (this.consecutiveFrames >= this.REQUIRED_FRAMES) {
-                                await this.captureAndSaveIdentity(detection, video);
-                                this.status = 'success';
-                                this.message = 'Identidad Registrada Correctamente';
+                                clearInterval(interval);
+                                this.completeStep1(video);
                             }
                         } else {
+                            this.faceDetected = false;
                             this.consecutiveFrames = 0;
                             this.progress = 0;
-                            this.message = 'No se detecta rostro. Ubícate en el centro.';
+                            this.message = 'Acércate y centra tu rostro';
                         }
-                    } catch (err) {
-                        console.error("Error detectando rostro:", err);
-                    }
+                    } catch (err) { console.error(err); }
                 }, 100);
             },
 
-            async captureAndSaveIdentity(detection, video) {
-                this.message = 'Guardando perfil biométrico...';
-                
-                const descriptorArray = Array.from(detection.descriptor);
-                localStorage.setItem('exam_anchor_descriptor', JSON.stringify(descriptorArray));
-
+            completeStep1(video) {
+                // Capturar Selfie
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
+                // Espejar si es necesario
+                const ctx = canvas.getContext('2d');
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0);
+                
+                this.capturedFace = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // Pasar al Paso 2
+                this.step = 2;
+                this.message = 'Ahora muestra tu DNI a la cámara';
+                this.progress = 0;
+            },
+
+            captureDNI() {
+                const video = this.$refs.video;
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                // No espejar para el DNI (para poder leer el texto)
                 canvas.getContext('2d').drawImage(video, 0, 0);
-                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                
+                this.capturedDNI = canvas.toDataURL('image/jpeg', 0.8);
+                
+                this.uploadData();
+            },
+
+            resetToFace() {
+                this.step = 1;
+                this.consecutiveFrames = 0;
+                this.progress = 0;
+                this.startFaceScanning();
+            },
+
+            async uploadData() {
+                this.status = 'uploading';
+                this.message = 'Guardando datos biométricos...';
 
                 try {
                     await fetch("{% url 'runner:register_biometrics' attempt.id %}", {
@@ -152,11 +206,18 @@
                             'X-CSRFToken': '{{ csrf_token }}'
                         },
                         body: JSON.stringify({
-                            reference_face: imageData
+                            reference_face: this.capturedFace,
+                            dni_image: this.capturedDNI // Nuevo campo
                         })
                     });
+                    
+                    this.status = 'success';
+                    this.message = '¡Identidad Validada!';
+                    
                 } catch (err) {
-                    console.error("Error subiendo foto:", err);
+                    console.error("Error subida:", err);
+                    this.status = 'error';
+                    this.message = 'Error de conexión. Intenta de nuevo.';
                 }
             }
         }
