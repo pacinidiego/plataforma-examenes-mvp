@@ -1,13 +1,16 @@
 <div id="constructor-header" class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 transition-all">
     
-    <div class="flex justify-between items-start mb-4">
+    <div class="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+        
         <a href="{% url 'backoffice:dashboard' %}" 
-           class="group inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 hover:text-gray-900 transition-colors border border-gray-300">
-            <svg class="w-4 h-4 mr-2 text-gray-500 group-hover:text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+           class="group inline-flex items-center px-4 py-2 bg-white text-gray-700 text-sm font-bold rounded-lg border border-gray-300 hover:bg-gray-50 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm">
+            <svg class="w-4 h-4 mr-2 text-gray-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+            </svg>
             Volver al Dashboard
         </a>
 
-        <div class="text-right">
+        <div class="text-right self-end sm:self-auto">
             <span class="block text-[10px] text-gray-500 uppercase tracking-wider font-bold">Puntaje Total</span>
             <div class="flex items-baseline justify-end gap-1">
                 <span class="text-3xl font-extrabold {% if total_points == 10.0 %}text-green-600{% else %}text-orange-500{% endif %}">
@@ -26,50 +29,56 @@
                 <input type="text" 
                        name="title"
                        value="{{ exam.title }}" 
-                       class="text-2xl font-bold text-gray-900 bg-transparent border-b-2 border-transparent hover:border-gray-300 focus:border-blue-500 focus:ring-0 w-full px-1 py-0 transition-colors placeholder-gray-300"
+                       class="text-2xl font-bold text-gray-900 bg-transparent border-b-2 border-transparent hover:border-gray-300 focus:border-indigo-500 focus:ring-0 w-full px-1 py-0 transition-colors placeholder-gray-300"
                        hx-post="{% url 'backoffice:exam_update_title' exam.id %}"
                        hx-trigger="change, keyup delay:500ms changed"
-                       placeholder="Escribe un título...">
+                       placeholder="Escribe un título para el examen...">
                 
                 {% if exam.status == 'published' %}
                     <span class="flex-shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200 shadow-sm">
                         PUBLICADO
                     </span>
                 {% else %}
-                    <span class="flex-shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200 shadow-sm">
+                    <span class="flex-shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200 shadow-sm">
                         BORRADOR
                     </span>
                 {% endif %}
             </div>
-            <p class="text-gray-400 text-xs mt-1 ml-1">Creado el {{ exam.created_at|date:"d M Y" }}</p>
+            <p class="text-gray-400 text-xs mt-1 ml-1 flex items-center gap-1">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                Creado el {{ exam.created_at|date:"d M Y" }}
+            </p>
         </div>
 
         <div class="flex items-center space-x-4">
-            
             {% if exam.status == 'draft' %}
                 <button hx-post="{% url 'backoffice:exam_publish' exam.id %}"
                         hx-target="#constructor-header"
                         hx-swap="outerHTML"
                         class="inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-bold rounded-lg text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg transform transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:-translate-y-0.5">
-                    🚀 Publicar Examen
+                    <span>🚀 Publicar Examen</span>
                 </button>
             {% else %}
                 <button hx-post="{% url 'backoffice:exam_unpublish' exam.id %}"
                         hx-target="#constructor-header"
                         hx-swap="outerHTML"
-                        class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-red-50 hover:text-red-700 hover:border-red-300 focus:outline-none shadow-sm transition-all">
-                    ↩️ Anular Publicación
+                        class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-red-50 hover:text-red-700 hover:border-red-300 focus:outline-none shadow-sm transition-all group">
+                    <svg class="w-4 h-4 mr-2 text-gray-400 group-hover:text-red-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
+                    Anular Publicación
                 </button>
             {% endif %}
         </div>
     </div>
     
     {% if messages %}
-    <div id="msg-container" class="mt-4 space-y-2 animate-pulse">
+    <div id="msg-container" class="mt-4 space-y-2 animate-fade-in-down">
         {% for message in messages %}
-            <div class="flex items-center p-3 rounded-md text-sm border {% if message.tags == 'error' %}bg-red-50 text-red-700 border-red-200{% elif message.tags == 'warning' %}bg-orange-50 text-orange-800 border-orange-200{% else %}bg-green-50 text-green-700 border-green-200{% endif %}">
+            <div class="flex items-center p-3 rounded-md text-sm border shadow-sm {% if message.tags == 'error' %}bg-red-50 text-red-700 border-red-200{% elif message.tags == 'warning' %}bg-orange-50 text-orange-800 border-orange-200{% else %}bg-green-50 text-green-700 border-green-200{% endif %}">
+                {% if message.tags == 'success' %}
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                {% endif %}
                 <span>{{ message }}</span>
-                <button onclick="this.parentElement.remove()" class="ml-auto text-gray-400 hover:text-gray-600">✕</button>
+                <button onclick="this.parentElement.remove()" class="ml-auto text-gray-400 hover:text-gray-600 font-bold px-2">✕</button>
             </div>
         {% endfor %}
     </div>
