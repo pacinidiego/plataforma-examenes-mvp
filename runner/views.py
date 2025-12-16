@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.db.models import Count
 from django.template.loader import render_to_string
 from weasyprint import HTML
-from exams.models import Exam, Item  # Asegúrate de importar Item aquí
+from exams.models import Exam
 from .models import Attempt, AttemptEvent
 
 # --- FUNCIONES AUXILIARES ---
@@ -335,46 +335,7 @@ def portal_docente_view(request):
     return render(request, 'runner/portal_docente.html')
 
 
-# 14. VISTA DEL CONSTRUCTOR (LA QUE FALTABA)
-@login_required
-@user_passes_test(es_docente_o_admin)
-def exam_constructor_view(request, exam_id):
-    """
-    Renderiza la pantalla del Constructor de Exámenes.
-    Calcula las estadísticas (Disp:) para el generador de PDF.
-    """
-    exam = get_object_or_404(Exam, id=exam_id)
-    
-    # --- DATOS PARA EL PDF (CRUCIAL PARA QUE APAREZCAN LOS NÚMEROS) ---
-    conteo_faciles = exam.items.filter(difficulty=1).count()
-    conteo_medias = exam.items.filter(difficulty=2).count()
-    conteo_dificiles = exam.items.filter(difficulty=3).count()
-    total_items = exam.items.count()
-    # ------------------------------------------------------------------
-
-    # Datos para el funcionamiento del constructor (Lista y Banco)
-    exam_links = exam.examitemlink_set.select_related('item').order_by('order')
-    
-    # Items del banco (excluyendo los que ya están en el examen)
-    exam_item_ids = exam.items.values_list('id', flat=True)
-    bank_items = Item.objects.exclude(id__in=exam_item_ids).order_by('-id')
-
-    return render(request, 'runner/backoffice/constructor.html', {
-        'exam': exam,
-        'exam_links': exam_links,
-        'bank_items': bank_items,
-        'exam_items_count': exam.items.count(),
-        'bank_items_count': bank_items.count(),
-        
-        # Pasamos los conteos al template
-        'conteo_faciles': conteo_faciles,
-        'conteo_medias': conteo_medias,
-        'conteo_dificiles': conteo_dificiles,
-        'total_items': total_items,
-    })
-
-
-# 15. GENERADOR PDF (PARA IMPRESIÓN PRESENCIAL)
+# 14. GENERADOR PDF (PARA IMPRESIÓN PRESENCIAL)
 @login_required
 @user_passes_test(es_docente_o_admin)
 def descargar_pdf_examen(request, exam_id):
@@ -397,6 +358,7 @@ def descargar_pdf_examen(request, exam_id):
     cantidad_temas = max(1, min(cantidad_temas, 10))
 
     # Obtenemos los pools reales de preguntas
+    # Ajusta 'difficulty' si tu modelo ExamItem usa otro nombre de campo
     pool_faciles = list(exam.items.filter(difficulty=1))
     pool_medias = list(exam.items.filter(difficulty=2))
     pool_dificiles = list(exam.items.filter(difficulty=3))
@@ -430,9 +392,10 @@ def descargar_pdf_examen(request, exam_id):
             
             claves_tema.append(f"{idx}-{letra_correcta}")
             
+            # --- AQUÍ ESTABA EL ERROR: 'question_text' -> 'stem' ---
             preguntas_data.append({
                 'id': item.id,
-                'texto': item.question_text,
+                'texto': item.stem, # CORREGIDO: Usamos .stem que es como se llama en el modelo
                 'opciones': opciones
             })
 
