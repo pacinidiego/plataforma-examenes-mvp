@@ -5,7 +5,7 @@ app_name = 'runner'
 
 urlpatterns = [
     # --- RUTAS DE ALUMNO ---
-   # path('lobby/<str:access_code>/', views.lobby_view, name='lobby'),
+    path('lobby/<str:access_code>/', views.lobby_view, name='lobby'),
     path('tech-check/<str:access_code>/<uuid:attempt_id>/', views.tech_check_view, name='tech_check'),
     
     # Biometría
