@@ -235,6 +235,10 @@ def download_excel_template_view(request):
 # --- CONSTRUCTOR DE EXÁMENES ---
 
 def _get_constructor_context(request, exam_id, highlight_map=None):
+    """
+    Helper centralizado para obtener todo el contexto del constructor.
+    Aquí agregamos los contadores para que estén disponibles siempre.
+    """
     exam = get_object_or_404(Exam, id=exam_id, tenant__memberships__user=request.user)
     current_tenant = exam.tenant
     
@@ -249,6 +253,13 @@ def _get_constructor_context(request, exam_id, highlight_map=None):
     if highlight_map:
         for item in bank_items:
             item.source_tag = highlight_map.get(item.id, None)
+
+    # --- [NUEVO] Contadores para el Generador de PDF ---
+    # Usamos exam.items porque el PDF imprime lo que ya está en el examen.
+    conteo_faciles = exam.items.filter(difficulty=1).count()
+    conteo_medias = exam.items.filter(difficulty=2).count()
+    conteo_dificiles = exam.items.filter(difficulty=3).count()
+    # ---------------------------------------------------
                              
     return {
         'exam': exam,
@@ -257,11 +268,17 @@ def _get_constructor_context(request, exam_id, highlight_map=None):
         'exam_items_count': exam_links.count(),
         'bank_items_count': bank_items.count(),
         'total_points': total_points,
+        
+        # Pasamos los contadores al template
+        'conteo_faciles': conteo_faciles,
+        'conteo_medias': conteo_medias,
+        'conteo_dificiles': conteo_dificiles,
     }
 
 @login_required
 def exam_constructor_view(request, exam_id):
     try:
+        # Al usar _get_constructor_context, los contadores ya vienen incluidos
         context = _get_constructor_context(request, exam_id)
         return render(request, 'backoffice/constructor.html', context)
     except Http404:
@@ -612,9 +629,6 @@ def exam_unpublish(request, exam_id):
     context = { 'exam': exam, 'total_points': total_points }
     return render(request, 'backoffice/partials/_constructor_header.html', context)
 
-# --- backoffice/views.py ---
-
-# ... (resto del código anterior) ...
 
 @login_required
 @require_http_methods(["POST"])
