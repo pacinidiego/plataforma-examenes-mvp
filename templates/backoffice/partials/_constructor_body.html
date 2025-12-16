@@ -6,12 +6,12 @@
 <div class="lg:col-span-3 mb-6">
     <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 relative overflow-hidden">
         
-        <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-indigo-50 rounded-full opacity-50 blur-xl"></div>
+        <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-indigo-50 rounded-full opacity-50 blur-xl z-0"></div>
 
         <div class="flex justify-between items-center mb-6 relative z-10">
             <div class="flex items-center gap-3">
                 <div class="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
                 </div>
                 <div>
                     <h2 class="text-lg font-bold text-gray-900">Configuración de Impresión (PDF)</h2>
@@ -21,7 +21,8 @@
         </div>
 
         <form action="{% url 'runner:descargar_pdf' exam.id %}" method="GET" target="_blank"
-              x-data="pdfConfig()">
+              x-data="pdfConfig()"
+              class="relative z-20">
             
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
@@ -29,7 +30,7 @@
                     
                     <div>
                         <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Total de Preguntas</label>
-                        <select x-model="totalPreset" @change="aplicarPreset()" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                        <select x-model="totalPreset" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm cursor-pointer">
                             <option value="10">10 Preguntas (Estándar)</option>
                             <option value="20">20 Preguntas (Largo)</option>
                             <option value="5">5 Preguntas (Corto)</option>
@@ -39,7 +40,7 @@
 
                     <div>
                         <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Variantes (Temas)</label>
-                        <select name="cantidad" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                        <select name="cantidad" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm cursor-pointer">
                             <option value="1">1 Tema (A)</option>
                             <option value="2" selected>2 Temas (A, B)</option>
                             <option value="3">3 Temas (A, B, C)</option>
@@ -55,24 +56,24 @@
                     <div class="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                         <div>
                             <label class="block text-[10px] font-bold text-green-600 uppercase mb-1 text-center">Fáciles</label>
-                            <input type="number" name="faciles" x-model="faciles" @input="totalPreset='custom'" min="0" :max="max_faciles"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 text-sm py-2">
+                            <input type="number" name="faciles" x-model.number="faciles" @input="setCustom()" min="0" :max="max_faciles"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors">
                             <div class="text-[10px] text-gray-500 text-center mt-1">
                                 Disp: <b x-text="max_faciles"></b>
                             </div>
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-yellow-600 uppercase mb-1 text-center">Medias</label>
-                            <input type="number" name="medias" x-model="medias" @input="totalPreset='custom'" min="0" :max="max_medias"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 text-sm py-2">
+                            <input type="number" name="medias" x-model.number="medias" @input="setCustom()" min="0" :max="max_medias"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors">
                             <div class="text-[10px] text-gray-500 text-center mt-1">
                                 Disp: <b x-text="max_medias"></b>
                             </div>
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-red-600 uppercase mb-1 text-center">Difíciles</label>
-                            <input type="number" name="dificiles" x-model="dificiles" @input="totalPreset='custom'" min="0" :max="max_dificiles"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 text-sm py-2">
+                            <input type="number" name="dificiles" x-model.number="dificiles" @input="setCustom()" min="0" :max="max_dificiles"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors">
                             <div class="text-[10px] text-gray-500 text-center mt-1">
                                 Disp: <b x-text="max_dificiles"></b>
                             </div>
@@ -81,9 +82,9 @@
 
                     <div class="flex items-center justify-between mt-4">
                         <div class="text-xs text-gray-500">
-                            Total a incluir: <span class="font-bold text-gray-900 text-sm" x-text="parseInt(faciles||0) + parseInt(medias||0) + parseInt(dificiles||0)"></span> preg.
+                            Total a incluir: <span class="font-bold text-gray-900 text-sm" x-text="(parseInt(faciles)||0) + (parseInt(medias)||0) + (parseInt(dificiles)||0)"></span> preg.
                         </div>
-                        <button type="submit" class="bg-gray-900 hover:bg-black text-white font-bold py-2 px-6 rounded-lg transition-all shadow-md hover:shadow-lg flex items-center gap-2 text-sm">
+                        <button type="submit" class="bg-gray-900 hover:bg-black text-white font-bold py-2 px-6 rounded-lg transition-all shadow-md hover:shadow-lg flex items-center gap-2 text-sm cursor-pointer z-30">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                             Descargar PDF
                         </button>
@@ -97,19 +98,28 @@
 <script>
     function pdfConfig() {
         return {
-            // Datos desde el Backend (views.py)
             max_faciles: {{ conteo_faciles|default:0 }},
             max_medias: {{ conteo_medias|default:0 }},
             max_dificiles: {{ conteo_dificiles|default:0 }},
             
-            // Estado del formulario
-            totalPreset: '10', // Valor inicial del selector
+            totalPreset: '10',
             faciles: 0,
             medias: 0,
             dificiles: 0,
 
             init() {
-                this.aplicarPreset(); // Calcular valores iniciales al cargar
+                this.aplicarPreset();
+                // Vigilamos cambios en el selector para recalcular
+                this.$watch('totalPreset', (value) => {
+                    if (value !== 'custom') {
+                        this.aplicarPreset();
+                    }
+                });
+            },
+
+            // Si el usuario toca un input, cambiamos el selector a "Personalizado"
+            setCustom() {
+                this.totalPreset = 'custom';
             },
 
             aplicarPreset() {
@@ -118,11 +128,11 @@
                 const total = parseInt(this.totalPreset);
                 
                 // Distribución: 50% Fácil, 30% Media, 20% Difícil
-                // Usamos Math.min para no pasarnos de lo que hay disponible (max_*)
+                // Math.min asegura que no nos pasemos de lo disponible
                 this.faciles = Math.min(this.max_faciles, Math.floor(total * 0.5));
                 this.medias = Math.min(this.max_medias, Math.floor(total * 0.3));
                 
-                // El resto va a difíciles (o lo que se pueda)
+                // El resto intentamos ponerlo en difíciles
                 let resto = total - this.faciles - this.medias;
                 this.dificiles = Math.min(this.max_dificiles, resto);
             }
@@ -382,15 +392,17 @@
 
 <script>
     function rotarDificultad(btn, itemId) {
+        // Efecto visual de "cargando"
         btn.style.opacity = '0.5';
         btn.style.cursor = 'wait';
         
+        // URL al endpoint que creamos en backoffice
         const url = `/backoffice/item/${itemId}/rotate-difficulty/`;
 
         fetch(url, {
             method: 'POST',
             headers: {
-                'X-CSRFToken': '{{ csrf_token }}',
+                'X-CSRFToken': '{{ csrf_token }}', // Seguridad de Django
                 'Content-Type': 'application/json'
             }
         })
@@ -400,16 +412,22 @@
         })
         .then(data => {
             if (data.status === 'ok') {
+                // 1. Actualizar el texto del botón
                 btn.innerText = data.text;
+                
+                // 2. Limpiar las clases de colores viejos
                 btn.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500');
+                
+                // 3. Poner el color nuevo
                 btn.classList.add(data.css_class);
             }
         })
         .catch(err => {
             console.error('Error:', err);
-            alert('No se pudo cambiar la dificultad.');
+            alert('No se pudo cambiar la dificultad. Revisa tu conexión.');
         })
         .finally(() => {
+            // Restaurar estado visual
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
         });
