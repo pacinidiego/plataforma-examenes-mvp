@@ -36,7 +36,7 @@
             </div>
 
             <div x-show="status === 'success'" class="w-full" x-cloak>
-                <a href="{% url 'runner:take' exam.access_code attempt.id %}" 
+                <a href="{% url 'runner:exam_runner' exam.access_code attempt.id %}" 
                    class="block w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-center text-lg shadow-lg transition-transform hover:-translate-y-1">
                     Confirmar Identidad y Comenzar
                 </a>
@@ -64,7 +64,6 @@
             async init() {
                 try {
                     // 1. Cargar Modelos
-                    // Usamos los modelos alojados en GitHub pages que son públicos y funcionan bien
                     const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
                     
                     await Promise.all([
@@ -75,12 +74,12 @@
 
                     // 2. Iniciar Cámara
                     const stream = await navigator.mediaDevices.getUserMedia({ 
-    video: { 
-        width: { ideal: 1280 }, 
-        height: { ideal: 720 },
-        facingMode: "user" // Asegura usar la cámara frontal (selfie)
-    } 
-});
+                        video: { 
+                            width: { ideal: 1280 }, 
+                            height: { ideal: 720 },
+                            facingMode: "user"
+                        } 
+                    });
                     this.$refs.video.srcObject = stream;
                     
                     this.$refs.video.onloadedmetadata = () => {
@@ -100,16 +99,12 @@
 
             startScanning() {
                 const video = this.$refs.video;
-                
-                // Intervalo de chequeo rápido (100ms)
                 const interval = setInterval(async () => {
                     if (this.status === 'success' || this.status === 'error') {
                         clearInterval(interval);
                         return;
                     }
 
-                    // Detección
-                    // Ajustamos el inputSize a 224 o 320 para mayor velocidad en TinyFaceDetector
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
                     
                     try {
@@ -122,20 +117,17 @@
                             this.progress = Math.min(100, (this.consecutiveFrames / this.REQUIRED_FRAMES) * 100);
 
                             if (this.consecutiveFrames >= this.REQUIRED_FRAMES) {
-                                // !!! CAPTURA DEL ANCLA !!!
                                 await this.captureAndSaveIdentity(detection, video);
                                 this.status = 'success';
                                 this.message = 'Identidad Registrada Correctamente';
                             }
                         } else {
-                            // Si se pierde la cara, reseteamos el progreso
                             this.consecutiveFrames = 0;
                             this.progress = 0;
                             this.message = 'No se detecta rostro. Ubícate en el centro.';
                         }
                     } catch (err) {
                         console.error("Error detectando rostro:", err);
-                        // No rompemos el ciclo, solo lo intentamos de nuevo en el siguiente frame
                     }
                 }, 100);
             },
@@ -143,18 +135,15 @@
             async captureAndSaveIdentity(detection, video) {
                 this.message = 'Guardando perfil biométrico...';
                 
-                // 1. Guardar Descriptor en LocalStorage (Pasamanos al Examen)
                 const descriptorArray = Array.from(detection.descriptor);
                 localStorage.setItem('exam_anchor_descriptor', JSON.stringify(descriptorArray));
 
-                // 2. Capturar Foto (Snapshot) para enviar al Server
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 canvas.getContext('2d').drawImage(video, 0, 0);
                 const imageData = canvas.toDataURL('image/jpeg', 0.8);
 
-                // 3. Enviar al Backend (AJAX)
                 try {
                     await fetch("{% url 'runner:register_biometrics' attempt.id %}", {
                         method: 'POST',
@@ -168,8 +157,6 @@
                     });
                 } catch (err) {
                     console.error("Error subiendo foto:", err);
-                    // No bloqueamos por fallo de red en subida de foto, 
-                    // pero el descriptor local sí es crítico.
                 }
             }
         }
