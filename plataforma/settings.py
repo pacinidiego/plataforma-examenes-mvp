@@ -206,3 +206,8 @@ if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
     except Exception as e:
         print(f"Error al configurar la API de Gemini: {e}")
+
+# Si alguien intenta entrar al portal sin permiso, mandarlo aquí:
+LOGIN_URL = '/admin/login/'
+LOGIN_REDIRECT_URL = '/room/portal/'
+LOGOUT_REDIRECT_URL = '/admin/login/'
