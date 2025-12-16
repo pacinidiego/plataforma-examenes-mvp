@@ -15,16 +15,19 @@
                 </div>
                 <div>
                     <h2 class="text-lg font-bold text-gray-900">Configuración de Impresión (PDF)</h2>
-                    <p class="text-xs text-gray-500">Genera variantes en papel seleccionando preguntas por dificultad.</p>
+                    <p class="text-xs text-gray-500">Selecciona cuántas preguntas aleatorias incluir de cada dificultad.</p>
                 </div>
             </div>
         </div>
 
         <form action="{% url 'runner:descargar_pdf' exam.id %}" method="GET" target="_blank"
               x-data="{ 
-                  faciles: {{ conteo_faciles|default:0 }},
-                  medias: {{ conteo_medias|default:0 }},
-                  dificiles: {{ conteo_dificiles|default:0 }}
+                  max_faciles: {{ conteo_faciles|default:0 }},
+                  max_medias: {{ conteo_medias|default:0 }},
+                  max_dificiles: {{ conteo_dificiles|default:0 }},
+                  faciles: Math.min(5, {{ conteo_faciles|default:0 }}),
+                  medias: Math.min(3, {{ conteo_medias|default:0 }}),
+                  dificiles: Math.min(2, {{ conteo_dificiles|default:0 }})
               }">
             
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
@@ -33,10 +36,10 @@
                     <label class="block text-xs font-bold text-gray-700 uppercase mb-2">Cantidad de Temas</label>
                     <select name="cantidad" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm py-2.5">
                         <option value="1">1 Tema (A)</option>
-                        <option value="2">2 Temas (A, B)</option>
+                        <option value="2" selected>2 Temas (A, B)</option>
                         <option value="3">3 Temas (A, B, C)</option>
                         <option value="4">4 Temas (A..D)</option>
-                        <option value="6" selected>6 Temas (A..F)</option>
+                        <option value="6">6 Temas (A..F)</option>
                         <option value="10">10 Temas (Max)</option>
                     </select>
                 </div>
@@ -44,37 +47,37 @@
                 <div class="lg:col-span-6 grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                     <div>
                         <label class="block text-[10px] font-bold text-green-600 uppercase mb-1 text-center">Fáciles</label>
-                        <div class="relative">
-                            <input type="number" name="faciles" x-model="faciles" min="0" max="{{ conteo_faciles }}"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 text-sm py-2">
-                            <span class="text-[10px] text-gray-400 absolute -bottom-5 left-0 w-full text-center">
-                                Disp: <b>{{ conteo_faciles }}</b>
-                            </span>
+                        <div>
+                            <input type="number" name="faciles" x-model="faciles" min="0" :max="max_faciles"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 text-sm py-2 shadow-sm">
+                            <div class="text-[10px] text-gray-500 text-center mt-1">
+                                Disp: <b x-text="max_faciles"></b>
+                            </div>
                         </div>
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold text-yellow-600 uppercase mb-1 text-center">Medias</label>
-                        <div class="relative">
-                            <input type="number" name="medias" x-model="medias" min="0" max="{{ conteo_medias }}"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 text-sm py-2">
-                            <span class="text-[10px] text-gray-400 absolute -bottom-5 left-0 w-full text-center">
-                                Disp: <b>{{ conteo_medias }}</b>
-                            </span>
+                        <div>
+                            <input type="number" name="medias" x-model="medias" min="0" :max="max_medias"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 text-sm py-2 shadow-sm">
+                            <div class="text-[10px] text-gray-500 text-center mt-1">
+                                Disp: <b x-text="max_medias"></b>
+                            </div>
                         </div>
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold text-red-600 uppercase mb-1 text-center">Difíciles</label>
-                        <div class="relative">
-                            <input type="number" name="dificiles" x-model="dificiles" min="0" max="{{ conteo_dificiles }}"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 text-sm py-2">
-                            <span class="text-[10px] text-gray-400 absolute -bottom-5 left-0 w-full text-center">
-                                Disp: <b>{{ conteo_dificiles }}</b>
-                            </span>
+                        <div>
+                            <input type="number" name="dificiles" x-model="dificiles" min="0" :max="max_dificiles"
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 text-sm py-2 shadow-sm">
+                            <div class="text-[10px] text-gray-500 text-center mt-1">
+                                Disp: <b x-text="max_dificiles"></b>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="lg:col-span-3 flex flex-col justify-end h-full">
+                <div class="lg:col-span-3 flex flex-col justify-end h-full pb-1">
                     <div class="text-center mb-2 text-xs text-gray-500">
                         Total en PDF: <span class="font-bold text-gray-900 text-sm" x-text="parseInt(faciles||0) + parseInt(medias||0) + parseInt(dificiles||0)"></span> preg.
                     </div>
