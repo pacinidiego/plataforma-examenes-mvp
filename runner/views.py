@@ -1,17 +1,22 @@
 import random
 import json
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.db.models import Count
+from django.template.loader import render_to_string
+from weasyprint import HTML
 from exams.models import Exam
 from .models import Attempt, AttemptEvent
 
 # --- FUNCIONES AUXILIARES ---
 def is_staff(user):
     return user.is_staff
+
+def es_docente_o_admin(user):
+    return user.is_staff or user.groups.filter(name='Docente').exists()
 
 # ==========================================
 # SECCIÓN ALUMNO (LOBBY & EXAMEN)
@@ -258,13 +263,6 @@ def teacher_dashboard_view(request, exam_id):
         # --- CÁLCULO DE RIESGO (ANTIFRAUDE IQ) ---
         risk_score = 0
         
-        # Pesos basados en la severidad del evento
-        # FOCUS_LOST: Distracción menor/alt-tab
-        # FULLSCREEN_EXIT: Intento de manipular el entorno
-        # NO_FACE: Abandono del puesto
-        # MULTI_FACE: Ayuda externa (Grave)
-        # IDENTITY_MISMATCH: Suplantación (Crítico)
-        
         risk_score += events.filter(event_type='FOCUS_LOST').count() * 1
         risk_score += events.filter(event_type='FULLSCREEN_EXIT').count() * 2
         risk_score += events.filter(event_type='NO_FACE').count() * 3
@@ -274,16 +272,16 @@ def teacher_dashboard_view(request, exam_id):
         # Semáforo de Integridad
         status_color = 'green'
         status_text = 'Confiable'
-        show_grade = True # Por defecto mostramos la nota
+        show_grade = True 
         
         if risk_score > 10:
             status_color = 'red'
             status_text = 'Crítico'
-            show_grade = False # Riesgo alto: Ocultar nota
+            show_grade = False 
         elif risk_score > 4:
             status_color = 'yellow'
             status_text = 'Revisar'
-            show_grade = False # Riesgo medio: Ocultar nota
+            show_grade = False 
             
         results.append({
             'attempt': attempt,
@@ -320,7 +318,6 @@ def teacher_home_view(request):
     """
     Pantalla principal ("Mis Exámenes"): Muestra la lista para elegir cuál corregir.
     """
-    # Trae todos los exámenes ordenados por el más nuevo
     exams = Exam.objects.all().order_by('-id') 
     
     return render(request, 'runner/teacher_home.html', {
@@ -336,3 +333,87 @@ def portal_docente_view(request):
     Desde aquí deriva a: Exámenes Online, Generador Papel o Admin.
     """
     return render(request, 'runner/portal_docente.html')
+
+
+# 14. GENERADOR PDF (PARA IMPRESIÓN PRESENCIAL)
+@login_required
+@user_passes_test(es_docente_o_admin)
+def descargar_pdf_examen(request, exam_id):
+    """
+    Genera un PDF con variantes (temas) mezclando preguntas por dificultad.
+    Se usa en la sección de 'Configuración de Impresión' del constructor.
+    """
+    exam = get_object_or_404(Exam, id=exam_id)
+    
+    try:
+        cantidad_temas = int(request.GET.get('cantidad', 1))
+        # Si el input viene vacío, usamos 0
+        cant_faciles = int(request.GET.get('faciles') or 0)
+        cant_medias = int(request.GET.get('medias') or 0)
+        cant_dificiles = int(request.GET.get('dificiles') or 0)
+    except ValueError:
+        return HttpResponse("Error: Los valores deben ser números enteros.", status=400)
+
+    # Validamos rangos
+    cantidad_temas = max(1, min(cantidad_temas, 10))
+
+    # Obtenemos los pools reales de preguntas
+    # Ajusta 'difficulty' si tu modelo ExamItem usa otro nombre de campo
+    pool_faciles = list(exam.items.filter(difficulty=1))
+    pool_medias = list(exam.items.filter(difficulty=2))
+    pool_dificiles = list(exam.items.filter(difficulty=3))
+    
+    examenes_generados = []
+
+    for i in range(cantidad_temas):
+        tema_label = chr(65 + i) # A, B, C...
+        seleccion = []
+        
+        # Seleccionamos al azar, pero respetando el máximo disponible (min)
+        seleccion += random.sample(pool_faciles, min(len(pool_faciles), cant_faciles))
+        seleccion += random.sample(pool_medias, min(len(pool_medias), cant_medias))
+        seleccion += random.sample(pool_dificiles, min(len(pool_dificiles), cant_dificiles))
+        
+        random.shuffle(seleccion) # Mezclamos el orden de las preguntas
+
+        preguntas_data = []
+        claves_tema = []
+
+        for idx, item in enumerate(seleccion, 1):
+            # Mezclamos opciones (si existen)
+            opciones = list(item.options or [])
+            random.shuffle(opciones)
+            
+            letra_correcta = "?"
+            for j, op in enumerate(opciones):
+                op['letra'] = chr(65 + j)
+                if op.get('correct'):
+                    letra_correcta = op['letra']
+            
+            claves_tema.append(f"{idx}-{letra_correcta}")
+            
+            preguntas_data.append({
+                'id': item.id,
+                'texto': item.question_text,
+                'opciones': opciones
+            })
+
+        examenes_generados.append({
+            'tema': tema_label,
+            'preguntas': preguntas_data,
+            'claves': claves_tema
+        })
+
+    # Renderizamos el PDF
+    html_string = render_to_string('classroom_exams/pdf_variantes.html', {
+        'config': {'nombre': exam.title, 'materia': 'Examen Generado'},
+        'examenes_generados': examenes_generados,
+    })
+
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri()).write_pdf()
+    
+    filename = f"Examen_{exam.title.replace(' ', '_')}_{cantidad_temas}Temas.pdf"
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
