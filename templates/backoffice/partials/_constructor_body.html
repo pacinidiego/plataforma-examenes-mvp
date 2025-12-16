@@ -1,6 +1,17 @@
+{% load static %}
+
 <style>
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: flex; }
+    
+    /* Animación suave para la Profe Byte */
+    @keyframes pulse-ring {
+        0% { transform: scale(0.8); opacity: 0.5; }
+        100% { transform: scale(1.3); opacity: 0; }
+    }
+    .profe-ring {
+        animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
 </style>
 
 <div class="lg:col-span-3 mb-6">
@@ -27,10 +38,9 @@
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
                 <div class="lg:col-span-4 space-y-4">
-                    
                     <div>
                         <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Total de Preguntas</label>
-                        <select x-model="totalPreset" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm cursor-pointer">
+                        <select x-model="totalPreset" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm cursor-pointer bg-white">
                             <option value="10">10 Preguntas (Estándar)</option>
                             <option value="20">20 Preguntas (Largo)</option>
                             <option value="5">5 Preguntas (Corto)</option>
@@ -40,7 +50,7 @@
 
                     <div>
                         <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Variantes (Temas)</label>
-                        <select name="cantidad" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm cursor-pointer">
+                        <select name="cantidad" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm cursor-pointer bg-white">
                             <option value="1">1 Tema (A)</option>
                             <option value="2" selected>2 Temas (A, B)</option>
                             <option value="3">3 Temas (A, B, C)</option>
@@ -57,7 +67,7 @@
                         <div>
                             <label class="block text-[10px] font-bold text-green-600 uppercase mb-1 text-center">Fáciles</label>
                             <input type="number" name="faciles" x-model.number="faciles" @input="setCustom()" min="0" :max="max_faciles"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors">
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors bg-white">
                             <div class="text-[10px] text-gray-500 text-center mt-1">
                                 Disp: <b x-text="max_faciles"></b>
                             </div>
@@ -65,7 +75,7 @@
                         <div>
                             <label class="block text-[10px] font-bold text-yellow-600 uppercase mb-1 text-center">Medias</label>
                             <input type="number" name="medias" x-model.number="medias" @input="setCustom()" min="0" :max="max_medias"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors">
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors bg-white">
                             <div class="text-[10px] text-gray-500 text-center mt-1">
                                 Disp: <b x-text="max_medias"></b>
                             </div>
@@ -73,7 +83,7 @@
                         <div>
                             <label class="block text-[10px] font-bold text-red-600 uppercase mb-1 text-center">Difíciles</label>
                             <input type="number" name="dificiles" x-model.number="dificiles" @input="setCustom()" min="0" :max="max_dificiles"
-                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors">
+                                   class="w-full text-center font-mono font-bold text-gray-700 border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 text-sm py-2 shadow-sm cursor-text hover:bg-white transition-colors bg-white">
                             <div class="text-[10px] text-gray-500 text-center mt-1">
                                 Disp: <b x-text="max_dificiles"></b>
                             </div>
@@ -84,7 +94,7 @@
                         <div class="text-xs text-gray-500">
                             Total a incluir: <span class="font-bold text-gray-900 text-sm" x-text="(parseInt(faciles)||0) + (parseInt(medias)||0) + (parseInt(dificiles)||0)"></span> preg.
                         </div>
-                        <button type="submit" class="bg-gray-900 hover:bg-black text-white font-bold py-2 px-6 rounded-lg transition-all shadow-md hover:shadow-lg flex items-center gap-2 text-sm cursor-pointer z-30">
+                        <button type="submit" class="bg-gray-900 hover:bg-black text-white font-bold py-2 px-6 rounded-lg transition-all shadow-md hover:shadow-lg flex items-center gap-2 text-sm cursor-pointer z-30 relative">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                             Descargar PDF
                         </button>
@@ -109,7 +119,6 @@
 
             init() {
                 this.aplicarPreset();
-                // Vigilamos cambios en el selector para recalcular
                 this.$watch('totalPreset', (value) => {
                     if (value !== 'custom') {
                         this.aplicarPreset();
@@ -117,7 +126,6 @@
                 });
             },
 
-            // Si el usuario toca un input, cambiamos el selector a "Personalizado"
             setCustom() {
                 this.totalPreset = 'custom';
             },
@@ -126,13 +134,9 @@
                 if (this.totalPreset === 'custom') return;
 
                 const total = parseInt(this.totalPreset);
-                
-                // Distribución: 50% Fácil, 30% Media, 20% Difícil
-                // Math.min asegura que no nos pasemos de lo disponible
                 this.faciles = Math.min(this.max_faciles, Math.floor(total * 0.5));
                 this.medias = Math.min(this.max_medias, Math.floor(total * 0.3));
                 
-                // El resto intentamos ponerlo en difíciles
                 let resto = total - this.faciles - this.medias;
                 this.dificiles = Math.min(this.max_dificiles, resto);
             }
@@ -143,13 +147,26 @@
 <div class="lg:col-span-3 mb-2">
     <div class="bg-gradient-to-r from-indigo-50 to-white border border-indigo-100 rounded-lg p-6 shadow-sm relative overflow-hidden">
         
-        <div id="ai-loading" class="htmx-indicator absolute inset-0 bg-white/90 z-20 items-center justify-center backdrop-blur-sm transition-all">
-            <div class="flex flex-col items-center gap-3">
-                <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span class="text-indigo-800 font-bold text-sm animate-pulse">Consultando a la IA...</span>
+        <div id="ai-loading" class="htmx-indicator absolute inset-0 bg-white/95 z-50 items-center justify-center backdrop-blur-md transition-all rounded-lg flex-col">
+            <div class="flex flex-col items-center gap-5">
+                
+                <div class="relative w-28 h-28 flex items-center justify-center">
+                    <div class="absolute inset-0 bg-indigo-200 rounded-full profe-ring"></div>
+                    <div class="absolute inset-0 bg-indigo-300 rounded-full profe-ring" style="animation-delay: 0.5s;"></div>
+                    
+                    <img src="{% static 'images/profesora.jpeg' %}" 
+                         class="relative w-24 h-24 rounded-full border-4 border-white shadow-xl object-cover z-10" 
+                         alt="Profe Byte">
+                         
+                    <div class="absolute -top-1 -right-1 bg-indigo-600 text-white p-1.5 rounded-full z-20 shadow-md animate-bounce">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    </div>
+                </div>
+                
+                <div class="text-center space-y-1">
+                    <h3 class="text-indigo-900 font-extrabold text-xl animate-pulse">Trabajando con la Profe Byte...</h3>
+                    <p class="text-indigo-500 text-sm font-medium">Analizando el tema y diseñando preguntas...</p>
+                </div>
             </div>
         </div>
 
