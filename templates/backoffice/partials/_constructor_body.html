@@ -62,7 +62,6 @@
 
                 <div class="lg:col-span-8">
                     <label class="block text-xs font-bold text-gray-700 uppercase mb-2">Distribución de Preguntas</label>
-                    
                     <div class="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                         <div>
                             <label class="block text-[10px] font-bold text-green-600 uppercase mb-1 text-center">Fáciles</label>
@@ -145,12 +144,13 @@
 </script>
 
 <div class="lg:col-span-3 mb-2">
-    <div class="bg-gradient-to-r from-indigo-50 to-white border border-indigo-100 rounded-lg p-6 shadow-sm relative overflow-hidden min-h-[180px] flex flex-col justify-center">
+    <div class="bg-gradient-to-r from-indigo-50 to-white border border-indigo-100 rounded-lg p-6 shadow-sm relative overflow-hidden min-h-[220px] flex flex-col justify-center">
         
-        <div id="ai-loading" class="htmx-indicator absolute inset-0 bg-white/95 z-50 items-center justify-center backdrop-blur-md transition-all rounded-lg">
-            <div class="flex flex-row items-center gap-5 px-6">
+        <div id="ai-loading" class="htmx-indicator absolute inset-0 bg-white z-50 items-center justify-center transition-all rounded-lg">
+            
+            <div class="flex flex-row items-center gap-6 px-4">
                 
-                <div class="relative w-20 h-20 flex-shrink-0 flex items-center justify-center">
+                <div class="relative w-24 h-24 flex-shrink-0 flex items-center justify-center">
                     <div class="absolute inset-0 bg-indigo-200 rounded-full profe-ring"></div>
                     <div class="absolute inset-0 bg-indigo-300 rounded-full profe-ring" style="animation-delay: 0.5s;"></div>
                     
@@ -160,8 +160,8 @@
                 </div>
                 
                 <div class="text-left">
-                    <h3 class="text-indigo-900 font-extrabold text-lg animate-pulse">Trabajando con la Profe Byte...</h3>
-                    <p class="text-indigo-500 text-sm font-medium mt-1">Analizando el tema y diseñando preguntas...</p>
+                    <h3 class="text-indigo-900 font-extrabold text-xl animate-pulse">Trabajando con la Profe Byte...</h3>
+                    <p class="text-indigo-600 text-sm font-medium mt-1">Analizando el tema y diseñando preguntas...</p>
                 </div>
             </div>
         </div>
