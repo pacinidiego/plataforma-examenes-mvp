@@ -80,7 +80,7 @@
                     </div>
 
                     <div class="mt-8">
-                        <a href="{% url 'runner:gate' exam.access_code attempt.id %}"
+                        <a href="{% url 'runner:biometric_gate' exam.access_code attempt.id %}"
                            class="block w-full py-4 rounded-xl font-bold text-lg text-center transition-all shadow-sm flex items-center justify-center gap-3 relative overflow-hidden group"
                            :class="allChecksPassed ? 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md cursor-pointer' : 'bg-gray-200 text-gray-400 cursor-not-allowed pointer-events-none'">
                             <span>Siguiente: Verificación de Identidad</span>
