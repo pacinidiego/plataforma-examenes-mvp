@@ -22,7 +22,7 @@ def es_docente_o_admin(user):
 # SECCIÓN ALUMNO (LOBBY & EXAMEN)
 # ==========================================
 
-# 1. LOBBY: Lógica de Bloqueo y Reanudación
+# 1. LOBBY
 def lobby_view(request, access_code):
     exam = get_object_or_404(Exam, access_code=access_code)
     
@@ -30,7 +30,7 @@ def lobby_view(request, access_code):
         nombre = request.POST.get('full_name', '').strip()
         legajo = request.POST.get('student_id', '').strip()
         
-        # A. REGLA DE ORO: ¿Ya lo terminó? -> BLOQUEAR
+        # A. ¿Ya terminó? -> BLOQUEAR
         finished_attempt = Attempt.objects.filter(
             exam=exam, 
             student_legajo__iexact=legajo,
@@ -53,35 +53,29 @@ def lobby_view(request, access_code):
         if active_attempt:
             active_attempt.student_name = nombre
             active_attempt.save()
-            # Redirige al Tech Check primero
             return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=active_attempt.id)
 
         # C. Es nuevo -> CREAR
-        # IMPORTANTE: Al crear, 'start_time' debe quedar vacío (None) hasta que empiece a rendir.
         attempt = Attempt.objects.create(
             exam=exam,
             student_name=nombre,
             student_legajo=legajo,
             ip_address=request.META.get('REMOTE_ADDR')
-            # start_time se deja en None por defecto
         )
         return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=attempt.id)
         
     return render(request, 'runner/lobby.html', {'exam': exam})
 
 
-# 2. TECH CHECK (Hardware)
+# 2. TECH CHECK
 def tech_check_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/tech_check.html', {'exam': exam, 'attempt': attempt})
 
 
-# 3. BIOMETRIC GATE (Identidad)
+# 3. BIOMETRIC GATE
 def biometric_gate_view(request, access_code, attempt_id):
-    """
-    PANTALLA INTERMEDIA: Validación de Identidad y Captura de Ancla.
-    """
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
@@ -94,21 +88,25 @@ def biometric_gate_view(request, access_code, attempt_id):
     })
 
 
-# 4. API REGISTRO BIOMÉTRICO
+# 4. API REGISTRO BIOMÉTRICO (¡ACTUALIZADO!)
 @require_POST
 def register_biometrics(request, attempt_id):
     """
-    Recibe la foto de referencia del Lobby y la guarda en el Attempt.
+    Recibe la selfie (reference_face) y la foto del DNI (dni_image).
     """
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
         
-        # Guardamos las imágenes en Base64
+        # 1. Guardar Selfie (Rostro)
         if 'reference_face' in data:
             attempt.reference_face_url = data['reference_face']
         
-        if 'photo_id' in data:
+        # 2. Guardar DNI (Documento)
+        # El frontend ahora envía 'dni_image', lo guardamos en photo_id_url
+        if 'dni_image' in data:
+            attempt.photo_id_url = data['dni_image']
+        elif 'photo_id' in data: # Soporte legacy por las dudas
             attempt.photo_id_url = data['photo_id']
             
         attempt.save()
@@ -125,29 +123,21 @@ def exam_runner_view(request, access_code, attempt_id):
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-    # --- CORRECCIÓN CRÍTICA: INICIO DEL RELOJ ---
-    # Si start_time es None (es la primera vez que entra a las preguntas),
-    # iniciamos el cronómetro AHORA.
     if not attempt.start_time:
         attempt.start_time = timezone.now()
         attempt.save(update_fields=['start_time'])
-    # --------------------------------------------
 
     items = list(exam.items.all())
     if exam.shuffle_items:
-        # Usamos el ID del intento como semilla para que el orden sea siempre el mismo para este alumno
         random.Random(str(attempt.id)).shuffle(items)
         
     total_duration = exam.get_total_duration_seconds()
-    
-    # Calculamos el tiempo transcurrido desde que SE MOSTRARON LAS PREGUNTAS
     elapsed = (timezone.now() - attempt.start_time).total_seconds()
     remaining = max(0, total_duration - elapsed)
 
     if remaining <= 0:
         return redirect('runner:submit_exam', attempt_id=attempt.id)
 
-    # Lógica de Salto Directo (retomar donde dejó)
     saved_answers = attempt.answers or {}
     initial_step = len(saved_answers)
     
@@ -176,7 +166,6 @@ def save_answer(request, attempt_id):
         current_answers[str(data.get('question_id'))] = data.get('answer')
         
         attempt.answers = current_answers
-        # Actualizamos heartbeat para saber que sigue vivo
         attempt.save(update_fields=['answers', 'last_heartbeat']) 
         return JsonResponse({'status': 'ok'})
     except Exception as e:
@@ -197,10 +186,8 @@ def submit_exam_view(request, attempt_id):
     for q in questions:
         selected = answers.get(str(q.id))
         if selected:
-            # Buscamos la opción correcta
             correct = next((o for o in (q.options or []) if o.get('correct')), None)
             if correct and correct.get('text') == selected:
-                # Buscamos el puntaje específico de esa pregunta en este examen
                 link = exam.examitemlink_set.filter(item=q).first()
                 score += link.points if link else 1.0
 
@@ -227,7 +214,6 @@ def log_event(request, attempt_id):
         event_type = data.get('event_type')
         metadata = data.get('metadata', {})
         
-        # Validar que el tipo de evento exista en nuestro modelo
         valid_types = [t[0] for t in AttemptEvent.EVENT_TYPES]
         if event_type not in valid_types:
             return JsonResponse({'status': 'ignored'}, status=200)
@@ -237,7 +223,6 @@ def log_event(request, attempt_id):
             event_type=event_type,
             metadata=metadata
         )
-        
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -247,29 +232,23 @@ def log_event(request, attempt_id):
 # SECCIÓN DOCENTE (DASHBOARD & AUDITORÍA)
 # ==========================================
 
-# 10. DASHBOARD DEL DOCENTE (Listado de Alumnos con Semáforo)
+# 10. DASHBOARD DEL DOCENTE
 @login_required
 @user_passes_test(is_staff)
 def teacher_dashboard_view(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id)
-    # Traemos los intentos y pre-cargamos los eventos para optimizar DB
     attempts = Attempt.objects.filter(exam=exam).order_by('-start_time').prefetch_related('events')
 
     results = []
-    
     for attempt in attempts:
         events = attempt.events.all()
-        
-        # --- CÁLCULO DE RIESGO (ANTIFRAUDE IQ) ---
         risk_score = 0
-        
         risk_score += events.filter(event_type='FOCUS_LOST').count() * 1
         risk_score += events.filter(event_type='FULLSCREEN_EXIT').count() * 2
         risk_score += events.filter(event_type='NO_FACE').count() * 3
         risk_score += events.filter(event_type='MULTI_FACE').count() * 5
         risk_score += events.filter(event_type='IDENTITY_MISMATCH').count() * 10
         
-        # Semáforo de Integridad
         status_color = 'green'
         status_text = 'Confiable'
         show_grade = True 
@@ -298,67 +277,50 @@ def teacher_dashboard_view(request, exam_id):
     })
 
 
-# 11. DETALLE DEL INTENTO (Auditoría Forense)
+# 11. DETALLE DEL INTENTO
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all().order_by('timestamp')
-    
     return render(request, 'runner/attempt_detail.html', {
         'attempt': attempt,
         'events': events
     })
 
 
-# 12. HOME DOCENTE (Lista de Exámenes)
+# 12. HOME DOCENTE
 @login_required
 @user_passes_test(is_staff)
 def teacher_home_view(request):
-    """
-    Pantalla principal ("Mis Exámenes"): Muestra la lista para elegir cuál corregir.
-    """
     exams = Exam.objects.all().order_by('-id') 
-    
     return render(request, 'runner/teacher_home.html', {
         'exams': exams
     })
 
-# 13. PORTAL PRINCIPAL (LANDING PAGE)
+# 13. PORTAL PRINCIPAL
 @login_required
 @user_passes_test(is_staff)
 def portal_docente_view(request):
-    """
-    Centro de Comando del Docente.
-    Desde aquí deriva a: Exámenes Online, Generador Papel o Admin.
-    """
     return render(request, 'runner/portal_docente.html')
 
 
-# 14. GENERADOR PDF (PARA IMPRESIÓN PRESENCIAL)
+# 14. GENERADOR PDF
 @login_required
 @user_passes_test(es_docente_o_admin)
 def descargar_pdf_examen(request, exam_id):
-    """
-    Genera un PDF con variantes (temas) mezclando preguntas por dificultad.
-    Se usa en la sección de 'Configuración de Impresión' del constructor.
-    """
     exam = get_object_or_404(Exam, id=exam_id)
     
     try:
         cantidad_temas = int(request.GET.get('cantidad', 1))
-        # Si el input viene vacío, usamos 0
         cant_faciles = int(request.GET.get('faciles') or 0)
         cant_medias = int(request.GET.get('medias') or 0)
         cant_dificiles = int(request.GET.get('dificiles') or 0)
     except ValueError:
         return HttpResponse("Error: Los valores deben ser números enteros.", status=400)
 
-    # Validamos rangos
     cantidad_temas = max(1, min(cantidad_temas, 10))
 
-    # Obtenemos los pools reales de preguntas
-    # Ajusta 'difficulty' si tu modelo ExamItem usa otro nombre de campo
     pool_faciles = list(exam.items.filter(difficulty=1))
     pool_medias = list(exam.items.filter(difficulty=2))
     pool_dificiles = list(exam.items.filter(difficulty=3))
@@ -366,21 +328,19 @@ def descargar_pdf_examen(request, exam_id):
     examenes_generados = []
 
     for i in range(cantidad_temas):
-        tema_label = chr(65 + i) # A, B, C...
+        tema_label = chr(65 + i)
         seleccion = []
         
-        # Seleccionamos al azar, pero respetando el máximo disponible (min)
         seleccion += random.sample(pool_faciles, min(len(pool_faciles), cant_faciles))
         seleccion += random.sample(pool_medias, min(len(pool_medias), cant_medias))
         seleccion += random.sample(pool_dificiles, min(len(pool_dificiles), cant_dificiles))
         
-        random.shuffle(seleccion) # Mezclamos el orden de las preguntas
+        random.shuffle(seleccion) 
 
         preguntas_data = []
         claves_tema = []
 
         for idx, item in enumerate(seleccion, 1):
-            # Mezclamos opciones (si existen)
             opciones = list(item.options or [])
             random.shuffle(opciones)
             
@@ -392,10 +352,9 @@ def descargar_pdf_examen(request, exam_id):
             
             claves_tema.append(f"{idx}-{letra_correcta}")
             
-            # --- AQUÍ ESTABA EL ERROR: 'question_text' -> 'stem' ---
             preguntas_data.append({
                 'id': item.id,
-                'texto': item.stem, # CORREGIDO: Usamos .stem que es como se llama en el modelo
+                'texto': item.stem, 
                 'opciones': opciones
             })
 
@@ -405,7 +364,6 @@ def descargar_pdf_examen(request, exam_id):
             'claves': claves_tema
         })
 
-    # Renderizamos el PDF
     html_string = render_to_string('classroom_exams/pdf_variantes.html', {
         'config': {'nombre': exam.title, 'materia': 'Examen Generado'},
         'examenes_generados': examenes_generados,
