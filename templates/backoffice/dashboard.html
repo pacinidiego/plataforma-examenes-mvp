@@ -89,7 +89,7 @@
                         
                         <div class="flex items-center space-x-2">
                             
-                            <form action="{% url 'classroom_exams:pdf_variantes' exam.id %}" method="GET" target="_blank" class="flex items-center gap-1 border-r border-gray-300 pr-2 mr-1">
+                            <form action="{% url 'runner:descargar_pdf' exam.id %}" method="GET" target="_blank" class="flex items-center gap-1 border-r border-gray-300 pr-2 mr-1">
                                 <select name="cantidad" class="text-xs border-gray-300 rounded p-1 h-7 bg-white text-gray-700 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer" title="Cantidad de Temas">
                                     <option value="1">1 T.</option>
                                     <option value="2">2 T.</option>
