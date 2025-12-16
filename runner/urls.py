@@ -28,4 +28,7 @@ urlpatterns = [
 
     # LA PUERTA DE ENTRADA
     path('teacher/', views.teacher_home_view, name='teacher_home'),
+
+    # --- NUEVA RUTA: EXPORTAR PDF ---
+    path('pdf_export/<int:exam_id>/', views.descargar_pdf_examen, name='descargar_pdf'),
 ]
