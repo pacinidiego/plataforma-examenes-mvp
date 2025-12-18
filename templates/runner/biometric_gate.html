@@ -8,7 +8,7 @@
     <div class="bg-white max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         
         <div class="bg-gray-50 p-6 border-b border-gray-100 text-center">
-            <h1 class="text-2xl font-bold text-gray-800" x-text="step === 1 ? 'Paso 1: Validación Facial' : 'Paso 2: Lectura de DNI'"></h1>
+            <h1 class="text-2xl font-bold text-gray-800" x-text="step === 1 ? 'Paso 1: Rostro' : 'Paso 2: Validación Automática DNI'"></h1>
             <p class="text-gray-500 text-sm mt-1" x-text="statusText"></p>
         </div>
 
@@ -21,7 +21,7 @@
                      <div class="absolute inset-0 rounded-full border-4 transition-all duration-300"
                           :class="faceDetected ? 'border-green-400 scale-105' : 'border-white/30 border-dashed'"></div>
                      <span class="text-white font-bold bg-black/50 px-3 py-1 rounded backdrop-blur-md" 
-                           x-text="faceDetected ? '¡Inmóvil!' : 'Ubica tu rostro'"></span>
+                           x-text="faceDetected ? '¡Quieto!' : 'Ubica tu cara'"></span>
                  </div>
                  <div class="w-48 h-2 bg-gray-800 rounded-full mt-6 overflow-hidden border border-gray-600" x-show="faceDetected">
                     <div class="h-full bg-green-500 transition-all duration-100 ease-linear" :style="`width: ${progress}%`"></div>
@@ -29,36 +29,32 @@
             </div>
 
             <div x-show="step === 2 && !isSuccess" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-10">
+                 
                  <div class="absolute bottom-12 w-full px-8 flex flex-col items-center">
                      <div class="w-full max-w-md h-24 border-2 border-yellow-400 bg-yellow-400/5 rounded-lg relative shadow-[0_0_50px_rgba(0,0,0,0.5)_inset] flex items-center justify-center overflow-hidden backdrop-blur-[2px]">
                         <div x-show="isScanning" class="absolute top-0 left-0 w-full h-1 bg-yellow-400 shadow-[0_0_10px_rgba(255,255,0,0.8)] animate-scan"></div>
                         <div class="opacity-50 text-white font-mono text-xs tracking-widest text-center leading-loose">
-                            IDARG25403<<<240<<78<<<<<br>
-                            PEREZ<<JUAN<<<<<<<<<<<<<<
+                            IDARG<<<<<<<<<<<<<<<<<<<<<br>
+                            <<<<<<<<<<<<<<<<<<<<<<<<<<
                         </div>
                      </div>
                      <div class="mt-4 bg-black/70 px-4 py-2 rounded-xl text-center">
-                         <p class="text-white font-bold text-sm">Ubica el texto "IDARG..." o "ARG..." aquí</p>
+                         <p class="text-white font-bold text-sm">Ubica las 3 líneas de texto del DNI aquí</p>
+                         <p class="text-yellow-400 text-[10px] mt-1 font-mono" x-text="debugText">Esperando lectura...</p>
                      </div>
                  </div>
-            </div>
-
-            <div x-show="isProcessingOCR" class="absolute inset-0 flex items-center justify-center bg-black/60 z-20 backdrop-blur-sm">
-                <div class="flex flex-col items-center animate-pulse">
-                    <span class="text-white font-bold text-sm">Leyendo texto del DNI...</span>
-                </div>
             </div>
 
             <div x-show="isSuccess" class="absolute inset-0 bg-green-600/95 backdrop-blur-md flex flex-col items-center justify-center z-30" x-cloak>
                 <div class="bg-white p-4 rounded-full mb-4 shadow-xl animate-bounce">
                     <svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                 </div>
-                <h3 class="text-white text-2xl font-bold">¡Validación Exitosa!</h3>
-                <p class="text-white/80 text-sm mt-2" x-text="successDetail"></p>
+                <h3 class="text-white text-2xl font-bold">¡DNI Validado!</h3>
+                <p class="text-white/80 text-sm mt-2">Coincidencia Biométrica Confirmada</p>
             </div>
 
             <div x-show="isLoading" class="absolute inset-0 flex items-center justify-center bg-black/90 z-20">
-                <span class="text-white text-xs">Cargando Motores IA...</span>
+                <span class="text-white text-xs">Cargando Sistema...</span>
             </div>
         </div>
     </div>
@@ -78,10 +74,9 @@
             step: 1,
             isLoading: true,
             isScanning: false,
-            isProcessingOCR: false,
             isSuccess: false,
             statusText: 'Foto automática en 3, 2, 1...',
-            successDetail: '',
+            debugText: 'Iniciando...',
             expectedDNI: '',
             
             faceDetected: false,
@@ -90,8 +85,7 @@
             REQUIRED_FRAMES: 15, 
 
             capturedFace: null,
-            capturedDNI: null,
-            detectedText: '', // AUDITORÍA: Guardamos lo que leyó
+            capturedDNI: null, 
             worker: null,
             ocrInterval: null,
             
@@ -101,8 +95,9 @@
                 
                 try {
                     this.initTesseract();
+                    // Pedimos máxima resolución posible
                     const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } 
+                        video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } } 
                     });
                     this.$refs.video.srcObject = stream;
                     this.$refs.video.onloadedmetadata = () => {
@@ -111,13 +106,13 @@
                         this.startFaceAutoCapture(); 
                     };
                 } catch(e) {
-                    alert("Error: Cámara no disponible.");
-                    this.isLoading = false;
+                    alert("Error crítico: No hay cámara.");
                 }
             },
 
             async initTesseract() {
                 this.worker = await Tesseract.createWorker('eng');
+                // Whitelist estricta: Solo letras mayúsculas, números y el símbolo <
                 await this.worker.setParameters({
                     tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<', 
                 });
@@ -162,29 +157,48 @@
 
             startOCRScanner() {
                 this.step = 2;
-                this.statusText = 'Ubica las líneas de texto inferior en el recuadro';
+                this.statusText = 'Validando DNI automáticamente...';
                 this.isScanning = true;
+                
                 this.ocrInterval = setInterval(() => {
-                    if (!this.isProcessingOCR && !this.isSuccess) {
-                        this.performOCR();
-                    }
-                }, 1500);
+                    if (!this.isSuccess) this.performOCR();
+                }, 1000); // Intento cada segundo
             },
 
             async performOCR() {
                 if (!this.worker) return;
                 const video = this.$refs.video;
+                
+                // --- PRE-PROCESAMIENTO DE IMAGEN (El secreto para que funcione) ---
                 const canvas = document.createElement('canvas');
-                const cropWidth = video.videoWidth * 0.8; 
-                const cropHeight = video.videoHeight * 0.25; 
-                const startX = video.videoWidth * 0.1;
-                const startY = video.videoHeight * 0.70; 
+                const ctx = canvas.getContext('2d');
+                
+                // Recorte (Solo la zona inferior)
+                const cropWidth = video.videoWidth * 0.9; 
+                const cropHeight = video.videoHeight * 0.30; 
+                const startX = video.videoWidth * 0.05;
+                const startY = video.videoHeight * 0.65; 
 
                 canvas.width = cropWidth;
                 canvas.height = cropHeight;
-                canvas.getContext('2d').drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                ctx.drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
                 
-                this.isProcessingOCR = true;
+                // Aplicar Filtro de Alto Contraste (Binarización)
+                // Esto convierte la imagen a Blanco y Negro puro para que Tesseract no se confunda
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    const brightness = 0.34 * data[i] + 0.5 * data[i + 1] + 0.16 * data[i + 2];
+                    // Threshold: Si es oscuro es negro (texto), si es claro es blanco (fondo)
+                    const threshold = brightness < 100 ? 0 : 255;
+                    data[i] = threshold;     // R
+                    data[i + 1] = threshold; // G
+                    data[i + 2] = threshold; // B
+                }
+                ctx.putImageData(imageData, 0, 0);
+                // ----------------------------------------------------------------
+
+                this.debugText = "Procesando...";
                 
                 try {
                     const { data: { text } } = await this.worker.recognize(canvas);
@@ -192,53 +206,46 @@
                     
                     // Buscamos coincidencia
                     const dniMatch = cleanText.match(/(IDARG|ARG)(\d{7,8})/);
+                    let detectedDNI = null;
 
                     if (dniMatch) {
-                        this.detectedText = dniMatch[0]; // Guardamos lo que leyó (ej: IDARG20...)
-                        this.verifyDNI(dniMatch[2]);
-                    } else if (this.expectedDNI) {
-                         const cleanExpected = this.expectedDNI.replace(/\./g, '');
-                         if (cleanText.includes(cleanExpected)) {
-                             this.detectedText = "MATCH_MANUAL:" + cleanExpected;
-                             this.verifyDNI(cleanExpected);
-                         }
+                        detectedDNI = dniMatch[2];
+                    } else {
+                        // Búsqueda sucia (si leyó números seguidos)
+                        const numberMatch = cleanText.match(/(\d{7,8})/);
+                        if (numberMatch) detectedDNI = numberMatch[1];
+                    }
+
+                    if (detectedDNI) {
+                        this.debugText = `Leído: ${detectedDNI} | Esperado: ${this.expectedDNI}`;
+                        
+                        // VALIDACIÓN ESTRICTA
+                        // Si no tenemos DNI esperado (invitado), aceptamos el que leímos.
+                        // Si tenemos DNI esperado, TIENE que coincidir.
+                        if (!this.expectedDNI || this.expectedDNI.replace(/\./g, '') === detectedDNI) {
+                            
+                            this.isSuccess = true;
+                            clearInterval(this.ocrInterval);
+                            
+                            // Guardamos la foto original (a color)
+                            const finalCanvas = document.createElement('canvas');
+                            finalCanvas.width = video.videoWidth;
+                            finalCanvas.height = video.videoHeight;
+                            finalCanvas.getContext('2d').drawImage(video, 0, 0);
+                            this.capturedDNI = finalCanvas.toDataURL('image/jpeg', 0.8);
+
+                            this.uploadSuccess(detectedDNI);
+                        }
+                    } else {
+                        this.debugText = "No detecto texto claro...";
                     }
 
                 } catch (err) {
-                    console.error(err);
-                } finally {
-                    this.isProcessingOCR = false;
+                    // console.log(err);
                 }
             },
 
-            verifyDNI(dniLeido) {
-                let valid = false;
-                if (this.expectedDNI) {
-                    const cleanExpected = this.expectedDNI.replace(/\./g, '');
-                    if (dniLeido === cleanExpected) {
-                        valid = true;
-                        this.successDetail = "DNI Verificado por IA.";
-                    }
-                } else {
-                    valid = true;
-                    this.successDetail = "DNI Leído: " + dniLeido;
-                }
-
-                if (valid) {
-                    this.isSuccess = true;
-                    clearInterval(this.ocrInterval);
-                    const video = this.$refs.video;
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    canvas.getContext('2d').drawImage(video, 0, 0);
-                    this.capturedDNI = canvas.toDataURL('image/jpeg', 0.8);
-
-                    this.uploadSuccess();
-                }
-            },
-
-            async uploadSuccess() {
+            async uploadSuccess(dniLeido) {
                 try {
                     await fetch("{% url 'runner:register_biometrics' attempt.id %}", {
                         method: 'POST',
@@ -246,17 +253,16 @@
                         body: JSON.stringify({
                             reference_face: this.capturedFace,
                             dni_image: this.capturedDNI,
-                            // AUDITORÍA: Enviamos metadatos extra
-                            metadata: {
-                                detected_text: this.detectedText,
-                                method: 'OCR_AUTO'
+                            metadata: { 
+                                method: 'AUTO_OCR_STRICT',
+                                recognized_dni: dniLeido
                             }
                         })
                     });
                     
                     setTimeout(() => {
                          window.location.href = "{% url 'runner:exam_runner' exam.access_code attempt.id %}";
-                    }, 1500);
+                    }, 1000);
                     
                 } catch (err) {
                     alert("Error de conexión.");
