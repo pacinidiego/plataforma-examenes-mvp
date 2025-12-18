@@ -11,7 +11,6 @@
     <style>
         [x-cloak] { display: none !important; }
         .timer-bar { transition: width 1s linear; }
-        /* Estilo para preguntas bloqueadas (históricas) */
         .read-only-mode { opacity: 0.8; pointer-events: none; background-color: #f3f4f6; border-color: #fb923c; }
         .blur-content { filter: blur(8px); pointer-events: none; user-select: none; }
     </style>
@@ -30,7 +29,8 @@
     <video x-ref="webcam" autoplay playsinline muted class="fixed bottom-4 right-4 w-32 h-24 object-cover rounded-lg shadow-lg border-2 border-gray-800 z-50 opacity-80 pointer-events-none transform scale-x-[-1]"></video>
 
     <div x-show="!isFullScreen" 
-         class="fixed inset-0 z-[60] bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300">
+         class="fixed inset-0 z-[60] bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300"
+         x-cloak>
         <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full">
             <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
@@ -118,7 +118,7 @@
                         </div>
 
                         <div class="mb-6 mt-2">
-                            <h2 class="text-xl font-medium text-gray-900 leading-relaxed">{{ item.question_text }}</h2>
+                            <h2 class="text-xl font-medium text-gray-900 leading-relaxed">{{ item.stem|linebreaksbr }}</h2>
                         </div>
 
                         <div class="space-y-3">
@@ -173,8 +173,8 @@
                 // Estado del Examen
                 total: config.totalQuestions,
                 currentStep: config.initialStep,
-                initialStep: config.initialStep, // Variable crítica que faltaba antes
-                answers: {},
+                initialStep: config.initialStep,
+                answers: {{ attempt.answers|safe|default:"{}" }}, // Recuperar respuestas previas
                 saveStatus: '', 
                 isFullScreen: false,
                 
@@ -190,13 +190,8 @@
                 anchorDescriptor: null,
 
                 init() {
-                    // 1. Configurar Seguridad (Pantalla completa, blur, etc)
                     this.setupSecurity();
-                    
-                    // 2. Iniciar Timers
                     this.startTimers();
-
-                    // 3. Iniciar IA (face-api.js)
                     this.startProctoring();
                 },
 
@@ -206,47 +201,36 @@
                         if (this.globalSeconds > 0) {
                             this.globalSeconds--;
                         } else {
-                            this.submitForm(); // Se acabó el tiempo total
+                            this.submitForm();
                         }
                     }, 1000);
 
                     // Timer por Pregunta
                     setInterval(() => {
-                        // Solo corre si no estamos en preguntas "vencidas" y no hemos terminado
                         if (this.currentStep < this.total && this.currentStep >= this.initialStep) { 
                             if (this.itemSeconds > 0) {
                                 this.itemSeconds--;
                                 this.itemProgress = (this.itemSeconds / this.maxItemSeconds) * 100;
                             } else {
-                                // Se acabó el tiempo de la pregunta, avanzamos forzosamente
                                 this.nextQuestion(true); 
                             }
                         }
                     }, 1000);
                 },
 
-                // --- LÓGICA DE PROCTORING (UNIFICADA) ---
+                // --- PROCTORING (FACE API) ---
                 async startProctoring() {
                     try {
-                        console.log("Cargando modelos de IA...");
-                        // Usamos CDN confiable para modelos
                         const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-                        
                         await Promise.all([
                             faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                             faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
                             faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
                         ]);
 
-                        // Intentamos recuperar el ancla (foto del gate)
                         const stored = localStorage.getItem('exam_anchor_descriptor');
-                        if (stored) {
-                            this.anchorDescriptor = new Float32Array(JSON.parse(stored));
-                        } else {
-                            console.warn("No hay ancla biométrica. Continuando solo con detección de presencia.");
-                        }
+                        if (stored) this.anchorDescriptor = new Float32Array(JSON.parse(stored));
 
-                        // Iniciar Webcam
                         const stream = await navigator.mediaDevices.getUserMedia({ 
                             video: { width: 320, height: 240, facingMode: "user" } 
                         });
@@ -254,8 +238,6 @@
 
                         this.aiStatus = 'ok';
                         this.aiMessage = 'Monitor Activo';
-
-                        // Bucle de detección
                         this.detectLoop();
 
                     } catch (e) {
@@ -268,77 +250,61 @@
 
                 async detectLoop() {
                     const video = this.$refs.webcam;
-                    
                     if (!video.paused && !video.ended) {
                         try {
                             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
-                            const detection = await faceapi.detectSingleFace(video, options)
-                                                   .withFaceLandmarks()
-                                                   .withFaceDescriptor();
+                            const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
                             if (detection) {
-                                // 1. Hay rostro
                                 this.aiStatus = 'ok';
                                 this.aiMessage = 'Monitor Activo';
 
-                                // 2. Si tenemos ancla, validamos identidad
                                 if (this.anchorDescriptor) {
                                     const distance = faceapi.euclideanDistance(this.anchorDescriptor, detection.descriptor);
-                                    if (distance > 0.6) { // Umbral de diferencia
+                                    // Si la diferencia es muy grande (>0.6), probablemente no es el mismo alumno
+                                    if (distance > 0.6) {
                                         this.aiStatus = 'warning';
                                         this.aiMessage = 'Identidad dudosa';
-                                        // Loguear solo ocasionalmente para no saturar
                                         if (Math.random() < 0.05) this.logEvent('IDENTITY_MISMATCH', { distance });
                                     }
                                 }
                             } else {
-                                // No hay rostro
                                 this.aiStatus = 'warning';
                                 this.aiMessage = 'Rostro no visible';
                                 if (Math.random() < 0.05) this.logEvent('NO_FACE', {});
                             }
-                        } catch (err) {
-                            // Ignorar errores puntuales de detección
-                        }
+                        } catch (err) {}
                     }
-                    
-                    // Repetir cada 1 segundo (ahorra CPU)
                     setTimeout(() => this.detectLoop(), 1000);
                 },
 
                 // --- NAVEGACIÓN Y GUARDADO ---
                 nextQuestion(auto = false) {
                     if (this.currentStep < this.total - 1) {
-                        // Si avanzamos, actualizamos el "piso" (initialStep) para que no pueda volver atrás y editar
-                        // SOLO si estaba en la pregunta actual (si estaba viendo una vieja, no subimos el piso)
-                        if (this.currentStep === this.initialStep) {
-                            this.initialStep++;
-                        }
+                        if (this.currentStep === this.initialStep) this.initialStep++;
                         
                         this.currentStep++;
-                        this.itemSeconds = this.maxItemSeconds; // Reset timer
+                        this.itemSeconds = this.maxItemSeconds;
                         this.itemProgress = 100;
-                        
-                        // Scroll arriba suave
                         document.querySelector('main').scrollTo({top: 0, behavior: 'smooth'});
                     } else if (auto) {
-                        // Si era la última y se acabó el tiempo, enviamos
                         this.submitForm();
                     }
                 },
 
                 async saveAnswer(questionId, answer) {
-                    // Validar que no sea una pregunta bloqueada
                     if (this.currentStep < this.initialStep) return;
 
                     this.answers[questionId] = answer;
                     this.saveStatus = 'saving';
                     try {
-                        const response = await fetch(`/room/save/${this.attemptId}/`, {
+                        // URL CORREGIDA: Usamos {% url %} en lugar de hardcode
+                        const response = await fetch("{% url 'runner:save_answer' attempt.id %}", {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                             body: JSON.stringify({ question_id: questionId, answer: answer })
                         });
+                        
                         if (response.ok) {
                             setTimeout(() => this.saveStatus = 'saved', 500);
                         } else {
@@ -359,18 +325,16 @@
                     document.getElementById('examForm').submit();
                 },
 
-                // --- UTILIDADES ---
                 formatTime(seconds) {
                     const h = Math.floor(seconds / 3600);
                     const m = Math.floor((seconds % 3600) / 60);
                     const s = seconds % 60;
-                    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-                    return `${m}:${s.toString().padStart(2, '0')}`;
+                    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` 
+                                 : `${m}:${s.toString().padStart(2, '0')}`;
                 },
 
                 // --- SEGURIDAD ---
                 setupSecurity() {
-                    // Detectar cambio de tab/minimizar
                     document.addEventListener("visibilitychange", () => {
                         if (document.hidden) this.logEvent('FOCUS_LOST', { reason: 'tab_hidden' });
                     });
@@ -378,7 +342,6 @@
                         this.logEvent('FOCUS_LOST', { reason: 'window_blur' });
                     });
                     
-                    // Pantalla completa
                     document.addEventListener('fullscreenchange', () => {
                         this.isFullScreen = !!document.fullscreenElement;
                         if (!this.isFullScreen) this.logEvent('FULLSCREEN_EXIT');
@@ -395,7 +358,8 @@
 
                 async logEvent(type, meta = {}) {
                     try {
-                        await fetch(`/room/log/${this.attemptId}/`, {
+                        // URL CORREGIDA: Usamos {% url %} en lugar de hardcode
+                        await fetch("{% url 'runner:log_event' attempt.id %}", {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                             body: JSON.stringify({ event_type: type, metadata: meta })
