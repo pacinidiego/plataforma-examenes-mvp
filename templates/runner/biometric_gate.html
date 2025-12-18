@@ -29,29 +29,23 @@
             </div>
 
             <div x-show="step === 2 && !isSuccess" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-10">
-                 
                  <div class="absolute bottom-12 w-full px-8 flex flex-col items-center">
-                     
                      <div class="w-full max-w-md h-24 border-2 border-yellow-400 bg-yellow-400/5 rounded-lg relative shadow-[0_0_50px_rgba(0,0,0,0.5)_inset] flex items-center justify-center overflow-hidden backdrop-blur-[2px]">
                         <div x-show="isScanning" class="absolute top-0 left-0 w-full h-1 bg-yellow-400 shadow-[0_0_10px_rgba(255,255,0,0.8)] animate-scan"></div>
-                        
                         <div class="opacity-50 text-white font-mono text-xs tracking-widest text-center leading-loose">
                             IDARG25403<<<240<<78<<<<<br>
                             PEREZ<<JUAN<<<<<<<<<<<<<<
                         </div>
                      </div>
-
                      <div class="mt-4 bg-black/70 px-4 py-2 rounded-xl text-center">
-                         <p class="text-white font-bold text-sm">Ubica las letras "IDARG... <<<<" aquí</p>
-                         <p class="text-gray-400 text-[10px] mt-1">(Suelen estar al frente o al dorso del DNI)</p>
+                         <p class="text-white font-bold text-sm">Ubica el texto "IDARG..." o "ARG..." aquí</p>
                      </div>
                  </div>
             </div>
 
             <div x-show="isProcessingOCR" class="absolute inset-0 flex items-center justify-center bg-black/60 z-20 backdrop-blur-sm">
                 <div class="flex flex-col items-center animate-pulse">
-                    <svg class="w-10 h-10 text-yellow-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                    <span class="text-white font-bold text-sm">Leyendo texto...</span>
+                    <span class="text-white font-bold text-sm">Leyendo texto del DNI...</span>
                 </div>
             </div>
 
@@ -59,14 +53,12 @@
                 <div class="bg-white p-4 rounded-full mb-4 shadow-xl animate-bounce">
                     <svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                 </div>
-                <h3 class="text-white text-2xl font-bold">¡DNI Leído!</h3>
+                <h3 class="text-white text-2xl font-bold">¡Validación Exitosa!</h3>
                 <p class="text-white/80 text-sm mt-2" x-text="successDetail"></p>
             </div>
 
             <div x-show="isLoading" class="absolute inset-0 flex items-center justify-center bg-black/90 z-20">
-                <div class="flex flex-col items-center">
-                    <span class="text-white text-xs">Cargando Motores...</span>
-                </div>
+                <span class="text-white text-xs">Cargando Motores IA...</span>
             </div>
         </div>
     </div>
@@ -92,32 +84,27 @@
             successDetail: '',
             expectedDNI: '',
             
-            // Paso 1
             faceDetected: false,
             progress: 0,
             consecutiveFrames: 0,
             REQUIRED_FRAMES: 15, 
 
-            // Paso 2
             capturedFace: null,
-            capturedDNI: null, 
-            worker: null, // Tesseract worker
+            capturedDNI: null,
+            detectedText: '', // AUDITORÍA: Guardamos lo que leyó
+            worker: null,
             ocrInterval: null,
             
             async init() {
                 this.expectedDNI = document.getElementById('expected_dni').value.trim();
-                
                 await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
                 
                 try {
-                    // Inicializar Tesseract (OCR) en segundo plano mientras hacemos el paso 1
                     this.initTesseract();
-
                     const stream = await navigator.mediaDevices.getUserMedia({ 
                         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } 
                     });
                     this.$refs.video.srcObject = stream;
-                    
                     this.$refs.video.onloadedmetadata = () => {
                         this.$refs.video.play();
                         this.isLoading = false;
@@ -130,17 +117,15 @@
             },
 
             async initTesseract() {
-                this.worker = await Tesseract.createWorker('eng'); // Usamos 'eng' porque lee mejor números y letras simples
+                this.worker = await Tesseract.createWorker('eng');
                 await this.worker.setParameters({
-                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<', // Solo lo que tiene el DNI
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<', 
                 });
             },
 
-            // --- PASO 1: SELFIE ---
             startFaceAutoCapture() {
                 const video = this.$refs.video;
                 const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
-
                 const interval = setInterval(async () => {
                     if (this.step !== 1) { clearInterval(interval); return; }
                     try {
@@ -172,17 +157,13 @@
                 ctx.scale(-1, 1);
                 ctx.drawImage(video, 0, 0);
                 this.capturedFace = canvas.toDataURL('image/jpeg', 0.8);
-                
                 this.startOCRScanner();
             },
 
-            // --- PASO 2: LECTURA DE TEXTO (OCR) ---
             startOCRScanner() {
                 this.step = 2;
-                this.statusText = 'Ubica las letras del DNI en el recuadro inferior';
+                this.statusText = 'Ubica las líneas de texto inferior en el recuadro';
                 this.isScanning = true;
-
-                // Escaneamos cada 1.5 segundos para no matar el CPU
                 this.ocrInterval = setInterval(() => {
                     if (!this.isProcessingOCR && !this.isSuccess) {
                         this.performOCR();
@@ -192,44 +173,35 @@
 
             async performOCR() {
                 if (!this.worker) return;
-                
                 const video = this.$refs.video;
                 const canvas = document.createElement('canvas');
-                // Recortamos SOLO LA PARTE DE ABAJO del video (donde está el recuadro amarillo)
-                // Esto hace que el OCR sea 10 veces más rápido y preciso
-                const cropWidth = video.videoWidth * 0.8; // 80% del ancho
-                const cropHeight = video.videoHeight * 0.25; // 25% de abajo
+                const cropWidth = video.videoWidth * 0.8; 
+                const cropHeight = video.videoHeight * 0.25; 
                 const startX = video.videoWidth * 0.1;
-                const startY = video.videoHeight * 0.70; // Empezar al 70% de altura
+                const startY = video.videoHeight * 0.70; 
 
                 canvas.width = cropWidth;
                 canvas.height = cropHeight;
                 canvas.getContext('2d').drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
                 
-                this.isProcessingOCR = true; // Mostrar indicador visual
+                this.isProcessingOCR = true;
                 
                 try {
                     const { data: { text } } = await this.worker.recognize(canvas);
-                    // console.log("Texto detectado:", text); // Debug
-                    
-                    // Limpieza: Quitamos espacios y saltos de línea
                     const cleanText = text.replace(/\s/g, '').toUpperCase();
                     
-                    // BUSCAMOS PATRÓN DNI ARGENTINO
-                    // Buscamos "IDARG" o "ARG" seguido de números
+                    // Buscamos coincidencia
                     const dniMatch = cleanText.match(/(IDARG|ARG)(\d{7,8})/);
 
                     if (dniMatch) {
-                        const dniDetectado = dniMatch[2];
-                        this.verifyDNI(dniDetectado);
-                    } else {
-                        // Si no encuentra patrón estricto, buscamos el DNI esperado suelto
-                        if (this.expectedDNI) {
-                             const cleanExpected = this.expectedDNI.replace(/\./g, '');
-                             if (cleanText.includes(cleanExpected)) {
-                                 this.verifyDNI(cleanExpected);
-                             }
-                        }
+                        this.detectedText = dniMatch[0]; // Guardamos lo que leyó (ej: IDARG20...)
+                        this.verifyDNI(dniMatch[2]);
+                    } else if (this.expectedDNI) {
+                         const cleanExpected = this.expectedDNI.replace(/\./g, '');
+                         if (cleanText.includes(cleanExpected)) {
+                             this.detectedText = "MATCH_MANUAL:" + cleanExpected;
+                             this.verifyDNI(cleanExpected);
+                         }
                     }
 
                 } catch (err) {
@@ -241,25 +213,20 @@
 
             verifyDNI(dniLeido) {
                 let valid = false;
-                
                 if (this.expectedDNI) {
                     const cleanExpected = this.expectedDNI.replace(/\./g, '');
-                    // Comparamos si lo que leyó coincide con lo esperado
                     if (dniLeido === cleanExpected) {
                         valid = true;
-                        this.successDetail = "Coincidencia exacta con registros.";
+                        this.successDetail = "DNI Verificado por IA.";
                     }
                 } else {
-                    // Modo Invitado: Aceptamos cualquier número que parezca DNI válido
                     valid = true;
-                    this.successDetail = "DNI leído: " + dniLeido;
+                    this.successDetail = "DNI Leído: " + dniLeido;
                 }
 
                 if (valid) {
                     this.isSuccess = true;
                     clearInterval(this.ocrInterval);
-                    
-                    // Capturar foto completa
                     const video = this.$refs.video;
                     const canvas = document.createElement('canvas');
                     canvas.width = video.videoWidth;
@@ -278,16 +245,21 @@
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
                         body: JSON.stringify({
                             reference_face: this.capturedFace,
-                            dni_image: this.capturedDNI 
+                            dni_image: this.capturedDNI,
+                            // AUDITORÍA: Enviamos metadatos extra
+                            metadata: {
+                                detected_text: this.detectedText,
+                                method: 'OCR_AUTO'
+                            }
                         })
                     });
                     
                     setTimeout(() => {
                          window.location.href = "{% url 'runner:exam_runner' exam.access_code attempt.id %}";
-                    }, 1000);
+                    }, 1500);
                     
                 } catch (err) {
-                    alert("Error guardando datos. Intenta de nuevo.");
+                    alert("Error de conexión.");
                     window.location.reload();
                 }
             }
