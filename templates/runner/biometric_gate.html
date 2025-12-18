@@ -22,44 +22,34 @@
             <div x-show="step === 2 && status !== 'success'" 
                  class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center transition-colors duration-300">
                  
-                 <div class="w-96 h-60 border-2 rounded-xl relative transition-all duration-300"
+                 <div x-ref="guideBox" class="w-80 h-52 border-2 rounded-xl relative transition-all duration-300"
                       :class="dniStability > 20 ? 'border-green-400 shadow-[0_0_50px_rgba(74,222,128,0.5)_inset]' : 'border-white/70 shadow-[0_0_100px_rgba(0,0,0,0.5)_inset]'">
                     
-                    <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 -mt-1 -ml-1" :class="dniStability > 20 ? 'border-green-400' : 'border-white'"></div>
-                    <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 -mt-1 -mr-1" :class="dniStability > 20 ? 'border-green-400' : 'border-white'"></div>
-                    <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 -mb-1 -ml-1" :class="dniStability > 20 ? 'border-green-400' : 'border-white'"></div>
-                    <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 -mb-1 -mr-1" :class="dniStability > 20 ? 'border-green-400' : 'border-white'"></div>
-
-                    <div class="absolute top-0 left-0 w-full h-1 bg-green-400/50 shadow-[0_0_15px_rgba(74,222,128,1)] animate-scan" x-show="dniStability > 10"></div>
+                    <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 -mt-1 -ml-1 transition-colors" :class="dniStability > 20 ? 'border-green-400' : 'border-white'"></div>
+                    <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 -mt-1 -mr-1 transition-colors" :class="dniStability > 20 ? 'border-green-400' : 'border-white'"></div>
+                    <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 -mb-1 -ml-1 transition-colors" :class="dniStability > 20 ? 'border-green-400' : 'border-white'"></div>
+                    <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 -mb-1 -mr-1 transition-colors" :class="dniStability > 20 ? 'border-green-400' : 'border-white'"></div>
                  </div>
 
-                 <span class="text-white font-bold text-sm bg-black/60 px-4 py-2 rounded-full mt-6 backdrop-blur-sm transition-colors"
-                       :class="{'text-green-300': dniStability > 20}">
-                    <span x-show="dniStability < 20">Ubica tu DNI dentro del recuadro</span>
-                    <span x-show="dniStability >= 20 && dniStability < 100">Quieto ahí... Capturando</span>
-                    <span x-show="dniStability >= 100">¡Capturado!</span>
-                 </span>
+                 <div class="mt-6 flex flex-col items-center gap-2">
+                     <span class="text-white font-bold text-sm bg-black/60 px-4 py-2 rounded-full backdrop-blur-sm transition-colors border border-white/10"
+                           :class="{'text-green-300 border-green-500/50': dniStability > 20, 'text-red-300 border-red-500/50': debugMsg}">
+                        <span x-show="!debugMsg && dniStability < 20">Ubica la FOTO del DNI dentro del cuadro</span>
+                        <span x-show="!debugMsg && dniStability >= 20 && dniStability < 100">Quieto ahí... Capturando</span>
+                        <span x-show="!debugMsg && dniStability >= 100">¡Procesando!</span>
+                        <span x-show="debugMsg" x-text="debugMsg"></span>
+                     </span>
 
-                 <div class="w-64 h-2 bg-gray-700 rounded-full mt-3 overflow-hidden" x-show="dniStability > 0">
-                    <div class="h-full bg-green-500 transition-all duration-100 ease-linear" :style="`width: ${dniStability}%`"></div>
+                     <div class="w-64 h-2 bg-gray-700/50 rounded-full overflow-hidden backdrop-blur-sm" x-show="dniStability > 0">
+                        <div class="h-full bg-green-500 transition-all duration-100 ease-linear" :style="`width: ${dniStability}%`"></div>
+                     </div>
                  </div>
-            </div>
-
-            <div x-show="errorMessage" 
-                 x-transition:enter="transition ease-out duration-300"
-                 x-transition:enter-start="opacity-0 translate-y-4"
-                 x-transition:enter-end="opacity-100 translate-y-0"
-                 x-transition:leave="transition ease-in duration-200"
-                 x-transition:leave-start="opacity-100 translate-y-0"
-                 x-transition:leave-end="opacity-0 translate-y-4"
-                 class="absolute top-4 left-4 right-4 bg-red-500/90 text-white p-3 rounded-lg text-sm text-center shadow-lg backdrop-blur-md z-40 border border-red-400">
-                <span x-text="errorMessage"></span>
             </div>
 
             <div x-show="status === 'loading'" class="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
                 <div class="flex flex-col items-center">
                     <svg class="animate-spin h-10 w-10 text-indigo-500 mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <span class="text-white text-xs">Cargando IA...</span>
+                    <span class="text-white text-xs">Cargando Modelos...</span>
                 </div>
             </div>
         </div>
@@ -71,11 +61,11 @@
             </div>
 
             <div x-show="step === 2 && status !== 'success'" class="w-full text-center">
-                <p class="text-sm text-gray-500 animate-pulse font-medium">
-                    El sistema tomará la foto automáticamente cuando detecte el documento.
+                <p class="text-xs text-gray-400 mb-2">
+                    Si no detecta tu DNI, asegúrate de que no tenga reflejos de luz (brillo).
                 </p>
-                <button @click="resetToFace()" class="mt-4 text-indigo-600 text-sm hover:underline hover:text-indigo-800 font-medium">
-                    ← Volver al paso anterior
+                <button @click="resetToFace()" class="text-indigo-600 text-sm hover:underline hover:text-indigo-800 font-medium">
+                    ← Volver a intentar selfie
                 </button>
             </div>
 
@@ -90,18 +80,6 @@
     </div>
 </div>
 
-<style>
-    @keyframes scan {
-        0% { top: 0%; opacity: 0; }
-        10% { opacity: 1; }
-        90% { opacity: 1; }
-        100% { top: 100%; opacity: 0; }
-    }
-    .animate-scan {
-        animation: scan 2s linear infinite;
-    }
-</style>
-
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
 
 <script>
@@ -110,7 +88,7 @@
             step: 1,
             status: 'loading',
             message: 'Iniciando sistema...',
-            errorMessage: '',
+            debugMsg: '',
             cameraReady: false,
             
             // Paso 1: Cara
@@ -119,15 +97,14 @@
             REQUIRED_FRAMES: 20, 
             faceDetected: false,
             
-            // Paso 2: DNI Automático
-            dniStability: 0,       // 0 a 100
-            REQUIRED_STABILITY: 40, // Cuántos frames buenos seguidos para disparar
+            // Paso 2: DNI
+            dniStability: 0,       
             capturedFace: null,
             capturedDNI: null,
 
             get stepTitle() {
                 if (this.step === 1) return 'Validación de identidad facial';
-                return 'Acerca tu DNI hasta que el borde se ponga verde';
+                return 'Acerca el DNI para encuadrar la foto pequeña';
             },
 
             async init() {
@@ -156,12 +133,11 @@
             },
 
             // ==========================================
-            // PASO 1: SELFIE AUTOMÁTICA
+            // PASO 1: SELFIE (Igual que antes)
             // ==========================================
             startFaceScanning() {
                 this.step = 1;
                 this.status = 'scanning';
-                this.message = 'Buscando rostro...';
                 
                 const video = this.$refs.video;
                 const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
@@ -201,24 +177,20 @@
                 
                 this.capturedFace = canvas.toDataURL('image/jpeg', 0.8);
                 
-                // Transición al Paso 2
                 this.step = 2;
-                this.message = '';
                 this.dniStability = 0;
-                // Iniciamos escaneo automático de DNI
                 setTimeout(() => this.startDNIScanning(), 1000); 
             },
 
             // ==========================================
-            // PASO 2: DNI "MANOS LIBRES" (AUTO-DISPARO)
+            // PASO 2: DNI (Lógica Endurecida)
             // ==========================================
             startDNIScanning() {
                 const video = this.$refs.video;
-                // Usamos inputSize alto para ver detalles
-                const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 });
+                // Aumentamos inputSize para ver caras pequeñas en DNI
+                const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.4 });
 
                 const interval = setInterval(async () => {
-                    // Si ya terminamos o volvimos atrás, cortar ciclo
                     if (this.step !== 2 || this.status === 'success' || this.status === 'uploading') {
                         clearInterval(interval);
                         return;
@@ -227,42 +199,49 @@
                     try {
                         const detection = await faceapi.detectSingleFace(video, options);
 
-                        // A. ¿HAY UNA CARA EN EL PLÁSTICO?
+                        // 1. ¿Hay una cara?
                         if (!detection) {
-                            this.decayStability('No detecto rostro en el DNI');
+                            this.decayStability('');
                             return;
                         }
 
-                        // B. ANÁLISIS DE TAMAÑO (Para filtrar gente vs foto)
-                        const { width, height } = detection.box;
+                        const { width, height, x, y } = detection.box;
                         const videoArea = video.videoWidth * video.videoHeight;
                         const faceArea = width * height;
                         const ratio = faceArea / videoArea;
 
-                        // Si es muy grande (>35%), es una persona real, no una foto carnet.
-                        if (ratio > 0.35) {
-                            this.decayStability('Aleja el documento');
-                            return;
-                        }
-                        // Si es muy chico (<1%), está muy lejos
-                        if (ratio < 0.01) {
-                            this.decayStability('Acércalo más');
+                        // 2. FILTRO DE TAMAÑO (CRÍTICO)
+                        // Si la cara ocupa más del 15% de la pantalla, ES EL ALUMNO, NO EL DNI.
+                        // Bajamos el umbral de 0.35 a 0.15. ¡Esto evitará que detecte tu cara real!
+                        if (ratio > 0.15) {
+                            this.decayStability('Cara muy grande (¿Es la tuya?)');
                             return;
                         }
 
-                        // C. SI PASA LOS FILTROS -> AUMENTAR ESTABILIDAD
+                        // 3. FILTRO DE POSICIÓN (COORDENADAS)
+                        // Solo permitimos caras que estén cerca del centro (donde está el recuadro)
+                        // Coordenadas relativas (0 a 1)
+                        const centerX = (x + width/2) / video.videoWidth;
+                        const centerY = (y + height/2) / video.videoHeight;
+
+                        // Si la cara está muy arriba o a los costados, la ignoramos
+                        if (centerX < 0.25 || centerX > 0.75 || centerY < 0.25 || centerY > 0.75) {
+                            this.decayStability('Centra el DNI en el cuadro');
+                            return;
+                        }
+
+                        // SI PASA TODO -> SUBE LA BARRA
                         this.increaseStability();
 
                     } catch (err) {
                         console.error(err);
                     }
-                }, 100); // 10 checkeos por segundo
+                }, 100);
             },
 
             increaseStability() {
-                // Aumentamos la barra
-                this.dniStability += 4; // Se llena en aprox 2.5 segundos (25 checks * 100ms)
-                this.errorMessage = ''; // Limpiar errores
+                this.dniStability += 5; 
+                this.debugMsg = '';
 
                 if (this.dniStability >= 100) {
                     this.dniStability = 100;
@@ -271,23 +250,22 @@
             },
 
             decayStability(reason) {
-                // Si falla, la barra baja rápido pero no instantáneo (para evitar parpadeos)
                 if (this.dniStability > 0) {
                     this.dniStability -= 5;
-                    // Solo mostramos error si el usuario estaba intentando (barra algo llena)
-                    if (this.dniStability > 10) this.showError(reason);
+                    // Solo mostramos el error si el usuario estaba intentando
+                    if (this.dniStability > 10 && reason) {
+                        this.debugMsg = reason;
+                    }
                 } else {
                     this.dniStability = 0;
+                    this.debugMsg = '';
                 }
             },
 
             async captureAndUploadDNI() {
-                // Evitar doble disparo
                 if (this.status === 'uploading') return;
                 
                 this.status = 'uploading';
-                this.message = 'Analizando y Guardando...';
-
                 const video = this.$refs.video;
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth;
@@ -296,15 +274,6 @@
                 this.capturedDNI = canvas.toDataURL('image/jpeg', 0.8);
 
                 this.uploadData();
-            },
-
-            showError(msg) {
-                // Debounce simple para no spammear el toast
-                if (this.errorMessage === msg) return;
-                this.errorMessage = msg;
-                setTimeout(() => { 
-                    if(this.errorMessage === msg) this.errorMessage = ''; 
-                }, 2000);
             },
 
             resetToFace() {
@@ -329,13 +298,11 @@
                     });
                     
                     this.status = 'success';
-                    this.message = '¡Identidad Validada!';
                     
                 } catch (err) {
                     console.error("Error subida:", err);
                     this.status = 'error';
-                    this.message = 'Error de conexión.';
-                    this.step = 2; // Volver a permitir intentar
+                    this.step = 2; 
                     this.dniStability = 0;
                 }
             }
