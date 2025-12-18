@@ -8,8 +8,8 @@
     <div class="bg-white max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         
         <div class="bg-gray-50 p-6 border-b border-gray-100 text-center">
-            <h1 class="text-2xl font-bold text-gray-800" x-text="step === 1 ? 'Paso 1: Validación Facial' : 'Paso 2: Escaneo DNI'"></h1>
-            <p class="text-gray-500 text-sm mt-1" x-text="step === 1 ? 'Foto automática en 3, 2, 1...' : 'Sostén el DNI de forma horizontal'"></p>
+            <h1 class="text-2xl font-bold text-gray-800" x-text="step === 1 ? 'Paso 1: Validación Facial' : 'Paso 2: Lectura de DNI'"></h1>
+            <p class="text-gray-500 text-sm mt-1" x-text="statusText"></p>
         </div>
 
         <div class="relative bg-black h-96 flex justify-center items-center overflow-hidden group">
@@ -21,7 +21,7 @@
                      <div class="absolute inset-0 rounded-full border-4 transition-all duration-300"
                           :class="faceDetected ? 'border-green-400 scale-105' : 'border-white/30 border-dashed'"></div>
                      <span class="text-white font-bold bg-black/50 px-3 py-1 rounded backdrop-blur-md" 
-                           x-text="faceDetected ? '¡Quieto!' : 'Ubica tu cara'"></span>
+                           x-text="faceDetected ? '¡Inmóvil!' : 'Ubica tu rostro'"></span>
                  </div>
                  <div class="w-48 h-2 bg-gray-800 rounded-full mt-6 overflow-hidden border border-gray-600" x-show="faceDetected">
                     <div class="h-full bg-green-500 transition-all duration-100 ease-linear" :style="`width: ${progress}%`"></div>
@@ -30,83 +30,66 @@
 
             <div x-show="step === 2 && !isSuccess" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-10">
                  
-                 <div class="w-80 h-28 border-2 border-red-500 bg-red-500/10 rounded-lg relative shadow-[0_0_50px_rgba(255,0,0,0.3)_inset] flex items-center justify-center overflow-hidden">
-                    
-                    <div class="absolute top-1/2 left-0 w-full h-0.5 bg-red-600 shadow-[0_0_15px_rgba(255,0,0,1)] animate-pulse z-20"></div>
-                    
-                    <svg class="w-64 h-20 opacity-40" viewBox="0 0 300 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect x="0" y="0" width="300" height="100" fill="transparent"/>
-                        <path d="M10 10H290V90H10V10Z" fill="white" fill-opacity="0.1"/>
-                        <rect x="20" y="20" width="10" height="60" fill="white"/>
-                        <rect x="35" y="20" width="20" height="60" fill="white"/>
-                        <rect x="60" y="20" width="5" height="60" fill="white"/>
-                        <rect x="70" y="20" width="30" height="60" fill="white"/>
-                        <rect x="110" y="20" width="15" height="60" fill="white"/>
-                        <rect x="130" y="20" width="10" height="40" fill="white"/>
-                        <rect x="150" y="20" width="40" height="60" fill="white"/>
-                        <rect x="200" y="20" width="10" height="60" fill="white"/>
-                        <rect x="220" y="20" width="60" height="60" fill="white"/>
-                    </svg>
-                 </div>
-                 
-                 <div class="mt-6 text-center px-4 bg-black/70 py-3 rounded-xl backdrop-blur-md border border-white/10 w-64">
-                     <p class="text-white font-bold text-xs">Apunta al código de barras</p>
-                     <p class="text-gray-300 text-[10px] mt-1">Mantén el DNI horizontal y estable.</p>
+                 <div class="absolute bottom-12 w-full px-8 flex flex-col items-center">
+                     
+                     <div class="w-full max-w-md h-24 border-2 border-yellow-400 bg-yellow-400/5 rounded-lg relative shadow-[0_0_50px_rgba(0,0,0,0.5)_inset] flex items-center justify-center overflow-hidden backdrop-blur-[2px]">
+                        <div x-show="isScanning" class="absolute top-0 left-0 w-full h-1 bg-yellow-400 shadow-[0_0_10px_rgba(255,255,0,0.8)] animate-scan"></div>
+                        
+                        <div class="opacity-50 text-white font-mono text-xs tracking-widest text-center leading-loose">
+                            IDARG25403<<<240<<78<<<<<br>
+                            PEREZ<<JUAN<<<<<<<<<<<<<<
+                        </div>
+                     </div>
+
+                     <div class="mt-4 bg-black/70 px-4 py-2 rounded-xl text-center">
+                         <p class="text-white font-bold text-sm">Ubica las letras "IDARG... <<<<" aquí</p>
+                         <p class="text-gray-400 text-[10px] mt-1">(Suelen estar al frente o al dorso del DNI)</p>
+                     </div>
                  </div>
             </div>
 
-            <div x-show="showManualBtn && step === 2 && !isSuccess" class="absolute bottom-4 inset-x-0 flex justify-center z-40" x-cloak>
-                <button @click="forceManualCapture()" 
-                        class="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 animate-bounce">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path></svg>
-                    No enfoca: Sacar foto manual
-                </button>
+            <div x-show="isProcessingOCR" class="absolute inset-0 flex items-center justify-center bg-black/60 z-20 backdrop-blur-sm">
+                <div class="flex flex-col items-center animate-pulse">
+                    <svg class="w-10 h-10 text-yellow-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                    <span class="text-white font-bold text-sm">Leyendo texto...</span>
+                </div>
             </div>
 
-            <div x-show="errorMessage" class="absolute top-4 left-4 right-4 bg-red-600 text-white p-3 rounded-lg text-center shadow-lg z-50 animate-bounce" x-cloak>
-                <span class="font-bold text-sm">⚠️ <span x-text="errorMessage"></span></span>
-            </div>
-            
-            <div x-show="isSuccess" class="absolute inset-0 bg-green-600/90 backdrop-blur-md flex flex-col items-center justify-center z-30" x-cloak>
+            <div x-show="isSuccess" class="absolute inset-0 bg-green-600/95 backdrop-blur-md flex flex-col items-center justify-center z-30" x-cloak>
                 <div class="bg-white p-4 rounded-full mb-4 shadow-xl animate-bounce">
                     <svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                 </div>
-                <h3 class="text-white text-2xl font-bold">¡DNI Validado!</h3>
+                <h3 class="text-white text-2xl font-bold">¡DNI Leído!</h3>
+                <p class="text-white/80 text-sm mt-2" x-text="successDetail"></p>
             </div>
 
             <div x-show="isLoading" class="absolute inset-0 flex items-center justify-center bg-black/90 z-20">
                 <div class="flex flex-col items-center">
-                    <svg class="animate-spin h-10 w-10 text-indigo-500 mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <span class="text-white text-xs">Cargando...</span>
+                    <span class="text-white text-xs">Cargando Motores...</span>
                 </div>
-            </div>
-        </div>
-
-        <div class="p-6 bg-white text-center">
-            <div x-show="step === 2 && !isSuccess">
-                <button @click="resetScanner()" class="text-indigo-600 text-sm font-semibold hover:underline">
-                    🔄 Reiniciar enfoque
-                </button>
             </div>
         </div>
     </div>
 </div>
 
 <style>
-    .animate-spin-slow { animation: spin 3s linear infinite; }
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes scan { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
+    .animate-scan { animation: scan 2s linear infinite; }
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
-<script type="text/javascript" src="https://unpkg.com/@zxing/library@latest"></script>
+<script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 
 <script>
     function biometricScanner() {
         return {
             step: 1,
             isLoading: true,
+            isScanning: false,
+            isProcessingOCR: false,
             isSuccess: false,
-            errorMessage: '',
+            statusText: 'Foto automática en 3, 2, 1...',
+            successDetail: '',
             expectedDNI: '',
             
             // Paso 1
@@ -118,19 +101,20 @@
             // Paso 2
             capturedFace: null,
             capturedDNI: null, 
-            codeReader: null,
-            
-            // Fallback
-            showManualBtn: false,
-            scanTimer: null,
+            worker: null, // Tesseract worker
+            ocrInterval: null,
             
             async init() {
                 this.expectedDNI = document.getElementById('expected_dni').value.trim();
+                
                 await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
                 
                 try {
+                    // Inicializar Tesseract (OCR) en segundo plano mientras hacemos el paso 1
+                    this.initTesseract();
+
                     const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } } 
+                        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } 
                     });
                     this.$refs.video.srcObject = stream;
                     
@@ -140,12 +124,19 @@
                         this.startFaceAutoCapture(); 
                     };
                 } catch(e) {
-                    this.showError("Error: Cámara no disponible.");
+                    alert("Error: Cámara no disponible.");
                     this.isLoading = false;
                 }
             },
 
-            // --- PASO 1: SELFIE AUTO ---
+            async initTesseract() {
+                this.worker = await Tesseract.createWorker('eng'); // Usamos 'eng' porque lee mejor números y letras simples
+                await this.worker.setParameters({
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<', // Solo lo que tiene el DNI
+                });
+            },
+
+            // --- PASO 1: SELFIE ---
             startFaceAutoCapture() {
                 const video = this.$refs.video;
                 const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
@@ -182,97 +173,102 @@
                 ctx.drawImage(video, 0, 0);
                 this.capturedFace = canvas.toDataURL('image/jpeg', 0.8);
                 
-                this.startScanner();
+                this.startOCRScanner();
             },
 
-            // --- PASO 2: SCANNER HORIZONTAL ---
-            async startScanner() {
+            // --- PASO 2: LECTURA DE TEXTO (OCR) ---
+            startOCRScanner() {
                 this.step = 2;
-                this.isLoading = true;
-                this.showManualBtn = false;
-                
-                clearTimeout(this.scanTimer);
-                this.scanTimer = setTimeout(() => { this.showManualBtn = true; }, 10000); // 10s timeout
+                this.statusText = 'Ubica las letras del DNI en el recuadro inferior';
+                this.isScanning = true;
 
-                const stream = this.$refs.video.srcObject;
-                if (stream) stream.getTracks().forEach(track => track.stop());
+                // Escaneamos cada 1.5 segundos para no matar el CPU
+                this.ocrInterval = setInterval(() => {
+                    if (!this.isProcessingOCR && !this.isSuccess) {
+                        this.performOCR();
+                    }
+                }, 1500);
+            },
 
-                // CONFIGURACIÓN: PDF417 + QR
-                const hints = new Map();
-                const formats = [ZXing.BarcodeFormat.PDF_417, ZXing.BarcodeFormat.QR_CODE];
-                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-                hints.set(ZXing.DecodeHintType.TRY_HARDER, true); 
+            async performOCR() {
+                if (!this.worker) return;
                 
-                this.codeReader = new ZXing.BrowserMultiFormatReader(hints);
+                const video = this.$refs.video;
+                const canvas = document.createElement('canvas');
+                // Recortamos SOLO LA PARTE DE ABAJO del video (donde está el recuadro amarillo)
+                // Esto hace que el OCR sea 10 veces más rápido y preciso
+                const cropWidth = video.videoWidth * 0.8; // 80% del ancho
+                const cropHeight = video.videoHeight * 0.25; // 25% de abajo
+                const startX = video.videoWidth * 0.1;
+                const startY = video.videoHeight * 0.70; // Empezar al 70% de altura
+
+                canvas.width = cropWidth;
+                canvas.height = cropHeight;
+                canvas.getContext('2d').drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                
+                this.isProcessingOCR = true; // Mostrar indicador visual
                 
                 try {
-                    const videoInputDevices = await this.codeReader.listVideoInputDevices();
-                    const selectedDeviceId = videoInputDevices.length > 1 ? videoInputDevices[videoInputDevices.length - 1].deviceId : videoInputDevices[0].deviceId;
+                    const { data: { text } } = await this.worker.recognize(canvas);
+                    // console.log("Texto detectado:", text); // Debug
                     
-                    this.isLoading = false;
+                    // Limpieza: Quitamos espacios y saltos de línea
+                    const cleanText = text.replace(/\s/g, '').toUpperCase();
+                    
+                    // BUSCAMOS PATRÓN DNI ARGENTINO
+                    // Buscamos "IDARG" o "ARG" seguido de números
+                    const dniMatch = cleanText.match(/(IDARG|ARG)(\d{7,8})/);
 
-                    await this.codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
-                        if (result) {
-                            this.handleScan(result.text);
+                    if (dniMatch) {
+                        const dniDetectado = dniMatch[2];
+                        this.verifyDNI(dniDetectado);
+                    } else {
+                        // Si no encuentra patrón estricto, buscamos el DNI esperado suelto
+                        if (this.expectedDNI) {
+                             const cleanExpected = this.expectedDNI.replace(/\./g, '');
+                             if (cleanText.includes(cleanExpected)) {
+                                 this.verifyDNI(cleanExpected);
+                             }
                         }
-                    });
-                    
+                    }
+
                 } catch (err) {
-                    this.errorMessage = "Error iniciando Escáner.";
-                    this.isLoading = false;
+                    console.error(err);
+                } finally {
+                    this.isProcessingOCR = false;
                 }
             },
 
-            handleScan(scannedText) {
-                if (this.isSuccess) return;
-
+            verifyDNI(dniLeido) {
                 let valid = false;
+                
                 if (this.expectedDNI) {
                     const cleanExpected = this.expectedDNI.replace(/\./g, '');
-                    if (scannedText.includes(cleanExpected)) valid = true;
-                    else {
-                        if (scannedText.length > 3) {
-                            this.showError(`DNI incorrecto. Esperaba: ${this.expectedDNI}`);
-                            setTimeout(() => this.errorMessage = '', 2000);
-                        }
-                        return;
+                    // Comparamos si lo que leyó coincide con lo esperado
+                    if (dniLeido === cleanExpected) {
+                        valid = true;
+                        this.successDetail = "Coincidencia exacta con registros.";
                     }
                 } else {
-                    valid = true; 
+                    // Modo Invitado: Aceptamos cualquier número que parezca DNI válido
+                    valid = true;
+                    this.successDetail = "DNI leído: " + dniLeido;
                 }
 
                 if (valid) {
-                    this.success(true);
+                    this.isSuccess = true;
+                    clearInterval(this.ocrInterval);
+                    
+                    // Capturar foto completa
+                    const video = this.$refs.video;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+                    this.capturedDNI = canvas.toDataURL('image/jpeg', 0.8);
+
+                    this.uploadSuccess();
                 }
-            },
-
-            forceManualCapture() {
-                // Si la cámara no lee, sacamos foto "bruta"
-                this.success(false);
-            },
-
-            success(wasScanned) {
-                this.isSuccess = true;
-                const video = document.getElementById('video'); 
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                canvas.getContext('2d').drawImage(video, 0, 0);
-                this.capturedDNI = canvas.toDataURL('image/jpeg', 0.8);
-
-                if (wasScanned) this.codeReader.reset();
-
-                this.uploadSuccess();
-            },
-
-            showError(msg) {
-                this.errorMessage = msg;
-                if (navigator.vibrate) navigator.vibrate(200);
-            },
-
-            resetScanner() {
-                if (this.codeReader) this.codeReader.reset();
-                this.startScanner();
             },
 
             async uploadSuccess() {
@@ -291,8 +287,8 @@
                     }, 1000);
                     
                 } catch (err) {
-                    this.showError("Error de red.");
-                    this.isSuccess = false;
+                    alert("Error guardando datos. Intenta de nuevo.");
+                    window.location.reload();
                 }
             }
         }
