@@ -32,7 +32,7 @@
                  
                  <div class="absolute bottom-4 w-full px-8 flex flex-col items-center pointer-events-auto">
                      
-                     <div class="w-full max-w-md h-20 border-2 border-yellow-400 bg-yellow-400/10 rounded-lg relative flex items-center justify-center overflow-hidden mb-2">
+                     <div id="scan-frame" class="w-full max-w-md h-20 border-2 border-yellow-400 bg-yellow-400/10 rounded-lg relative flex items-center justify-center overflow-hidden mb-2">
                         <div class="opacity-50 text-white font-mono text-xs tracking-widest text-center">
                             UBICA LAS LETRAS AQUÍ<br>
                             <<<<<<<<<<<<<<<<<<<<<
@@ -93,7 +93,6 @@
             
             async init() {
                 this.expectedDNI = document.getElementById('expected_dni').value.trim();
-                // Limpiar puntos del DNI esperado para comparar fácil (20.635 -> 20635)
                 if(this.expectedDNI) this.expectedDNI = this.expectedDNI.replace(/\./g, '');
 
                 await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
@@ -116,7 +115,6 @@
 
             async initTesseract() {
                 this.worker = await Tesseract.createWorker('eng');
-                // Optimizamos para que SOLO busque números y mayúsculas
                 await this.worker.setParameters({
                     tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<', 
                 });
@@ -164,7 +162,6 @@
                 this.statusText = 'Validando DNI automáticamente...';
                 this.isScanning = true;
                 
-                // Escaneamos más rápido (cada 500ms) para atrapar el momento justo
                 this.ocrInterval = setInterval(() => {
                     if (!this.isSuccess) this.performOCR();
                 }, 500); 
@@ -174,43 +171,31 @@
                 if (!this.worker) return;
                 const video = this.$refs.video;
                 
-                // Canvas invisible para procesamiento
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // Recortamos la parte INFERIOR (donde está el texto IDARG)
-                const cropWidth = video.videoWidth * 0.8; 
-                const cropHeight = video.videoHeight * 0.25; 
-                const startX = video.videoWidth * 0.1;
-                const startY = video.videoHeight * 0.70; // Zona baja
+                // Recortamos la parte INFERIOR (donde ahora está el marco amarillo)
+                const cropWidth = video.videoWidth * 0.9; 
+                const cropHeight = video.videoHeight * 0.30; 
+                const startX = video.videoWidth * 0.05;
+                const startY = video.videoHeight * 0.65; // Zona baja
 
                 canvas.width = cropWidth;
                 canvas.height = cropHeight;
                 
-                // Dibujamos la imagen original
                 ctx.drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
                 
-                // --- FILTRO VISUAL MEJORADO (Escala de grises + Contraste) ---
+                // Filtro de alto contraste
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
-                
                 for (let i = 0; i < data.length; i += 4) {
-                    // Convertir a gris
                     let gray = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
-                    
-                    // Aumentar contraste radicalmente
-                    // Si es gris claro -> Blanco. Si es gris oscuro -> Negro.
-                    // Esto ayuda a eliminar el "ruido" de la mesa o el plástico
                     let contrast = gray > 110 ? 255 : 0; 
-
-                    data[i] = contrast;     // R
-                    data[i + 1] = contrast; // G
-                    data[i + 2] = contrast; // B
+                    data[i] = contrast; data[i + 1] = contrast; data[i + 2] = contrast;
                 }
                 ctx.putImageData(imageData, 0, 0);
 
-                // --- MOSTRAR AL USUARIO LO QUE VE LA IA ---
-                // Copiamos la imagen procesada al canvas visible "debug-canvas"
+                // Mostrar lo que ve la IA
                 const debugCanvas = document.getElementById('debug-canvas');
                 if (debugCanvas) {
                     debugCanvas.getContext('2d').drawImage(canvas, 0, 0, debugCanvas.width, debugCanvas.height);
@@ -220,20 +205,13 @@
                 
                 try {
                     const { data: { text, confidence } } = await this.worker.recognize(canvas);
+                    const cleanText = text.replace(/[^0-9A-Z]/g, '');
                     
-                    // Limpieza total del texto
-                    const cleanText = text.replace(/[^0-9A-Z]/g, ''); // Solo numeros y letras
-                    
-                    // ESTRATEGIA: Buscar TU DNI específico
-                    // Si sabemos quién sos (expectedDNI), buscamos SOLO ese número.
                     let found = false;
-
                     if (this.expectedDNI && cleanText.includes(this.expectedDNI)) {
                         found = true;
                         this.successDetail = "Coincidencia exacta con DNI " + this.expectedDNI;
-                    } 
-                    // Si sos invitado (no tenemos DNI), buscamos patrón de DNI válido (7 u 8 números seguidos)
-                    else if (!this.expectedDNI) {
+                    } else if (!this.expectedDNI) {
                         const match = cleanText.match(/(\d{7,8})/);
                         if (match) {
                             found = true;
@@ -244,17 +222,13 @@
                     if (found) {
                         this.isSuccess = true;
                         clearInterval(this.ocrInterval);
-                        
-                        // Guardar foto original (a color)
                         const finalCanvas = document.createElement('canvas');
                         finalCanvas.width = video.videoWidth;
                         finalCanvas.height = video.videoHeight;
                         finalCanvas.getContext('2d').drawImage(video, 0, 0);
                         this.capturedDNI = finalCanvas.toDataURL('image/jpeg', 0.8);
-
                         this.uploadSuccess();
                     } else {
-                        // Feedback para el usuario (le mostramos trozos de lo que lee para que sepa si enfoca bien)
                         if (cleanText.length > 5) {
                             this.debugText = "Veo: " + cleanText.substring(0, 10) + "...";
                         } else {
