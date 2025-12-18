@@ -8,76 +8,82 @@
     <div class="bg-white max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         
         <div class="bg-gray-50 p-6 border-b border-gray-100 text-center">
-            <h1 class="text-2xl font-bold text-gray-800" x-text="step === 1 ? 'Paso 1: Tu Rostro' : 'Paso 2: Tu DNI'"></h1>
-            <p class="text-gray-500 text-sm mt-1" x-text="step === 1 ? 'Foto de evidencia inicial' : 'Escanea el código de barras del frente de tu DNI'"></p>
+            <h1 class="text-2xl font-bold text-gray-800" x-text="step === 1 ? 'Paso 1: Control Humano' : 'Paso 2: Escaneo de DNI'"></h1>
+            <p class="text-gray-500 text-sm mt-1" x-text="step === 1 ? 'Evidencia de identidad (Selfie)' : 'Ubica el código de barras en el recuadro'"></p>
         </div>
 
         <div class="relative bg-black h-96 flex justify-center items-center overflow-hidden group">
             
             <video id="video" x-ref="video" autoplay muted playsinline class="absolute w-full h-full object-cover"></video>
             
-            <div x-show="step === 1" 
-                 class="absolute inset-0 border-4 border-dashed border-white/30 m-12 rounded-full pointer-events-none flex items-center justify-center">
-                 <span class="text-white/50 font-bold bg-black/50 px-2 rounded">Ubica tu cara aquí</span>
-            </div>
-
-            <div x-show="step === 2 && !isSuccess" 
-                 class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-10">
-                 
-                 <div class="w-80 h-32 border-2 border-red-500 bg-red-500/10 rounded-lg relative shadow-[0_0_100px_rgba(255,0,0,0.3)_inset]">
-                    <div class="absolute top-1/2 left-0 w-full h-0.5 bg-red-600 shadow-[0_0_10px_rgba(255,0,0,1)] animate-pulse"></div>
-                    <p class="absolute -top-8 w-full text-center text-white font-bold text-sm bg-black/60 px-2 py-1 rounded">
-                        Apunta al código de barras PDF417
-                    </p>
-                 </div>
-                 
-                 <div class="mt-8 text-center px-4">
-                     <p class="text-gray-300 text-xs">Acerca/aleja el DNI hasta que el código se enfoque bien.</p>
-                     <p class="text-yellow-400 text-xs font-mono mt-2" x-text="scanStatus">Buscando código...</p>
+            <div x-show="step === 1" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                 <div class="border-4 border-dashed border-white/30 rounded-full w-64 h-64 flex items-center justify-center">
+                    <span class="text-white/50 font-bold bg-black/50 px-2 rounded">Ubica tu cara aquí</span>
                  </div>
             </div>
 
-            <div x-show="isSuccess" class="absolute inset-0 bg-green-500/20 backdrop-blur-sm flex items-center justify-center z-30 animate-pulse">
-                <div class="bg-white p-6 rounded-full">
+            <div x-show="step === 2 && !isSuccess" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-10">
+                 
+                 <div class="w-80 h-28 border-2 border-red-500 bg-red-500/10 rounded-lg relative shadow-[0_0_100px_rgba(255,0,0,0.3)_inset] flex items-center justify-center overflow-hidden">
+                    
+                    <div class="absolute top-1/2 left-0 w-full h-0.5 bg-red-600 shadow-[0_0_10px_rgba(255,0,0,1)] animate-pulse z-20"></div>
+                    
+                    <svg class="w-64 h-16 opacity-30" viewBox="0 0 300 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="0" y="0" width="300" height="100" fill="transparent"/>
+                        <path d="M10 10H290V90H10V10Z" fill="white" fill-opacity="0.1"/>
+                        <path d="M20 20H280V30H20V20Z" fill="white"/>
+                        <path d="M20 40H280V50H20V40Z" fill="white"/>
+                        <path d="M20 60H150V70H20V60Z" fill="white"/>
+                        <path d="M160 60H280V70H160V60Z" fill="white"/>
+                        <path d="M20 80H280V85H20V80Z" fill="white"/>
+                    </svg>
+
+                 </div>
+                 
+                 <div class="mt-8 text-center px-4 bg-black/60 py-2 rounded-xl backdrop-blur-sm">
+                     <p class="text-white font-bold text-sm">Busca el código de barras rectangular</p>
+                     <p class="text-gray-300 text-xs mt-1">(Puede estar al frente o al dorso del DNI)</p>
+                     
+                     <div class="mt-2 text-yellow-400 text-xs font-mono" x-show="!expectedDNI">Modo Captura: Registrando DNI...</div>
+                     <div class="mt-2 text-green-400 text-xs font-mono" x-show="expectedDNI">Modo Validación: Verificando DNI...</div>
+                 </div>
+            </div>
+
+            <div x-show="isSuccess" class="absolute inset-0 bg-green-500/20 backdrop-blur-sm flex items-center justify-center z-30">
+                <div class="bg-white p-6 rounded-full animate-bounce">
                     <svg class="w-16 h-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                 </div>
             </div>
 
-            <div x-show="errorMessage" 
-                 class="absolute top-4 left-4 right-4 bg-red-600 text-white p-4 rounded-lg text-center shadow-lg z-50 animate-bounce">
-                <span class="font-bold block text-lg">⚠️ Error de Validación</span>
+            <div x-show="errorMessage" class="absolute top-4 left-4 right-4 bg-red-600 text-white p-4 rounded-lg text-center shadow-lg z-50 animate-bounce">
+                <span class="font-bold block text-lg">⚠️ Error</span>
                 <span x-text="errorMessage"></span>
             </div>
-
+            
             <div x-show="isLoading" class="absolute inset-0 flex items-center justify-center bg-black/90 z-20">
                 <div class="flex flex-col items-center">
                     <svg class="animate-spin h-10 w-10 text-indigo-500 mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <span class="text-white text-xs">Cargando...</span>
+                    <span class="text-white text-xs">Iniciando Cámara...</span>
                 </div>
             </div>
         </div>
 
         <div class="p-6 flex flex-col items-center gap-4 bg-white">
-            
             <button x-show="step === 1" @click="captureFace()" 
                     class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg transition-transform hover:-translate-y-1">
                 📸 Tomar Selfie y Continuar
             </button>
             
             <div x-show="step === 2 && !isSuccess" class="w-full flex flex-col gap-2">
-                <div class="text-center text-xs text-gray-400 mb-2">
-                    Validando contra DNI: <span class="font-mono font-bold text-gray-600" x-text="expectedDNI || 'Desconocido'"></span>
-                </div>
-                <button @click="resetScanner()" class="text-indigo-600 text-sm hover:underline">
-                    ¿No lee? Reiniciar cámara
+                <button @click="resetScanner()" class="text-indigo-600 text-sm hover:underline text-center w-full">
+                    ¿No lee el código? Reiniciar cámara
                 </button>
             </div>
-            
+             
              <div x-show="isSuccess" class="w-full text-center py-4">
-                 <p class="text-green-600 font-bold text-lg">¡Identidad Validada!</p>
-                 <p class="text-gray-500 text-sm">Ingresando al examen...</p>
+                 <p class="text-green-600 font-bold text-lg">¡Código Detectado!</p>
+                 <p class="text-gray-500 text-sm">Entrando al examen...</p>
              </div>
-
         </div>
     </div>
 </div>
@@ -100,19 +106,19 @@
             codeReader: null,
             
             async init() {
-                // Recuperar valor del input oculto
+                // Recuperamos DNI de forma segura
                 this.expectedDNI = document.getElementById('expected_dni').value.trim();
                 
-                // Si está vacío, significa que hubo un problema de datos, pero el JS lo maneja visualmente
-                if (!this.expectedDNI) {
-                    this.showError("Alerta: No se encontró el DNI. Avísale al profesor.");
-                }
-
                 await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
                 
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-                this.$refs.video.srcObject = stream;
-                this.isLoading = false;
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                    this.$refs.video.srcObject = stream;
+                    this.isLoading = false;
+                } catch(e) {
+                    this.showError("Error: No se detecta cámara.");
+                    this.isLoading = false;
+                }
             },
 
             captureFace() {
@@ -133,49 +139,60 @@
                 this.isLoading = true;
                 this.errorMessage = '';
 
+                // Liberar cámara anterior
                 const stream = this.$refs.video.srcObject;
                 if (stream) stream.getTracks().forEach(track => track.stop());
 
                 this.codeReader = new ZXing.BrowserPDF417Reader();
                 try {
                     const videoInputDevices = await this.codeReader.getVideoInputDevices();
-                    // Intentar usar cámara trasera (mejor foco) si existe, sino frontal
+                    // Preferir cámara trasera si existe
                     const selectedDeviceId = videoInputDevices.length > 1 ? videoInputDevices[videoInputDevices.length - 1].deviceId : videoInputDevices[0].deviceId;
                     
                     this.isLoading = false;
+                    
                     this.codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
-                        if (result) this.validateDNI(result.text);
+                        if (result) {
+                            this.handleScan(result.text);
+                        }
                     });
                 } catch (err) {
-                    this.errorMessage = "Error iniciando cámara.";
+                    this.errorMessage = "Error iniciando lector.";
                     this.isLoading = false;
                 }
             },
 
-            validateDNI(scannedText) {
-                if (!this.expectedDNI) return;
+            handleScan(scannedText) {
+                let valid = false;
 
-                // Limpiamos puntos (12.345.678 -> 12345678) para comparar texto plano
-                const cleanExpected = this.expectedDNI.replace(/\./g, '');
-                
-                if (scannedText.includes(cleanExpected)) {
-                    // ÉXITO - Capturamos Evidencia
+                if (this.expectedDNI) {
+                    // MODO VALIDACIÓN
+                    const cleanExpected = this.expectedDNI.replace(/\./g, '');
+                    if (scannedText.includes(cleanExpected)) {
+                        valid = true;
+                    } else {
+                        this.showError(`DNI incorrecto. Esperaba: ${this.expectedDNI}`);
+                        setTimeout(() => this.errorMessage = '', 2500);
+                        return;
+                    }
+                } else {
+                    // MODO CAPTURA (Invitado)
+                    valid = true;
+                }
+
+                if (valid) {
                     this.isSuccess = true;
+                    
+                    // FOTO DE EVIDENCIA (Del código escaneado)
                     const video = this.$refs.video;
                     const canvas = document.createElement('canvas');
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
-                    // Dibujamos tal cual viene (sin espejo) para que se lea el texto
                     canvas.getContext('2d').drawImage(video, 0, 0);
-                    
                     this.capturedDNI = canvas.toDataURL('image/jpeg', 0.8);
 
                     this.codeReader.reset();
                     this.uploadSuccess();
-                } else {
-                    this.showError(`DNI incorrecto. Se espera: ${this.expectedDNI}`);
-                    // Borramos error a los 3 seg para reintentar
-                    setTimeout(() => { this.errorMessage = ''; }, 3000);
                 }
             },
 
@@ -205,7 +222,7 @@
                     }, 1500);
                     
                 } catch (err) {
-                    this.showError("Error guardando evidencia.");
+                    this.showError("Error de red al guardar.");
                     this.isSuccess = false;
                 }
             }
