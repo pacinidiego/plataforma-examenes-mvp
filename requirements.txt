@@ -25,10 +25,9 @@ openpyxl==3.1.2
 # (S1c) Librería para IA (¡NUEVA!)
 google-generativeai==0.7.2
 
-
-easyocr
-numpy
-
+# NOTA: easyocr y numpy se instalan manualmente en el buildCommand
+# para forzar la versión CPU-Only y ahorrar 2GB de espacio.
+# No las descomentes aquí.
 
 # === LIBRERÍAS PESADAS (COMENTADAS HASTA SU SPRINT) ===
 # (Activaremos esto cuando lleguemos a S3b/S5/S7)
