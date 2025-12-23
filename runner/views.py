@@ -27,7 +27,7 @@ from .models import Attempt, AttemptEvent
 # --- CONFIGURACIÓN GEMINI ---
 GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
-# Configuración legacy por si usas la librería en otras partes (preguntas)
+# Configuración legacy por si usas la librería en otras partes
 if GOOGLE_API_KEY:
     try:
         genai.configure(api_key=GOOGLE_API_KEY)
@@ -115,7 +115,7 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 # ---------------------------------------------------------
-# 5. VALIDACIÓN DNI - SIN LIBRERÍA (CONEXIÓN DIRECTA) 🚀
+# 5. VALIDACIÓN DNI - AUTO-DESCUBRIMIENTO DE MODELOS 🧠
 # ---------------------------------------------------------
 @require_POST
 def validate_dni_ocr(request, attempt_id):
@@ -139,10 +139,51 @@ def validate_dni_ocr(request, attempt_id):
         except:
             return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
 
-        # 2. Configurar llamada HTTP
-        print(f"📡 Validando identidad vía HTTP para legajo: {attempt.student_legajo}")
+        print(f"📡 Validando DNI (Auto-Mode) para legajo: {attempt.student_legajo}")
+
+        # 2. AUTO-DESCUBRIMIENTO: Preguntamos a Google qué modelos tiene disponibles
+        model_to_use = None
         
-        headers = {'Content-Type': 'application/json'}
+        try:
+            # Listamos modelos disponibles para esta API Key
+            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GOOGLE_API_KEY}"
+            list_res = requests.get(list_url, timeout=5)
+            
+            if list_res.status_code == 200:
+                models_data = list_res.json().get('models', [])
+                # Filtramos solo los que pueden generar contenido
+                valid_names = [m['name'] for m in models_data if 'generateContent' in m.get('supportedGenerationMethods', [])]
+                
+                print(f"ℹ️ Modelos habilitados en tu cuenta: {valid_names}")
+                
+                # Buscamos el mejor candidato en orden de preferencia
+                # Primero buscamos 'flash', luego 'pro-vision', luego cualquiera 'pro'
+                for pref in ['flash', 'vision', 'pro']:
+                    matches = [name for name in valid_names if pref in name]
+                    if matches:
+                        # Tomamos el primero que coincida y quitamos 'models/' si viene incluido
+                        model_to_use = matches[0].replace('models/', '')
+                        break
+                
+                # Si no encontramos ninguno preferido, usamos el primero de la lista válida
+                if not model_to_use and valid_names:
+                    model_to_use = valid_names[0].replace('models/', '')
+
+            else:
+                print(f"⚠️ No se pudo listar modelos ({list_res.status_code}). Intentando fallback manual.")
+
+        except Exception as e:
+            print(f"⚠️ Error listando modelos: {e}. Intentando fallback manual.")
+
+        # Fallback de emergencia si el auto-descubrimiento falla
+        if not model_to_use:
+            model_to_use = "gemini-1.5-flash"
+
+        # 3. Llamada a la API con el modelo encontrado
+        print(f"🚀 Intentando generar con: {model_to_use}")
+        
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_to_use}:generateContent?key={GOOGLE_API_KEY}"
+        
         payload = {
             "contents": [{
                 "parts": [
@@ -151,51 +192,33 @@ def validate_dni_ocr(request, attempt_id):
                 ]
             }]
         }
+        headers = {'Content-Type': 'application/json'}
+        
+        # Timeout más largo por si es un modelo pesado
+        response = requests.post(api_url, headers=headers, json=payload, timeout=25)
 
-        # 3. Lista de modelos (Flash, Pro, Vision)
-        # Importante: Algunos endpoints usan 'v1beta', otros 'v1'. Probamos ambos.
-        candidate_models = [
-            ("gemini-1.5-flash", "v1beta"),
-            ("gemini-1.5-flash-latest", "v1beta"),
-            ("gemini-pro-vision", "v1")  # El modelo clásico, muy estable
-        ]
+        if response.status_code != 200:
+            print(f"❌ Error API: {response.text}")
+            return JsonResponse({'success': False, 'message': f'Error de IA ({response.status_code}): El modelo {model_to_use} no respondió.'})
 
-        ai_data = None
-        last_error = ""
+        # 4. Procesar Respuesta
+        json_res = response.json()
+        candidates = json_res.get('candidates', [])
+        
+        if not candidates:
+             return JsonResponse({'success': False, 'message': 'La IA bloqueó la imagen por seguridad. Intente otra foto.'})
 
-        for model_name, version in candidate_models:
-            try:
-                # Construimos la URL según el modelo y la versión
-                api_url = f"https://generativelanguage.googleapis.com/{version}/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
-                
-                print(f"🔄 Probando {model_name} ({version})...")
-                response = requests.post(api_url, headers=headers, json=payload, timeout=15)
-                
-                if response.status_code == 200:
-                    print(f"✅ ¡Conectado con {model_name}!")
-                    json_res = response.json()
-                    candidates = json_res.get('candidates', [])
-                    if candidates:
-                        raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
-                        clean_text = raw_text.replace('```json', '').replace('```', '').strip()
-                        ai_data = json.loads(clean_text)
-                        break # Éxito
-                else:
-                    print(f"❌ Falló {model_name}: {response.status_code}")
-                    last_error = f"Error {response.status_code}"
-
-            except Exception as e:
-                print(f"❌ Excepción con {model_name}: {e}")
-                last_error = str(e)
-                continue
-
-        # 4. Verificar resultado
-        if not ai_data:
-            return JsonResponse({'success': False, 'message': f'Error de IA: No se pudo validar el documento. ({last_error})'})
+        raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
+        clean_text = raw_text.replace('```json', '').replace('```', '').strip()
+        
+        try:
+            ai_data = json.loads(clean_text)
+        except:
+             return JsonResponse({'success': False, 'message': 'Error leyendo respuesta de IA.'})
 
         # 5. Lógica de Negocio
         if not ai_data.get('es_documento'):
-             return JsonResponse({'success': False, 'message': 'No se detecta un documento válido. Enfoca mejor.'})
+             return JsonResponse({'success': False, 'message': 'No es un documento válido. Enfoca mejor.'})
 
         numbers_found = str(ai_data.get('numeros', ''))
         legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
