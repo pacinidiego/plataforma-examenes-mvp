@@ -1,24 +1,17 @@
-# Especificación: 18.2 (Stack) y 19 (C4-4)
-# Este archivo le dice a Render cómo construir nuestros 3 servicios.
-
 services:
   # Servicio 1: La Web App (Django/Gunicorn)
-  # (C4-4: Web Service, Plan Starter)
   - type: web
     name: plataforma-web
     env: python
-    plan: starter # "Starter" para evitar que se suspenda (MVP Hosting)
+    plan: starter
     region: oregon
     pythonVersion: "3.12"
     buildFilter:
       paths:
       - "**.py"
       - "requirements.txt"
-    buildCommand: |
-      pip install -r requirements.txt
-      python manage.py collectstatic --no-input  # <-- CORRECCIÓN AÑADIDA AQUÍ
-      python manage.py migrate
-      export TMPDIR=$XR_APP_DIR/tmp_build && mkdir -p $TMPDIR && pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r requirements.txt && python manage.py collectstatic --noinput
+    # COMANDO CORREGIDO: Usa $(pwd) para tmp y fuerza CPU torch
+    buildCommand: "mkdir -p tmp_build && export TMPDIR=$(pwd)/tmp_build && pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install easyocr && pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
     startCommand: "gunicorn plataforma.wsgi"
     healthCheckPath: /health/
     envVars:
@@ -35,14 +28,8 @@ services:
         generateValue: true
       - key: WEB_CONCURRENCY
         value: 4
-      # ---- ATENCIÓN: Añadir claves de R2 aquí en el Dashboard ----
-      # CLOUDFLARE_R2_ACCOUNT_ID
-      # CLOUDFLARE_R2_ACCESS_KEY_ID
-      # CLOUDFLARE_R2_SECRET_ACCESS_KEY
-      # CLOUDFLARE_R2_BUCKET_NAME
 
   # Servicio 2: El Worker Asíncrono (Celery)
-  # (C4-4: Worker, Plan Starter)
   - type: worker
     name: plataforma-worker
     env: python
@@ -53,7 +40,8 @@ services:
       paths:
       - "**.py"
       - "requirements.txt"
-    buildCommand: "pip install -r requirements.txt"
+    # Aplicamos el mismo fix al worker para que tenga las librerías de IA disponibles
+    buildCommand: "mkdir -p tmp_build && export TMPDIR=$(pwd)/tmp_build && pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install easyocr && pip install -r requirements.txt"
     startCommand: "celery -A plataforma worker -l info"
     envVars:
       - key: DATABASE_URL
@@ -66,11 +54,9 @@ services:
           name: plataforma-redis
           property: connectionString
       - key: DJANGO_SECRET_KEY
-        generateValue: true # Usar un valor distinto al de la web
-      # ---- ATENCIÓN: Añadir claves de R2 aquí en el Dashboard ----
+        generateValue: true
 
   # Servicio 3: El Broker de Tareas (Redis)
-  # (C4-4: Broker de Tareas, Plan Free)
   - type: redis
     name: plataforma-redis
     plan: free
@@ -79,8 +65,6 @@ services:
       - source: 0.0.0.0/0
         description: "Permitir todas las IPs (MVP)"
 
-# Base de Datos (PostgreSQL)
-# (C4-4: Base de Datos, Plan Free)
 databases:
   - name: plataforma-db
     plan: free
