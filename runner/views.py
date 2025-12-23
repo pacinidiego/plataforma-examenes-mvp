@@ -1,7 +1,7 @@
 import random
 import json
 
-
+import easyocr  # <--- Cambio clave
 import base64
 import re
 import pytesseract
@@ -409,33 +409,40 @@ def validate_dni_ocr(request):
         if not image_data:
             return JsonResponse({'success': False, 'message': 'No se recibió imagen.'})
 
-        # 1. Decodificar la imagen Base64
+        # 1. Decodificar Base64
         format, imgstr = image_data.split(';base64,')
         image_bytes = base64.b64decode(imgstr)
-        image = Image.open(BytesIO(image_bytes))
+        
+        # EasyOCR lee bytes directamente o arrays numpy. 
+        # Convertimos la imagen a array para EasyOCR
+        pil_image = Image.open(BytesIO(image_bytes))
+        image_np = np.array(pil_image)
 
-        # 2. Procesar OCR (Lectura de texto)
-        # config='--psm 6' asume un bloque de texto uniforme, ayuda con DNI
-        text_detected = pytesseract.image_to_string(image, config='--psm 6')
-
-        # 3. Limpieza de texto (solo dejamos números)
-        # Esto elimina ruido como "DNI", "N°", puntos, etc.
-        numbers_found = re.sub(r'[^0-9]', '', text_detected)
+        # 2. Procesar OCR
+        # detail=0 devuelve solo la lista de textos encontrados
+        result_list = reader.readtext(image_np, detail=0)
+        
+        # Unir todo el texto encontrado en un solo string
+        full_text = " ".join(result_list)
+        
+        # 3. Limpieza (solo dejamos números)
+        numbers_found = re.sub(r'[^0-9]', '', full_text)
         
         # 4. Validación
-        # Asumimos que el username es el DNI. Ajústalo si es necesario.
+        # Ajusta esto a donde tengas guardado el DNI real del usuario
         expected_dni = request.user.username 
 
-        print(f"DEBUG OCR - Esperado: {expected_dni} | Encontrado raw: {numbers_found}")
+        print(f"DEBUG EasyOCR - Esperado: {expected_dni} | Encontrado raw: {numbers_found}")
 
         if expected_dni in numbers_found:
-            return JsonResponse({'success': True, 'message': 'Identidad verificada correctamente.'})
+            return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
         else:
             return JsonResponse({
                 'success': False, 
-                'message': f'No pudimos leer tu DNI ({expected_dni}) en la imagen. Intenta acercarlo más y evitar brillos.'
+                'message': f'No leímos el DNI {expected_dni}. Asegúrate que la imagen esté enfocada y sin brillos.'
             })
 
     except Exception as e:
         print(f"Error OCR: {e}")
-        return JsonResponse({'success': False, 'message': 'Error interno al procesar la imagen.'}, status=500)
+        # En caso de error de memoria (OOM), avisar
+        return JsonResponse({'success': False, 'message': 'Error procesando la imagen. Intenta de nuevo.'}, status=500)
