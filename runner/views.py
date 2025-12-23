@@ -118,71 +118,87 @@ def register_biometrics(request, attempt_id):
 
 from django.views.decorators.csrf import csrf_exempt # Opcional si hay líos de CSRF, pero mejor usar require_POST standard
 
+# En runner/views.py
+
+# ... imports anteriores ...
+import traceback # <--- AGREGAR ESTE IMPORT ARRIBA
+
 @require_POST
-def validate_dni_ocr(request, attempt_id): # <--- Ahora recibe attempt_id
+def validate_dni_ocr(request, attempt_id):
     try:
-        # 1. Buscamos el Intento (No requiere Login de Django, solo el ID válido)
+        # 1. Validar Intento
         attempt = get_object_or_404(Attempt, id=attempt_id)
         
+        # 2. Validar Configuración
         if not GOOGLE_API_KEY:
-            return JsonResponse({'success': False, 'message': 'Error config: Falta API Key IA.'})
+            return JsonResponse({'success': False, 'message': 'Falta configurar GEMINI_API_KEY en Render.'})
 
-        data = json.loads(request.body)
-        image_data = data.get('image')
+        # 3. Leer Imagen
+        try:
+            data = json.loads(request.body)
+            image_data = data.get('image')
+        except:
+            return JsonResponse({'success': False, 'message': 'El cuerpo de la petición no es JSON válido.'})
 
         if not image_data:
-            return JsonResponse({'success': False, 'message': 'No se recibió imagen.'})
+            return JsonResponse({'success': False, 'message': 'No llegó ninguna imagen al servidor.'})
 
-        # 2. Procesar imagen base64
-        if ';base64,' in image_data:
-            _, imgstr = image_data.split(';base64,')
-        else:
-            imgstr = image_data
-        
-        image_bytes = base64.b64decode(imgstr)
-        pil_image = Image.open(BytesIO(image_bytes))
+        # 4. Procesar Base64 (Blindado)
+        try:
+            if ';base64,' in image_data:
+                _, imgstr = image_data.split(';base64,')
+            else:
+                imgstr = image_data
+            image_bytes = base64.b64decode(imgstr)
+            pil_image = Image.open(BytesIO(image_bytes))
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': f'Error procesando la imagen: {str(e)}'})
 
-        # 3. Consultar a Gemini
-        print(f"📡 Validando DNI para el alumno: {attempt.student_legajo}")
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        prompt = """
-        Actúa como un sistema de validación de identidad.
-        Analiza esta imagen.
-        1. ¿Es un documento de identidad oficial (DNI, Cédula, Pasaporte)?
-        2. Extrae SOLAMENTE los dígitos numéricos del número de documento.
-        Responde en formato JSON estricto: {"es_documento": true/false, "numeros": "12345678"}
-        """
-        
-        response = model.generate_content([prompt, pil_image])
-        
-        # Limpieza básica de la respuesta JSON de Gemini (a veces incluye ```json ... ```)
-        text_response = response.text.replace('```json', '').replace('```', '').strip()
-        print(f"🤖 Respuesta Gemini: {text_response}")
-        
-        ai_data = json.loads(text_response)
-        
+        # 5. Llamada a Gemini (Blindado)
+        print(f"📡 Enviando a Gemini para intento {attempt_id}...")
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            prompt = """
+            Analiza esta imagen.
+            Responde SOLO un JSON con esta estructura:
+            {"es_documento": true/false, "numeros": "solo_digitos"}
+            Si no es un documento claro, pon es_documento: false.
+            """
+            response = model.generate_content([prompt, pil_image])
+            
+            # Limpieza de respuesta
+            clean_text = response.text.replace('```json', '').replace('```', '').strip()
+            ai_data = json.loads(clean_text)
+            
+        except Exception as e:
+            # Si falla la IA, devolvemos el error exacto
+            print(f"❌ Error Gemini: {traceback.format_exc()}")
+            return JsonResponse({'success': False, 'message': f'Error de IA: {str(e)}'})
+
+        # 6. Validación de Negocio
         if not ai_data.get('es_documento'):
-             return JsonResponse({'success': False, 'message': 'No parece un documento válido. Intenta de nuevo.'})
+             return JsonResponse({'success': False, 'message': 'No detectamos un DNI válido. Intenta mejorar la luz.'})
 
-        numbers_found = ai_data.get('numeros', '')
-        
-        # 4. Comparar con el Legajo del Alumno (ingresado en el Lobby)
-        # Limpiamos el legajo de letras por si acaso
+        numbers_found = str(ai_data.get('numeros', ''))
         legajo_limpio = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
-        
-        # Validación flexible: Si el legajo está contenido en los números del DNI (o viceversa)
+
+        print(f"🔍 DNI Detectado: {numbers_found} | Legajo Alumno: {legajo_limpio}")
+
         if legajo_limpio and (legajo_limpio in numbers_found or numbers_found in legajo_limpio):
-            return JsonResponse({'success': True, 'message': 'Identidad verificada exitosamente.'})
+            return JsonResponse({'success': True, 'message': 'Identidad verificada. Ahora enfoca tu rostro.'})
         else:
             return JsonResponse({
                 'success': False, 
-                'message': f'El DNI ({numbers_found}) no coincide con el legajo ingresado ({legajo_limpio}).'
+                'message': f'Leímos el número {numbers_found}, pero no coincide con tu legajo ({legajo_limpio}).'
             })
 
     except Exception as e:
-        print(f"❌ Error Server: {e}")
-        return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'}, status=500)
+        # CAPTURA FINAL: Si todo falla, devuelve el error como JSON, no como 500 HTML
+        print(traceback.format_exc())
+        return JsonResponse({'success': False, 'message': f'Error Crítico Servidor: {str(e)}'}, status=200)
+
+
+
 
 # 6. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
