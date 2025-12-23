@@ -130,8 +130,7 @@
                                           :class="checks.dni ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" 
                                           x-text="checks.dni ? 'VALIDADO' : 'Requerido'"></span>
                                 </div>
-                                
-                                <p class="text-xs text-red-500 mt-1 font-bold" x-show="errorMessage && !checks.dni" x-text="errorMessage"></p>
+                                <p class="text-xs text-red-500 mt-1" x-show="errorMessage && !checks.dni" x-text="errorMessage"></p>
                                 
                                 <div x-show="checks.dni && !checks.face" class="mt-2 p-2 bg-blue-50 rounded border border-blue-100 animate-pulse">
                                     <p class="text-xs text-blue-700 font-bold flex items-center gap-2">
@@ -195,7 +194,6 @@
 
             get videoBorderClass() {
                 if (this.step === 1) return 'border-gray-300';
-                // En paso 2: Verde si detecta cara, Rojo si no
                 return this.checks.face ? 'border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]' : 'border-red-500';
             },
 
@@ -206,9 +204,6 @@
             },
 
             async loadModels() {
-                // ==============================================
-                // CORRECCIÓN 2: Modelos desde CDN oficial
-                // ==============================================
                 const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
                 try {
                     await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
@@ -231,7 +226,6 @@
                     this.checks.camera = true; 
                     this.setupAudio(stream);
 
-                    // Importante: Iniciar detección solo cuando el video fluya
                     video.onplay = () => {
                         this.startDetection();
                     };
@@ -247,15 +241,13 @@
                 const video = this.$refs.videoElement;
                 if (this.detectionInterval) clearInterval(this.detectionInterval);
 
-                // Detectar cada 500ms
                 this.detectionInterval = setInterval(async () => {
                     if (video.paused || video.ended || !this.checks.camera) return;
 
-                    // Usamos TinyFaceDetector (ligero y rápido)
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
                     const detections = await faceapi.detectSingleFace(video, options);
 
-                    this.checks.face = !!detections; // True si hay rostro, False si no
+                    this.checks.face = !!detections;
 
                 }, 500);
             },
@@ -296,10 +288,7 @@
                 const imageData = canvas.toDataURL('image/jpeg', 0.9);
 
                 try {
-                    // ==============================================
-                    // CORRECCIÓN 3: URL Corregida con Attempt ID
-                    // ==============================================
-                    // Esto arregla el error 500 y 404
+                    // URL generada por Django
                     const url = "{% url 'runner:validate_dni' attempt.id %}";
                     const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
@@ -313,7 +302,6 @@
                     });
                     
                     if (!response.ok) {
-                         // Intentamos leer el mensaje de error del JSON si existe, si no, genérico
                          const errData = await response.json().catch(() => ({}));
                          throw new Error(errData.message || `HTTP Error: ${response.status}`);
                     }
@@ -330,7 +318,6 @@
 
                 } catch (error) {
                     console.error('Error:', error);
-                    // Mostrar mensaje real si viene del servidor
                     this.errorMessage = error.message.includes("HTTP Error") 
                         ? "Error de conexión con el servidor." 
                         : error.message; 
