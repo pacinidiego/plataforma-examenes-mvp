@@ -130,7 +130,17 @@
                                           :class="checks.dni ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" 
                                           x-text="checks.dni ? 'VALIDADO' : 'Requerido'"></span>
                                 </div>
-                                <p class="text-xs text-red-500 mt-1" x-show="errorMessage" x-text="errorMessage"></p>
+                                
+                                <p class="text-xs text-red-500 mt-1 font-bold" x-show="errorMessage && !checks.dni" x-text="errorMessage"></p>
+                                
+                                <div x-show="checks.dni && !checks.face" class="mt-2 p-2 bg-blue-50 rounded border border-blue-100 animate-pulse">
+                                    <p class="text-xs text-blue-700 font-bold flex items-center gap-2">
+                                        ✅ DNI Correcto.
+                                    </p>
+                                    <p class="text-xs text-blue-600 mt-1">
+                                        Ahora retira el documento y muestra tu rostro para habilitar el botón.
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -197,7 +207,7 @@
 
             async loadModels() {
                 // ==============================================
-                // CORRECCIÓN 2: Cargamos Modelos desde CDN oficial
+                // CORRECCIÓN 2: Modelos desde CDN oficial
                 // ==============================================
                 const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
                 try {
@@ -287,8 +297,9 @@
 
                 try {
                     // ==============================================
-                    // CORRECCIÓN 3: URL generada por Django
+                    // CORRECCIÓN 3: URL Corregida con Attempt ID
                     // ==============================================
+                    // Esto arregla el error 500 y 404
                     const url = "{% url 'runner:validate_dni' attempt.id %}";
                     const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
@@ -301,7 +312,11 @@
                         body: JSON.stringify({ image: imageData })
                     });
                     
-                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                    if (!response.ok) {
+                         // Intentamos leer el mensaje de error del JSON si existe, si no, genérico
+                         const errData = await response.json().catch(() => ({}));
+                         throw new Error(errData.message || `HTTP Error: ${response.status}`);
+                    }
 
                     const result = await response.json();
                     
@@ -315,7 +330,10 @@
 
                 } catch (error) {
                     console.error('Error:', error);
-                    this.errorMessage = "Error de conexión. Intente nuevamente.";
+                    // Mostrar mensaje real si viene del servidor
+                    this.errorMessage = error.message.includes("HTTP Error") 
+                        ? "Error de conexión con el servidor." 
+                        : error.message; 
                 } finally {
                     this.isScanning = false;
                 }
