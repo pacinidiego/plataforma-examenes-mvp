@@ -85,32 +85,34 @@ def tech_check_view(request, access_code, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/tech_check.html', {'exam': exam, 'attempt': attempt})
 
-# 3. BIOMETRIC GATE
+# 3. BIOMETRIC GATE (OBSOLETA - Nos la saltaremos desde el HTML, pero la dejamos por si acaso)
 def biometric_gate_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
-    if attempt.completed_at:
-        return redirect('runner:exam_finished', attempt_id=attempt.id)
-    return render(request, 'runner/biometric_gate.html', {'exam': exam, 'attempt': attempt})
+    # Redirección directa al examen si alguien cae aquí por error
+    return redirect('runner:exam_runner', access_code=access_code, attempt_id=attempt.id)
 
-# 4. REGISTRO BIOMÉTRICO
+# 4. REGISTRO BIOMÉTRICO (Usado ahora por Tech Check para guardar la cara)
 @require_POST
 def register_biometrics(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
+        
+        # Guardamos la cara de referencia
         if 'reference_face' in data:
             attempt.reference_face_url = data['reference_face']
+            
+        # El DNI se guarda en validate_dni, pero por si acaso llega aquí:
         if 'dni_image' in data:
             attempt.photo_id_url = data['dni_image']
-        elif 'photo_id' in data:
-            attempt.photo_id_url = data['photo_id']
+            
         attempt.save()
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI
+# 5. VALIDACIÓN DNI (Con Auto-Descubrimiento)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     try:
@@ -132,9 +134,9 @@ def validate_dni_ocr(request, attempt_id):
         except:
             return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
 
-        print(f"📡 Validando DNI (Auto-Mode) para legajo: {attempt.student_legajo}")
+        print(f"📡 Validando DNI para legajo: {attempt.student_legajo}")
 
-        # Auto-descubrimiento
+        # Auto-Descubrimiento de Modelo
         model_to_use = None
         try:
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GOOGLE_API_KEY}"
@@ -152,8 +154,9 @@ def validate_dni_ocr(request, attempt_id):
         except: pass
 
         if not model_to_use: model_to_use = "gemini-1.5-flash"
+        print(f"🚀 Usando modelo: {model_to_use}")
 
-        # API Call
+        # Llamada API
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_to_use}:generateContent?key={GOOGLE_API_KEY}"
         payload = {
             "contents": [{
@@ -169,17 +172,16 @@ def validate_dni_ocr(request, attempt_id):
         if response.status_code != 200:
             return JsonResponse({'success': False, 'message': f'Error de IA ({response.status_code})'})
 
-        # Parse
+        # Procesar
         json_res = response.json()
         candidates = json_res.get('candidates', [])
         if not candidates:
-             return JsonResponse({'success': False, 'message': 'La IA bloqueó la imagen. Intente otra foto.'})
+             return JsonResponse({'success': False, 'message': 'La IA bloqueó la imagen.'})
 
         raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
         clean_text = raw_text.replace('```json', '').replace('```', '').strip()
-        
         try: ai_data = json.loads(clean_text)
-        except: return JsonResponse({'success': False, 'message': 'Error leyendo respuesta de IA.'})
+        except: return JsonResponse({'success': False, 'message': 'Error leyendo respuesta.'})
 
         if not ai_data.get('es_documento'):
              return JsonResponse({'success': False, 'message': 'No es un documento válido.'})
@@ -198,11 +200,7 @@ def validate_dni_ocr(request, attempt_id):
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'}, status=200)
 
-# ==========================================
-# 6. LÓGICA DEL EXAMEN (CORREGIDA)
-# ==========================================
-
-# A. VISTA PRINCIPAL (No inicia el timer automáticamente)
+# 6. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -210,25 +208,23 @@ def exam_runner_view(request, access_code, attempt_id):
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-    # CORRECCIÓN: NO iniciamos el timer aquí. Esperamos al "Pantalla Completa".
+    # NO INICIAMOS EL TIMER AQUÍ. Esperamos al Fullscreen.
+    
     total_duration = exam.get_total_duration_seconds()
     
     if attempt.start_time:
-        # Si ya había empezado, calculamos cuánto le queda
         elapsed = (timezone.now() - attempt.start_time).total_seconds()
         remaining = max(0, total_duration - elapsed)
         
-        # Válvula de seguridad: Si se le acabó el tiempo pero no respondió nada (error de prueba)
+        # Válvula de seguridad (Nota 0 fix)
         saved_answers = attempt.answers or {}
         if remaining <= 0 and not saved_answers:
-             remaining = total_duration # Le damos otra oportunidad visualmente, aunque el start_time se reseteará en el save_answer o start_timer
-             attempt.start_time = None # Reseteamos para que inicie limpio
+             attempt.start_time = None 
              attempt.save()
+             remaining = total_duration
     else:
-        # Si no ha empezado, tiene todo el tiempo
         remaining = total_duration
 
-    # Si realmente se acabó el tiempo y sí hay respuestas, bye.
     if remaining <= 0 and attempt.start_time:
         return redirect('runner:submit_exam', attempt_id=attempt.id)
 
@@ -248,21 +244,17 @@ def exam_runner_view(request, access_code, attempt_id):
         'remaining_seconds': int(remaining),
         'time_per_item': exam.time_per_item,
         'initial_step': initial_step,
-        'has_started': attempt.start_time is not None # Flag para el frontend
+        'has_started': attempt.start_time is not None
     })
 
-# B. NUEVA API: INICIAR TIMER (Llamada al poner Fullscreen) 🕒
+# API: INICIAR TIMER (Fullscreen Trigger)
 @require_POST
 def start_exam_timer(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
-        
-        # Solo iniciamos si no estaba iniciado
         if not attempt.start_time:
             attempt.start_time = timezone.now()
             attempt.save(update_fields=['start_time'])
-            print(f"⏱️ Timer iniciado para {attempt.student_legajo} a las {attempt.start_time}")
-            
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -273,7 +265,6 @@ def save_answer(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         
-        # Seguridad: Si manda respuesta y no tenía start_time, lo iniciamos ya.
         if not attempt.start_time:
             attempt.start_time = timezone.now()
             attempt.save(update_fields=['start_time'])
@@ -316,12 +307,19 @@ def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/finished.html', {'attempt': attempt})
 
-# 10. LOGS (Con los filtros de gracia)
+# 10. LOGS - CORREGIDO (SOLO SI EL EXAMEN INICIÓ) 🛡️
 @require_POST
 def log_event(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
-        if attempt.completed_at: return JsonResponse({'status': 'ignored'}, status=200)
+        
+        # 1. REGLA DE ORO: Si el timer no arrancó, NO LOGUEAMOS NADA.
+        if not attempt.start_time:
+             return JsonResponse({'status': 'ignored_not_started'}, status=200)
+
+        # 2. Si ya terminó, ignoramos
+        if attempt.completed_at:
+            return JsonResponse({'status': 'ignored_completed'}, status=200)
 
         data = json.loads(request.body)
         event_type = data.get('event_type')
@@ -329,24 +327,23 @@ def log_event(request, attempt_id):
         
         valid_types = [t[0] for t in AttemptEvent.EVENT_TYPES]
         if event_type not in valid_types:
-            return JsonResponse({'status': 'ignored'}, status=200)
+            return JsonResponse({'status': 'ignored_invalid'}, status=200)
 
-        # Filtro de gracia 15s
-        if attempt.start_time:
-            if (timezone.now() - attempt.start_time).total_seconds() < 15:
-                return JsonResponse({'status': 'ignored_grace'}, status=200)
+        # 3. Periodo de gracia inicial (15s)
+        if (timezone.now() - attempt.start_time).total_seconds() < 15:
+            return JsonResponse({'status': 'ignored_grace'}, status=200)
 
         AttemptEvent.objects.create(attempt=attempt, event_type=event_type, metadata=metadata)
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 11-15. GESTIÓN DOCENTE (Sin cambios)
+# 11-15. GESTIÓN DOCENTE (Sin Cambios)
 @login_required
 @user_passes_test(is_staff)
 def teacher_dashboard_view(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id)
-    attempts = Attempt.objects.filter(exam=exam).order_by('-start_time')
+    attempts = Attempt.objects.filter(exam=exam).order_by('-start_time').prefetch_related('events')
     results = []
     for attempt in attempts:
         events = attempt.events.all()
@@ -389,20 +386,17 @@ def portal_docente_view(request):
 @user_passes_test(es_docente_o_admin)
 def descargar_pdf_examen(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id)
-    try:
-        cantidad_temas = int(request.GET.get('cantidad', 1))
+    try: cantidad_temas = int(request.GET.get('cantidad', 1))
     except: cantidad_temas = 1
-    
     cantidad_temas = max(1, min(cantidad_temas, 10))
     pool_faciles = list(exam.items.filter(difficulty=1))
     pool_medias = list(exam.items.filter(difficulty=2))
     pool_dificiles = list(exam.items.filter(difficulty=3))
-    
     examenes_generados = []
     for i in range(cantidad_temas):
         tema_label = chr(65 + i)
         seleccion = []
-        seleccion += random.sample(pool_faciles, min(len(pool_faciles), len(pool_faciles))) # Simplificado para el ejemplo
+        seleccion += random.sample(pool_faciles, min(len(pool_faciles), len(pool_faciles)))
         seleccion += random.sample(pool_medias, min(len(pool_medias), len(pool_medias)))
         seleccion += random.sample(pool_dificiles, min(len(pool_dificiles), len(pool_dificiles)))
         random.shuffle(seleccion) 
@@ -418,7 +412,6 @@ def descargar_pdf_examen(request, exam_id):
             claves_tema.append(f"{idx}-{letra_correcta}")
             preguntas_data.append({'id': item.id, 'texto': item.stem, 'opciones': opciones})
         examenes_generados.append({'tema': tema_label, 'preguntas': preguntas_data, 'claves': claves_tema})
-
     html_string = render_to_string('classroom_exams/pdf_variantes.html', {
         'config': {'nombre': exam.title, 'materia': 'Examen Generado'},
         'examenes_generados': examenes_generados,
