@@ -376,3 +376,59 @@ def descargar_pdf_examen(request, exam_id):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
     return response
+
+    # runner/views.py
+
+import json
+import base64
+import re
+import pytesseract
+from io import BytesIO
+from PIL import Image
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+
+# NOTA: Asegúrate de que request.user.username sea el DNI.
+# Si guardas el DNI en otro campo (ej: request.user.profile.dni), ajusta la variable 'expected_dni'.
+
+@login_required
+@require_POST
+def validate_dni_ocr(request):
+    try:
+        data = json.loads(request.body)
+        image_data = data.get('image')
+
+        if not image_data:
+            return JsonResponse({'success': False, 'message': 'No se recibió imagen.'})
+
+        # 1. Decodificar la imagen Base64
+        format, imgstr = image_data.split(';base64,')
+        image_bytes = base64.b64decode(imgstr)
+        image = Image.open(BytesIO(image_bytes))
+
+        # 2. Procesar OCR (Lectura de texto)
+        # config='--psm 6' asume un bloque de texto uniforme, ayuda con DNI
+        text_detected = pytesseract.image_to_string(image, config='--psm 6')
+
+        # 3. Limpieza de texto (solo dejamos números)
+        # Esto elimina ruido como "DNI", "N°", puntos, etc.
+        numbers_found = re.sub(r'[^0-9]', '', text_detected)
+        
+        # 4. Validación
+        # Asumimos que el username es el DNI. Ajústalo si es necesario.
+        expected_dni = request.user.username 
+
+        print(f"DEBUG OCR - Esperado: {expected_dni} | Encontrado raw: {numbers_found}")
+
+        if expected_dni in numbers_found:
+            return JsonResponse({'success': True, 'message': 'Identidad verificada correctamente.'})
+        else:
+            return JsonResponse({
+                'success': False, 
+                'message': f'No pudimos leer tu DNI ({expected_dni}) en la imagen. Intenta acercarlo más y evitar brillos.'
+            })
+
+    except Exception as e:
+        print(f"Error OCR: {e}")
+        return JsonResponse({'success': False, 'message': 'Error interno al procesar la imagen.'}, status=500)
