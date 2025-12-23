@@ -1,31 +1,10 @@
-<!DOCTYPE html>
-<html lang="es" class="h-full">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verificación Técnica</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <style>
-        [x-cloak] { display: none !important; }
-        .bg-exam { background-color: #f3f4f6; }
-        .bar-transition { transition: all 0.2s ease; }
-        /* Animación de escaneo para el DNI */
-        .scan-overlay {
-            background: linear-gradient(to bottom, transparent, rgba(79, 70, 229, 0.2), transparent);
-            position: absolute;
-            width: 100%;
-            height: 20%;
-            animation: scanning 2s linear infinite;
-            border-bottom: 2px solid #4f46e5;
-        }
-        @keyframes scanning {
-            0% { top: -20%; }
-            100% { top: 100%; }
-        }
-    </style>
-</head>
-<body class="h-full flex items-center justify-center bg-exam p-4" x-data="techCheck()">
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+
+<div class="h-full flex items-center justify-center bg-gray-100 p-4" x-data="techCheck()">
 
     <div class="w-full max-w-6xl bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[95vh] border border-gray-200">
         
@@ -37,8 +16,11 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-xl text-gray-800">Verificación de Ingreso</h1>
-                    <p class="text-sm text-gray-500" x-text="step === 1 ? 'Paso 1: Hardware' : 'Paso 2: Identidad (DNI)'"></p>
+                    <p class="text-sm text-gray-500" x-text="step === 1 ? 'Paso 1: Hardware' : 'Paso 2: Biometría e Identidad'"></p>
                 </div>
+            </div>
+            <div x-show="isLoadingModels" class="text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full animate-pulse">
+                🧠 Cargando IA...
             </div>
         </header>
 
@@ -46,11 +28,19 @@
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full items-start">
                 
                 <div class="lg:col-span-7 flex flex-col gap-5">
-                    <div class="relative bg-gray-900 rounded-2xl overflow-hidden aspect-video shadow-sm border border-gray-300 group">
-                        <video id="videoInput" x-ref="video" autoplay playsinline muted 
+                    
+                    <div class="relative bg-gray-900 rounded-2xl overflow-hidden aspect-video shadow-sm border-4 transition-all duration-300 group"
+                         :class="videoBorderClass">
+                        
+                        <video id="videoInput" x-ref="videoElement" autoplay playsinline muted 
                                class="w-full h-full object-cover transform transition-transform duration-500"
                                :class="step === 1 ? 'scale-x-[-1]' : 'scale-x-100'"></video>
                         
+                        <div x-show="step === 2 && !isScanning" class="absolute top-2 left-2 px-2 py-1 rounded text-xs font-bold text-white transition-colors z-10"
+                             :class="checks.face ? 'bg-green-600' : 'bg-red-600'">
+                             <span x-text="checks.face ? 'ROSTRO DETECTADO ✅' : 'NO SE DETECTA ROSTRO ❌'"></span>
+                        </div>
+
                         <canvas x-ref="canvas" class="hidden"></canvas>
 
                         <div x-show="step === 2" x-transition class="absolute inset-0 pointer-events-none flex items-center justify-center">
@@ -73,57 +63,74 @@
                             </div>
                             <div class="flex gap-0.5 h-3">
                                 <template x-for="i in 20">
-                                    <div class="flex-1 rounded-sm bar-transition"
+                                    <div class="flex-1 rounded-sm transition-all duration-75"
                                          :class="(audioLevel / 5) > i ? 'bg-green-500' : 'bg-gray-200'"></div>
                                 </template>
                             </div>
                         </div>
                     </div>
 
-                    <div x-show="step === 2" class="flex justify-center">
+                    <div x-show="step === 2" class="flex justify-center flex-col items-center gap-2">
                         <button @click="scanDNI()" 
                                 :disabled="isScanning || checks.dni"
                                 class="px-6 py-3 rounded-lg font-bold text-white shadow-lg transition-all flex items-center gap-2"
                                 :class="checks.dni ? 'bg-green-600 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-1'">
                             
                             <span x-show="!isScanning && !checks.dni">📸 Capturar DNI</span>
-                            <span x-show="isScanning">Analizando...</span>
+                            <span x-show="isScanning">Validando con IA...</span>
                             <span x-show="checks.dni">Identidad Confirmada</span>
                         </button>
+                        <p class="text-xs text-gray-500" x-show="!checks.dni">Asegúrate de que haya buena luz y el texto sea legible.</p>
                     </div>
                 </div>
 
                 <div class="lg:col-span-5 flex flex-col h-full justify-center py-4 bg-gray-50/50 rounded-2xl px-6 border border-gray-100">
                     <h3 class="text-base font-bold text-gray-800 mb-6 uppercase tracking-wider">Estado del Proceso</h3>
+                    
                     <div class="space-y-3 flex-1">
                         <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
                              :class="checks.audio ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
-                             <div class="flex-1">
-                                <h4 class="font-bold text-gray-900 flex items-center justify-between">Micrófono <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.audio ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.audio ? 'OK' : 'Pendiente'"></span></h4>
-                            </div>
-                        </div>
-                        <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
-                             :class="checks.network ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
-                             <div class="flex-1">
-                                <h4 class="font-bold text-gray-900 flex items-center justify-between">Conexión <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.network ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.network ? 'OK' : '...'"></span></h4>
-                            </div>
-                        </div>
-                         <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
-                             :class="checks.camera ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
-                             <div class="flex-1">
-                                <h4 class="font-bold text-gray-900 flex items-center justify-between">Cámara <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.camera ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.camera ? 'OK' : 'Pendiente'"></span></h4>
+                             <div class="flex-1 flex justify-between items-center">
+                                <h4 class="font-bold text-gray-900">Micrófono</h4>
+                                <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.audio ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.audio ? 'OK' : 'Pendiente'"></span>
                             </div>
                         </div>
                         
                         <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
+                             :class="checks.network ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
+                             <div class="flex-1 flex justify-between items-center">
+                                <h4 class="font-bold text-gray-900">Conexión</h4>
+                                <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.network ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.network ? 'OK' : '...'"></span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
+                             :class="checks.camera ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
+                             <div class="flex-1 flex justify-between items-center">
+                                <h4 class="font-bold text-gray-900">Cámara</h4>
+                                <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.camera ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.camera ? 'OK' : 'Pendiente'"></span>
+                            </div>
+                        </div>
+                        
+                        <div x-show="step === 2" class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
+                             :class="checks.face ? 'border-green-500 shadow-green-50' : 'border-red-300 bg-red-50 animate-pulse'">
+                             <div class="flex-1 flex justify-between items-center">
+                                <h4 class="font-bold text-gray-900">Presencia (Rostro)</h4>
+                                <span class="text-xs font-medium px-2 py-0.5 rounded-full" 
+                                      :class="checks.face ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'" 
+                                      x-text="checks.face ? 'DETECTADO' : 'NO DETECTADO'"></span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
                              :class="checks.dni ? 'border-green-500 shadow-green-50' : (step === 2 ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-100 opacity-60')">
                              <div class="flex-1">
-                                <h4 class="font-bold text-gray-900 flex items-center justify-between">
-                                    Identidad 
+                                <div class="flex justify-between items-center">
+                                    <h4 class="font-bold text-gray-900">Identidad (DNI)</h4>
                                     <span class="text-xs font-medium px-2 py-0.5 rounded-full" 
                                           :class="checks.dni ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" 
                                           x-text="checks.dni ? 'VALIDADO' : 'Requerido'"></span>
-                                </h4>
+                                </div>
                                 <p class="text-xs text-red-500 mt-1" x-show="errorMessage" x-text="errorMessage"></p>
                             </div>
                         </div>
@@ -139,126 +146,204 @@
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
                         </button>
 
-                        <a href="{% url 'runner:biometric_gate' exam.access_code attempt.id %}"
+                        <a href="{% url 'runner:biometric_gate' access_code=exam.access_code attempt_id=attempt.id %}"
                            x-show="step === 2"
                            class="block w-full py-4 rounded-xl font-bold text-lg text-center transition-all shadow-sm flex items-center justify-center gap-3 relative overflow-hidden group"
-                           :class="checks.dni ? 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md cursor-pointer' : 'bg-gray-200 text-gray-400 cursor-not-allowed pointer-events-none'">
-                            <span>INGRESAR AL EXAMEN</span>
-                            <svg x-show="checks.dni" class="w-6 h-6 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                           :class="(checks.dni && checks.face) ? 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed pointer-events-none'">
+                            
+                            <span x-text="(checks.dni && checks.face) ? 'INGRESAR AL EXAMEN' : 'COMPLETE REQUISITOS'"></span>
+                            
+                            <svg x-show="checks.dni && checks.face" class="w-6 h-6 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
                         </a>
                         
-                        <p class="text-center text-xs text-gray-400 mt-2" x-show="!checks.dni && step === 2">
-                            Debes validar tu DNI para habilitar el ingreso.
+                        <p class="text-center text-xs text-gray-400 mt-2" x-show="step === 2 && (!checks.dni || !checks.face)">
+                            <span x-show="!checks.dni">Valida tu DNI. </span>
+                            <span x-show="!checks.face" class="text-red-500 font-bold">Enfoca tu rostro.</span>
                         </p>
                     </div>
                 </div>
             </div>
         </main>
     </div>
+</div>
 
-    <script>
-        function techCheck() {
-            return {
-                step: 1,
-                checks: { camera: false, audio: false, network: true, dni: false },
-                audioLevel: 0,
-                isScanning: false,
-                errorMessage: '',
-                
-                get allHardwarePassed() {
-                    return this.checks.camera && this.checks.audio && this.checks.network;
-                },
+<script src="{% static 'runner/face-api.min.js' %}"></script>
 
-                init() {
-                    this.startCamera();
-                },
+<script>
+    function techCheck() {
+        return {
+            step: 1,
+            // Agregamos 'face' a los chequeos
+            checks: { camera: false, audio: false, network: true, dni: false, face: false },
+            audioLevel: 0,
+            isScanning: false,
+            isLoadingModels: true,
+            errorMessage: '',
+            detectionInterval: null,
+            
+            get allHardwarePassed() {
+                // Para pasar al paso 2 solo necesitamos hardware
+                return this.checks.camera && this.checks.audio && this.checks.network;
+            },
 
-                async startCamera() {
-                    const video = document.getElementById('videoInput');
-                    try {
-                        // Solicitamos mejor resolución para que el OCR funcione
-                        const stream = await navigator.mediaDevices.getUserMedia({ 
-                            audio: true, 
-                            video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
-                        });
-                        video.srcObject = stream;
-                        this.checks.camera = true; 
-                        this.setupAudio(stream);
-                    } catch (err) {
-                        console.error("Error cámara:", err);
-                        this.checks.camera = false;
-                        alert("Error: No se pudo acceder a la cámara. Revisa permisos.");
-                    }
-                },
+            get videoBorderClass() {
+                if (this.step === 1) return 'border-gray-300';
+                // En paso 2: Verde si detecta cara, Rojo si no
+                return this.checks.face ? 'border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]' : 'border-red-500';
+            },
 
-                setupAudio(stream) {
-                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const analyser = audioContext.createAnalyser();
-                    const microphone = audioContext.createMediaStreamSource(stream);
-                    const scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
-                    analyser.smoothingTimeConstant = 0.8;
-                    analyser.fftSize = 1024;
-                    microphone.connect(analyser);
-                    analyser.connect(scriptProcessor);
-                    scriptProcessor.connect(audioContext.destination);
-                    scriptProcessor.onaudioprocess = () => {
-                        const array = new Uint8Array(analyser.frequencyBinCount);
-                        analyser.getByteFrequencyData(array);
-                        let values = 0;
-                        for (let i = 0; i < array.length; i++) values += array[i];
-                        const average = values / array.length;
-                        this.audioLevel = Math.min(100, Math.round(average * 2));
-                        if (average > 10) this.checks.audio = true;
+            async init() {
+                console.log("Iniciando Tech Check...");
+                await this.loadModels();
+                await this.startCamera();
+            },
+
+            async loadModels() {
+                const MODEL_URL = '/static/runner/models';
+                try {
+                    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                    this.isLoadingModels = false;
+                    console.log("Modelos cargados");
+                } catch (error) {
+                    console.error("Error cargando modelos:", error);
+                    alert("No se pudieron cargar los modelos de IA. Verifique /static/runner/models");
+                }
+            },
+
+            async startCamera() {
+                const video = this.$refs.videoElement; // Usamos x-ref para seguridad
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: true, 
+                        video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
+                    });
+                    video.srcObject = stream;
+                    this.checks.camera = true; 
+                    this.setupAudio(stream);
+
+                    // Cuando el video inicie, arrancamos la detección facial
+                    video.onplay = () => {
+                        this.startDetection();
                     };
-                },
 
-                async scanDNI() {
-                    if (this.isScanning) return;
-                    this.isScanning = true;
-                    this.errorMessage = '';
+                } catch (err) {
+                    console.error("Error cámara:", err);
+                    this.checks.camera = false;
+                    alert("Error: No se pudo acceder a la cámara.");
+                }
+            },
 
-                    const video = this.$refs.video;
-                    const canvas = this.$refs.canvas;
-                    const context = canvas.getContext('2d');
+            startDetection() {
+                const video = this.$refs.videoElement;
+                if (this.detectionInterval) clearInterval(this.detectionInterval);
 
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
+                // Loop de detección cada 500ms
+                this.detectionInterval = setInterval(async () => {
+                    // Solo detectamos si el video está corriendo y estamos en la pestaña (ahorrar CPU)
+                    if (video.paused || video.ended || !this.checks.camera) return;
+
+                    // Opciones optimizadas para rendimiento
+                    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+                    const detections = await faceapi.detectSingleFace(video, options);
+
+                    // Actualizamos estado (esto reactivamente bloquea/desbloquea el botón)
+                    this.checks.face = !!detections;
+
+                }, 500);
+            },
+
+            setupAudio(stream) {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = audioContext.createAnalyser();
+                const microphone = audioContext.createMediaStreamSource(stream);
+                const scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+                analyser.smoothingTimeConstant = 0.8;
+                analyser.fftSize = 1024;
+                microphone.connect(analyser);
+                analyser.connect(scriptProcessor);
+                scriptProcessor.connect(audioContext.destination);
+                scriptProcessor.onaudioprocess = () => {
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    let values = 0;
+                    for (let i = 0; i < array.length; i++) values += array[i];
+                    const average = values / array.length;
+                    this.audioLevel = Math.min(100, Math.round(average * 2));
+                    if (average > 10) this.checks.audio = true;
+                };
+            },
+
+            async scanDNI() {
+                if (this.isScanning) return;
+                this.isScanning = true;
+                this.errorMessage = '';
+
+                const video = this.$refs.videoElement;
+                const canvas = this.$refs.canvas;
+                const context = canvas.getContext('2d');
+
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/jpeg', 0.9);
+
+                try {
+                    // SOLUCIÓN AL ERROR DE CONEXIÓN: Usamos la URL generada por Django
+                    const url = "{% url 'runner:validate_dni' %}";
+                    const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrf
+                        },
+                        body: JSON.stringify({ image: imageData })
+                    });
                     
-                    // Dibujamos el video en el canvas
-                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+
+                    const result = await response.json();
                     
-                    // Convertimos a base64
-                    const imageData = canvas.toDataURL('image/jpeg', 0.9);
-
-                    try {
-                        const response = await fetch('/runner/api/validate-dni/', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': '{{ csrf_token }}' // Django inyecta esto
-                            },
-                            body: JSON.stringify({ image: imageData })
-                        });
-                        
-                        const result = await response.json();
-                        
-                        if (result.success) {
-                            this.checks.dni = true;
-                            this.errorMessage = '';
-                        } else {
-                            this.checks.dni = false;
-                            this.errorMessage = result.message;
-                        }
-
-                    } catch (error) {
-                        console.error('Error:', error);
-                        this.errorMessage = "Error de conexión con el servidor.";
-                    } finally {
-                        this.isScanning = false;
+                    if (result.success) {
+                        this.checks.dni = true;
+                        this.errorMessage = '';
+                    } else {
+                        this.checks.dni = false;
+                        this.errorMessage = result.message;
                     }
+
+                } catch (error) {
+                    console.error('Error:', error);
+                    this.errorMessage = "Error de conexión. Intente nuevamente.";
+                } finally {
+                    this.isScanning = false;
                 }
             }
         }
-    </script>
-</body>
-</html>
+    }
+</script>
+
+<style>
+    [x-cloak] { display: none !important; }
+    .scan-overlay {
+        background: linear-gradient(to bottom, transparent, rgba(79, 70, 229, 0.4), transparent);
+        position: absolute;
+        width: 100%;
+        height: 20%;
+        animation: scanning 2s linear infinite;
+        border-bottom: 2px solid #4f46e5;
+    }
+    @keyframes scanning {
+        0% { top: -20%; }
+        100% { top: 120%; }
+    }
+    .animate-bounce-x {
+        animation: bounce-x 1s infinite;
+    }
+    @keyframes bounce-x {
+        0%, 100% { transform: translateX(0); }
+        50% { transform: translateX(25%); }
+    }
+</style>
+{% endblock %}
