@@ -154,15 +154,16 @@
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
                         </button>
 
-                        <a href="{% url 'runner:biometric_gate' access_code=exam.access_code attempt_id=attempt.id %}"
+                        <button @click="enterExam()"
                            x-show="step === 2"
+                           :disabled="!checks.dni || !checks.face"
                            class="block w-full py-4 rounded-xl font-bold text-lg text-center transition-all shadow-sm flex items-center justify-center gap-3 relative overflow-hidden group"
-                           :class="(checks.dni && checks.face) ? 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed pointer-events-none'">
+                           :class="(checks.dni && checks.face) ? 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed'">
                             
                             <span x-text="(checks.dni && checks.face) ? 'INGRESAR AL EXAMEN' : 'COMPLETE REQUISITOS'"></span>
                             
                             <svg x-show="checks.dni && checks.face" class="w-6 h-6 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
-                        </a>
+                        </button>
                         
                         <p class="text-center text-xs text-gray-400 mt-2" x-show="step === 2 && (!checks.dni || !checks.face)">
                             <span x-show="!checks.dni">Valida tu DNI. </span>
@@ -184,6 +185,7 @@
             checks: { camera: false, audio: false, network: true, dni: false, face: false },
             audioLevel: 0,
             isScanning: false,
+            isEntering: false,
             isLoadingModels: true,
             errorMessage: '',
             detectionInterval: null,
@@ -198,7 +200,6 @@
             },
 
             async init() {
-                console.log("Iniciando Tech Check...");
                 await this.loadModels();
                 await this.startCamera();
             },
@@ -208,10 +209,8 @@
                 try {
                     await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                     this.isLoadingModels = false;
-                    console.log("Modelos cargados");
                 } catch (error) {
-                    console.error("Error cargando modelos:", error);
-                    alert("No se pudieron cargar los modelos de IA. Revisa tu conexión a internet.");
+                    alert("No se pudieron cargar los modelos de IA.");
                 }
             },
 
@@ -225,13 +224,8 @@
                     video.srcObject = stream;
                     this.checks.camera = true; 
                     this.setupAudio(stream);
-
-                    video.onplay = () => {
-                        this.startDetection();
-                    };
-
+                    video.onplay = () => { this.startDetection(); };
                 } catch (err) {
-                    console.error("Error cámara:", err);
                     this.checks.camera = false;
                     alert("Error: No se pudo acceder a la cámara.");
                 }
@@ -240,15 +234,11 @@
             startDetection() {
                 const video = this.$refs.videoElement;
                 if (this.detectionInterval) clearInterval(this.detectionInterval);
-
                 this.detectionInterval = setInterval(async () => {
                     if (video.paused || video.ended || !this.checks.camera) return;
-
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
                     const detections = await faceapi.detectSingleFace(video, options);
-
                     this.checks.face = !!detections;
-
                 }, 500);
             },
 
@@ -277,37 +267,23 @@
                 if (this.isScanning) return;
                 this.isScanning = true;
                 this.errorMessage = '';
-
                 const video = this.$refs.videoElement;
                 const canvas = this.$refs.canvas;
                 const context = canvas.getContext('2d');
-
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 context.drawImage(video, 0, 0, canvas.width, canvas.height);
                 const imageData = canvas.toDataURL('image/jpeg', 0.9);
 
                 try {
-                    // URL generada por Django
                     const url = "{% url 'runner:validate_dni' attempt.id %}";
                     const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
-
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrf
-                        },
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
                         body: JSON.stringify({ image: imageData })
                     });
-                    
-                    if (!response.ok) {
-                         const errData = await response.json().catch(() => ({}));
-                         throw new Error(errData.message || `HTTP Error: ${response.status}`);
-                    }
-
                     const result = await response.json();
-                    
                     if (result.success) {
                         this.checks.dni = true;
                         this.errorMessage = '';
@@ -315,14 +291,44 @@
                         this.checks.dni = false;
                         this.errorMessage = result.message;
                     }
-
                 } catch (error) {
-                    console.error('Error:', error);
-                    this.errorMessage = error.message.includes("HTTP Error") 
-                        ? "Error de conexión con el servidor." 
-                        : error.message; 
+                    this.errorMessage = "Error de conexión.";
                 } finally {
                     this.isScanning = false;
+                }
+            },
+
+            async enterExam() {
+                if (this.isEntering) return;
+                this.isEntering = true;
+                
+                // 1. Capturar foto actual para referencia
+                const video = this.$refs.videoElement;
+                const canvas = this.$refs.canvas;
+                const context = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const faceImage = canvas.toDataURL('image/jpeg', 0.9);
+                
+                try {
+                    // 2. Enviar al servidor como 'reference_face'
+                    const url = "{% url 'runner:register_biometrics' attempt.id %}";
+                    const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                    
+                    await fetch(url, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                        body: JSON.stringify({ reference_face: faceImage })
+                    });
+                    
+                    // 3. Redirigir DIRECTO al examen (Saltando Gate)
+                    window.location.href = "{% url 'runner:exam_runner' access_code=exam.access_code attempt_id=attempt.id %}";
+                    
+                } catch (e) {
+                    console.error("Error al ingresar:", e);
+                    alert("Hubo un error al ingresar. Intenta nuevamente.");
+                    this.isEntering = false;
                 }
             }
         }
