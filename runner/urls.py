@@ -8,7 +8,7 @@ urlpatterns = [
     # 1. RUTAS FIJAS (Deben ir PRIMERO para evitar errores)
     # ======================================================
     
-   path('api/validate-dni/', views.validate_dni_ocr, name='validate_dni'),
+   path('api/validate-dni/<uuid:attempt_id>/', views.validate_dni_ocr, name='validate_dni'),
     
     # Portal del Docente
     path('portal/', views.portal_docente_view, name='portal_docente'),
