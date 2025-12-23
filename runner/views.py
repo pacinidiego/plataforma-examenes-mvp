@@ -4,7 +4,7 @@ import base64
 import re
 import os
 import traceback
-import requests  # Para conexión directa a Google
+import requests
 from io import BytesIO
 from PIL import Image
 
@@ -15,7 +15,6 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.template.loader import render_to_string
-from django.core.files.base import ContentFile # <--- CRÍTICO: Para guardar la foto del DNI
 
 # Librerías Externas
 from weasyprint import HTML
@@ -28,7 +27,6 @@ from .models import Attempt, AttemptEvent
 # --- CONFIGURACIÓN GEMINI ---
 GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
-# Configuración legacy por si usas la librería en otras partes
 if GOOGLE_API_KEY:
     try:
         genai.configure(api_key=GOOGLE_API_KEY)
@@ -43,7 +41,7 @@ def es_docente_o_admin(user):
     return user.is_staff or user.groups.filter(name='Docente').exists()
 
 # ==========================================
-# SECCIÓN ALUMNO (LOBBY & EXAMEN)
+# SECCIÓN ALUMNO
 # ==========================================
 
 # 1. LOBBY
@@ -116,7 +114,7 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 # ---------------------------------------------------------
-# 5. VALIDACIÓN DNI - AUTO-DESCUBRIMIENTO + GUARDADO 📸
+# 5. VALIDACIÓN DNI - (Auto-Descubrimiento + Fix Guardado)
 # ---------------------------------------------------------
 @require_POST
 def validate_dni_ocr(request, attempt_id):
@@ -126,7 +124,6 @@ def validate_dni_ocr(request, attempt_id):
         if not GOOGLE_API_KEY:
             return JsonResponse({'success': False, 'message': 'Falta API Key.'})
 
-        # 1. Obtener imagen Base64
         try:
             data = json.loads(request.body)
             image_data = data.get('image', '')
@@ -142,9 +139,8 @@ def validate_dni_ocr(request, attempt_id):
 
         print(f"📡 Validando DNI (Auto-Mode) para legajo: {attempt.student_legajo}")
 
-        # 2. AUTO-DESCUBRIMIENTO: Preguntamos a Google qué modelos tiene disponibles
+        # --- AUTO-DESCUBRIMIENTO ---
         model_to_use = None
-        
         try:
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GOOGLE_API_KEY}"
             list_res = requests.get(list_url, timeout=5)
@@ -152,10 +148,9 @@ def validate_dni_ocr(request, attempt_id):
             if list_res.status_code == 200:
                 models_data = list_res.json().get('models', [])
                 valid_names = [m['name'] for m in models_data if 'generateContent' in m.get('supportedGenerationMethods', [])]
-                print(f"ℹ️ Modelos habilitados: {valid_names}")
                 
-                # Buscamos el mejor candidato: flash > vision > pro
-                for pref in ['flash', 'vision', 'pro']:
+                # Preferencia: Flash 2.0/2.5 > Flash 1.5 > Pro
+                for pref in ['2.5-flash', '2.0-flash', '1.5-flash', 'vision', 'pro']:
                     matches = [name for name in valid_names if pref in name]
                     if matches:
                         model_to_use = matches[0].replace('models/', '')
@@ -163,19 +158,15 @@ def validate_dni_ocr(request, attempt_id):
                 
                 if not model_to_use and valid_names:
                     model_to_use = valid_names[0].replace('models/', '')
-            else:
-                print(f"⚠️ No se pudo listar modelos ({list_res.status_code}).")
-
         except Exception as e:
             print(f"⚠️ Error listando modelos: {e}.")
 
-        # Fallback de emergencia
         if not model_to_use:
             model_to_use = "gemini-1.5-flash"
 
-        # 3. Llamada a la API
         print(f"🚀 Usando modelo: {model_to_use}")
         
+        # --- LLAMADA API ---
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_to_use}:generateContent?key={GOOGLE_API_KEY}"
         
         payload = {
@@ -191,10 +182,8 @@ def validate_dni_ocr(request, attempt_id):
         response = requests.post(api_url, headers=headers, json=payload, timeout=25)
 
         if response.status_code != 200:
-            print(f"❌ Error API: {response.text}")
             return JsonResponse({'success': False, 'message': f'Error de IA ({response.status_code})'})
 
-        # 4. Procesar Respuesta
         json_res = response.json()
         candidates = json_res.get('candidates', [])
         
@@ -209,27 +198,25 @@ def validate_dni_ocr(request, attempt_id):
         except:
              return JsonResponse({'success': False, 'message': 'Error leyendo respuesta de IA.'})
 
-        # 5. Lógica de Negocio + GUARDADO
+        # --- VALIDACIÓN Y GUARDADO ---
         if not ai_data.get('es_documento'):
              return JsonResponse({'success': False, 'message': 'No es un documento válido. Enfoca mejor.'})
 
         numbers_found = str(ai_data.get('numeros', ''))
         legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
 
-        print(f"🔍 DNI: '{numbers_found}' vs Legajo: '{legajo_alumno}'")
-
         if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
             
-            # --- NUEVO: GUARDAR IMAGEN DEL DNI ---
+            # === CORRECCIÓN GUARDADO: Usamos 'photo_id_url' ===
             try:
-                file_name = f"dni_{attempt.id}_{attempt.student_legajo}.jpg"
-                image_file = ContentFile(base64.b64decode(base64_clean), name=file_name)
-                # Guardamos en el campo 'photo_id'
-                attempt.photo_id.save(file_name, image_file, save=True)
-                print("💾 DNI guardado correctamente.")
+                # Guardamos directamente el string Base64 en el campo URL/Texto
+                full_base64_string = f"data:image/jpeg;base64,{base64_clean}"
+                attempt.photo_id_url = full_base64_string
+                attempt.save()
+                print("💾 DNI guardado en photo_id_url.")
             except Exception as save_err:
                 print(f"⚠️ Error guardando DNI: {save_err}")
-            # -------------------------------------
+            # ==================================================
 
             return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
         else:
@@ -242,7 +229,7 @@ def validate_dni_ocr(request, attempt_id):
         print(traceback.format_exc())
         return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'}, status=200)
 
-# 6. RUNNER (Examen) - CORREGIDO EL TIMER ⏱️
+# 6. RUNNER (Examen) - CON RESET DE TIMER ⏱️
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -250,8 +237,6 @@ def exam_runner_view(request, access_code, attempt_id):
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-    # CORRECCIÓN: Solo iniciamos el timer si NO ha empezado antes.
-    # Esto evita que un intento viejo se cierre inmediatamente.
     if not attempt.start_time:
         attempt.start_time = timezone.now()
         attempt.save(update_fields=['start_time'])
@@ -264,12 +249,22 @@ def exam_runner_view(request, access_code, attempt_id):
     elapsed = (timezone.now() - attempt.start_time).total_seconds()
     remaining = max(0, total_duration - elapsed)
 
+    # === VÁLVULA DE SEGURIDAD (FIX NOTA 0) ===
+    # Si el tiempo se acabó (remaining <= 0) PERO el alumno no ha respondido nada (empty answers),
+    # asumimos que fue un error de prueba y reiniciamos el reloj.
+    saved_answers = attempt.answers or {}
+    
+    if remaining <= 0 and not saved_answers:
+        print(f"🔄 Reiniciando timer para intento {attempt.id} (tiempo agotado sin respuestas)")
+        attempt.start_time = timezone.now()
+        attempt.save(update_fields=['start_time'])
+        remaining = total_duration
+    # =========================================
+
     if remaining <= 0:
         return redirect('runner:submit_exam', attempt_id=attempt.id)
 
-    saved_answers = attempt.answers or {}
     initial_step = len(saved_answers)
-    
     if initial_step >= len(items):
         initial_step = len(items) - 1
 
