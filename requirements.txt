@@ -1,7 +1,6 @@
-# === ARQUITECTURA CORE (RÁPIDA) ===
-# (Para S0, S1, S2)
+# === ARQUITECTURA CORE (LIGERA) ===
 
-# Core
+# Core Django
 Django==5.0.6
 gunicorn==22.0.0
 djangorestframework==3.15.1
@@ -10,36 +9,18 @@ psycopg==3.1.19
 whitenoise==6.7.0
 django-htmx==1.17.2
 
-# Arquitectura Asíncrona (S0a)
+# Tareas en segundo plano
 celery==5.4.0
 redis==5.0.4
 django-celery-results==2.5.1
 
-# Storage (S0a / R2)
+# Archivos y Excel
 django-storages[boto3]==1.14.3
 boto3==1.34.113
-
-# (S1c) Librería para leer Excel
 openpyxl==3.1.2
 
-# (S1c) Librería para IA (¡NUEVA!)
-google-generativeai==0.7.2
-
-# NOTA: easyocr y numpy se instalan manualmente en el buildCommand
-# para forzar la versión CPU-Only y ahorrar 2GB de espacio.
-# No las descomentes aquí.
-
-# === LIBRERÍAS PESADAS (COMENTADAS HASTA SU SPRINT) ===
-# (Activaremos esto cuando lleguemos a S3b/S5/S7)
-
-# PDF (S5a)
+# PDF
 WeasyPrint>=63.0
 
-# Anti-Leak (S3b / S7)
-# opencv-python-headless==4.10.0.82
-# pyzbar==0.1.9
-# reedsolo==1.7.0
-# Pillow==10.3.0
-
-# LTI (S5b)
-# pylti1p3==2.0.0
+# IA (Solo Gemini - Súper ligero)
+google-generativeai==0.7.2
