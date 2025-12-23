@@ -4,7 +4,7 @@ import base64
 import re
 import os
 import traceback
-import requests  # <--- Agregado para la conexión directa en DNI
+import requests  # <--- CRÍTICO: Para conexión directa a Google
 from io import BytesIO
 from PIL import Image
 
@@ -25,11 +25,14 @@ from exams.models import Exam
 from .models import Attempt, AttemptEvent
 
 # --- CONFIGURACIÓN GEMINI ---
-GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+
+# Configuración legacy por si usas la librería en otras partes (preguntas)
 if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-else:
-    print("⚠️ ADVERTENCIA: No se encontró GEMINI_API_KEY en las variables de entorno.")
+    try:
+        genai.configure(api_key=GOOGLE_API_KEY)
+    except:
+        pass
 
 # --- FUNCIONES AUXILIARES ---
 def is_staff(user):
@@ -91,7 +94,7 @@ def biometric_gate_view(request, access_code, attempt_id):
         return redirect('runner:exam_finished', attempt_id=attempt.id)
     return render(request, 'runner/biometric_gate.html', {'exam': exam, 'attempt': attempt})
 
-# 4. REGISTRO BIOMÉTRICO (Selfie + DNI Urls)
+# 4. REGISTRO BIOMÉTRICO
 @require_POST
 def register_biometrics(request, attempt_id):
     try:
@@ -112,7 +115,7 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 # ---------------------------------------------------------
-# 5. VALIDACIÓN DNI - MODO DIRECTO MULTI-MODELO 🚀
+# 5. VALIDACIÓN DNI - SIN LIBRERÍA (CONEXIÓN DIRECTA) 🚀
 # ---------------------------------------------------------
 @require_POST
 def validate_dni_ocr(request, attempt_id):
@@ -122,7 +125,7 @@ def validate_dni_ocr(request, attempt_id):
         if not GOOGLE_API_KEY:
             return JsonResponse({'success': False, 'message': 'Falta API Key.'})
 
-        # 1. Obtener base64 limpio
+        # 1. Obtener imagen Base64
         try:
             data = json.loads(request.body)
             image_data = data.get('image', '')
@@ -136,38 +139,36 @@ def validate_dni_ocr(request, attempt_id):
         except:
             return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
 
-        # 2. Preparar Payload (Común para todos)
-        print(f"📡 Validando identidad vía HTTP Directo...")
+        # 2. Configurar llamada HTTP
+        print(f"📡 Validando identidad vía HTTP para legajo: {attempt.student_legajo}")
         
+        headers = {'Content-Type': 'application/json'}
         payload = {
             "contents": [{
                 "parts": [
-                    { "text": "Analiza esta imagen. Responde SOLO JSON: {\"es_documento\": true, \"numeros\": \"123456\"}. Si no es DNI, false." },
+                    { "text": "Analiza esta imagen. Responde SOLO JSON: {\"es_documento\": true, \"numeros\": \"123456\"}. Si no es DNI, false. No uses markdown." },
                     { "inline_data": { "mime_type": "image/jpeg", "data": base64_clean } }
                 ]
             }]
         }
-        headers = {'Content-Type': 'application/json'}
 
-        # 3. LISTA DE MODELOS CANDIDATOS
-        # Probamos varios nombres porque Google a veces cambia las versiones en la API v1beta
+        # 3. Lista de modelos (Flash, Pro, Vision)
+        # Importante: Algunos endpoints usan 'v1beta', otros 'v1'. Probamos ambos.
         candidate_models = [
-            "gemini-1.5-flash",          
-            "gemini-1.5-flash-latest",   
-            "gemini-1.5-flash-001",      
-            "gemini-1.5-pro",            
-            "gemini-pro-vision" 
+            ("gemini-1.5-flash", "v1beta"),
+            ("gemini-1.5-flash-latest", "v1beta"),
+            ("gemini-pro-vision", "v1")  # El modelo clásico, muy estable
         ]
 
         ai_data = None
         last_error = ""
 
-        for model_name in candidate_models:
+        for model_name, version in candidate_models:
             try:
-                # Construir URL específica para este modelo
-                api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
+                # Construimos la URL según el modelo y la versión
+                api_url = f"https://generativelanguage.googleapis.com/{version}/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
                 
-                print(f"🔄 Probando modelo: {model_name} ...")
+                print(f"🔄 Probando {model_name} ({version})...")
                 response = requests.post(api_url, headers=headers, json=payload, timeout=15)
                 
                 if response.status_code == 200:
@@ -178,13 +179,9 @@ def validate_dni_ocr(request, attempt_id):
                         raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
                         clean_text = raw_text.replace('```json', '').replace('```', '').strip()
                         ai_data = json.loads(clean_text)
-                        break # ¡Éxito!
-                    else:
-                        print("⚠️ IA no devolvió candidatos.")
-                elif response.status_code == 404:
-                    print(f"❌ 404 No encontrado: {model_name}")
+                        break # Éxito
                 else:
-                    print(f"⚠️ Error {response.status_code} en {model_name}: {response.text}")
+                    print(f"❌ Falló {model_name}: {response.status_code}")
                     last_error = f"Error {response.status_code}"
 
             except Exception as e:
@@ -194,8 +191,7 @@ def validate_dni_ocr(request, attempt_id):
 
         # 4. Verificar resultado
         if not ai_data:
-            print("❌ Todos los modelos fallaron.")
-            return JsonResponse({'success': False, 'message': f'Error de IA: No pudimos conectar con ningún modelo. ({last_error})'})
+            return JsonResponse({'success': False, 'message': f'Error de IA: No se pudo validar el documento. ({last_error})'})
 
         # 5. Lógica de Negocio
         if not ai_data.get('es_documento'):
@@ -204,7 +200,7 @@ def validate_dni_ocr(request, attempt_id):
         numbers_found = str(ai_data.get('numeros', ''))
         legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
 
-        print(f"🔍 Comparando: DNI '{numbers_found}' vs Legajo '{legajo_alumno}'")
+        print(f"🔍 DNI: '{numbers_found}' vs Legajo: '{legajo_alumno}'")
 
         if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
             return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
@@ -316,7 +312,7 @@ def log_event(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 11. DASHBOARD DOCENTE (Restaurado completo)
+# 11. DASHBOARD DOCENTE
 @login_required
 @user_passes_test(is_staff)
 def teacher_dashboard_view(request, exam_id):
@@ -371,7 +367,7 @@ def teacher_home_view(request):
 def portal_docente_view(request):
     return render(request, 'runner/portal_docente.html')
 
-# 15. PDF (Restaurado completo)
+# 15. PDF
 @login_required
 @user_passes_test(es_docente_o_admin)
 def descargar_pdf_examen(request, exam_id):
