@@ -24,3 +24,4 @@ WeasyPrint>=63.0
 
 # IA (Solo Gemini - Súper ligero)
 google-generativeai==0.7.2
+pillow
