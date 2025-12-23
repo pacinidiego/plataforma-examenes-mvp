@@ -3,7 +3,8 @@ import json
 import base64
 import re
 import os
-import traceback  # <--- NUEVO: Para ver errores reales en logs
+import traceback
+import requests  # <--- NUEVO: Usamos requests para llamar directo a la API
 from io import BytesIO
 from PIL import Image
 
@@ -15,9 +16,8 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.template.loader import render_to_string
 
-# Librerías Externas
-from weasyprint import HTML
-import google.generativeai as genai  # <--- Solo Gemini
+# (Ya no usamos google.generativeai para evitar conflictos de versión)
+# import google.generativeai as genai 
 
 # Modelos
 from exams.models import Exam
@@ -25,10 +25,6 @@ from .models import Attempt, AttemptEvent
 
 # --- CONFIGURACIÓN GEMINI ---
 GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-else:
-    print("⚠️ ADVERTENCIA: No se encontró GEMINI_API_KEY en variables de entorno.")
 
 # --- FUNCIONES AUXILIARES ---
 def is_staff(user):
@@ -49,7 +45,6 @@ def lobby_view(request, access_code):
         nombre = request.POST.get('full_name', '').strip()
         legajo = request.POST.get('student_id', '').strip()
         
-        # Verificar si ya completó el examen
         finished_attempt = Attempt.objects.filter(
             exam=exam, student_legajo__iexact=legajo, completed_at__isnull=False
         ).first()
@@ -60,7 +55,6 @@ def lobby_view(request, access_code):
                 'error': f'Acceso denegado. El alumno con legajo "{legajo}" ya envió este examen.'
             })
             
-        # Retomar intento activo
         active_attempt = Attempt.objects.filter(
             exam=exam, student_legajo__iexact=legajo, completed_at__isnull=True
         ).first()
@@ -70,7 +64,6 @@ def lobby_view(request, access_code):
             active_attempt.save()
             return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=active_attempt.id)
 
-        # Crear nuevo intento
         attempt = Attempt.objects.create(
             exam=exam, student_name=nombre, student_legajo=legajo,
             ip_address=request.META.get('REMOTE_ADDR')
@@ -93,7 +86,7 @@ def biometric_gate_view(request, access_code, attempt_id):
         return redirect('runner:exam_finished', attempt_id=attempt.id)
     return render(request, 'runner/biometric_gate.html', {'exam': exam, 'attempt': attempt})
 
-# 4. REGISTRO BIOMÉTRICO (Selfie + DNI Urls)
+# 4. REGISTRO BIOMÉTRICO
 @require_POST
 def register_biometrics(request, attempt_id):
     try:
@@ -114,114 +107,106 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 # ---------------------------------------------------------
-# 5. VALIDACIÓN DNI CON GEMINI IA (CORREGIDO Y BLINDADO) 🤖
+# 5. VALIDACIÓN DNI - MODO DIRECTO (SIN SDK) 🚀
 # ---------------------------------------------------------
 @require_POST
 def validate_dni_ocr(request, attempt_id):
-    """
-    Versión robusta: Prueba múltiples modelos de Gemini y maneja errores de versión.
-    """
     try:
-        # 1. Validaciones Iniciales
         attempt = get_object_or_404(Attempt, id=attempt_id)
         
         if not GOOGLE_API_KEY:
-            return JsonResponse({'success': False, 'message': 'Error Config: Falta API Key en el servidor.'})
+            return JsonResponse({'success': False, 'message': 'Falta API Key.'})
 
-        # 2. Procesar Imagen
+        # 1. Obtener base64 limpio
         try:
             data = json.loads(request.body)
-            image_data = data.get('image')
-            if not image_data:
-                return JsonResponse({'success': False, 'message': 'No se recibió imagen.'})
-
+            image_data = data.get('image', '')
             if ';base64,' in image_data:
-                _, imgstr = image_data.split(';base64,')
+                # Quitamos el header "data:image/jpeg;base64," si existe
+                base64_clean = image_data.split(';base64,')[1]
             else:
-                imgstr = image_data
-            
-            image_bytes = base64.b64decode(imgstr)
-            pil_image = Image.open(BytesIO(image_bytes))
-        except Exception as e:
-            return JsonResponse({'success': False, 'message': f'Error procesando imagen: {str(e)}'})
+                base64_clean = image_data
+                
+            if not base64_clean:
+                return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
+        except:
+            return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
 
-        # 3. Consultar a Gemini (Estrategia Multi-Modelo)
-        print(f"📡 Validando identidad para legajo: {attempt.student_legajo}")
+        # 2. Llamada Directa a la API REST de Google (Bypass de librería)
+        print(f"📡 Validando identidad vía HTTP Directo...")
         
-        ai_response_text = None
-        error_logs = []
+        # URL oficial de la API v1beta
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
         
-        # Lista de modelos a probar en orden de preferencia
-        modelos_a_probar = [
-            'gemini-1.5-flash',          # El ideal (rápido y barato)
-            'gemini-1.5-flash-latest',   # Variante frecuente
-            'gemini-pro-vision',         # Fallback clásico
-            'gemini-1.0-pro-vision-latest' # Fallback legacy
-        ]
+        payload = {
+            "contents": [{
+                "parts": [
+                    {
+                        "text": """
+                        Analiza esta imagen de identificación oficial.
+                        Responde EXCLUSIVAMENTE un JSON con este formato exacto:
+                        {"es_documento": true, "numeros": "12345678"}
+                        Si no es un documento de identidad, pon "es_documento": false.
+                        No uses markdown.
+                        """
+                    },
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": base64_clean
+                        }
+                    }
+                ]
+            }]
+        }
 
-        for nombre_modelo in modelos_a_probar:
-            try:
-                print(f"🤖 Probando modelo: {nombre_modelo}...")
-                model = genai.GenerativeModel(nombre_modelo)
-                
-                prompt = """
-                Analiza esta imagen de identificación oficial.
-                Responde EXCLUSIVAMENTE un JSON con este formato exacto:
-                {"es_documento": true, "numeros": "12345678"}
-                Si no es legible o no es un documento de identidad, pon "es_documento": false.
-                No agregues markdown ni comillas extra, solo el JSON raw.
-                """
-                
-                response = model.generate_content([prompt, pil_image])
-                ai_response_text = response.text
-                print(f"✅ Éxito con {nombre_modelo}")
-                break # ¡Funcionó! Salimos del loop
-                
-            except Exception as e:
-                msg = f"Fallo {nombre_modelo}: {str(e)}"
-                print(f"⚠️ {msg}")
-                error_logs.append(msg)
-                continue # Probamos el siguiente
+        headers = {'Content-Type': 'application/json'}
+        
+        # Hacemos el POST directo
+        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code != 200:
+            print(f"⚠️ Error API Google ({response.status_code}): {response.text}")
+            return JsonResponse({'success': False, 'message': f'Error API IA: {response.status_code}'})
 
-        # Si todos fallaron
-        if not ai_response_text:
-            print("❌ Todos los modelos fallaron.")
-            return JsonResponse({
-                'success': False, 
-                'message': f'Error de IA. Detalles técnicos: {"; ".join(error_logs)}'
-            })
-
-        # 4. Procesar Respuesta de la IA
+        # 3. Procesar Respuesta
+        ai_response = response.json()
+        
+        # Extraer texto de la estructura compleja de Google
         try:
-            # Limpieza agresiva por si la IA devuelve ```json ... ```
-            clean_text = ai_response_text.replace('```json', '').replace('```', '').strip()
+            candidates = ai_response.get('candidates', [])
+            if not candidates:
+                 return JsonResponse({'success': False, 'message': 'La IA no devolvió candidatos (bloqueo de seguridad posible).'})
+            
+            raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
+            
+            # Limpiar JSON
+            clean_text = raw_text.replace('```json', '').replace('```', '').strip()
             ai_data = json.loads(clean_text)
-        except json.JSONDecodeError:
-            print(f"❌ JSON Inválido recibido: {ai_response_text}")
-            return JsonResponse({'success': False, 'message': 'La IA no devolvió un formato válido. Reintente.'})
+            
+        except Exception as e:
+            print(f"❌ Error parseando JSON IA: {e}")
+            return JsonResponse({'success': False, 'message': 'Respuesta de IA ilegible.'})
 
-        # 5. Lógica de Negocio
         if not ai_data.get('es_documento'):
-             return JsonResponse({'success': False, 'message': 'No se detecta un documento válido. Asegure buena luz.'})
+             return JsonResponse({'success': False, 'message': 'No es un documento válido. Enfoca mejor.'})
 
         numbers_found = str(ai_data.get('numeros', ''))
         legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
 
         print(f"🔍 Comparando: DNI '{numbers_found}' vs Legajo '{legajo_alumno}'")
 
-        # Validación flexible (match parcial)
         if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
-            return JsonResponse({'success': True, 'message': 'Identidad verificada. Ahora enfoca tu rostro.'})
+            return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
         else:
             return JsonResponse({
                 'success': False, 
-                'message': f'El documento leído ({numbers_found}) no coincide con el legajo ({legajo_alumno}).'
+                'message': f'El documento ({numbers_found}) no coincide con el legajo ({legajo_alumno}).'
             })
 
     except Exception as e:
-        # Captura final de cualquier error no previsto
         print(traceback.format_exc())
-        return JsonResponse({'success': False, 'message': f'Error interno del servidor: {str(e)}'}, status=200)
+        return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'}, status=200)
 
 # 6. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
