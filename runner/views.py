@@ -1,12 +1,12 @@
 import random
 import json
-
-import easyocr  # <--- Cambio clave
 import base64
 import re
-import pytesseract
+import numpy as np
+import easyocr
 from io import BytesIO
 from PIL import Image
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
@@ -15,8 +15,15 @@ from django.utils import timezone
 from django.db.models import Count
 from django.template.loader import render_to_string
 from weasyprint import HTML
+
 from exams.models import Exam
 from .models import Attempt, AttemptEvent
+
+# --- INICIALIZACIÓN DEL MODELO DE IA (EASYOCR) ---
+# Cargamos el modelo en memoria UNA sola vez.
+# Usamos CPU (gpu=False) y una carpeta temporal para modelos.
+print("🏗️ Cargando modelo EasyOCR en memoria...")
+reader = easyocr.Reader(['es'], gpu=False, model_storage_directory='/tmp/model_storage')
 
 # --- FUNCIONES AUXILIARES ---
 def is_staff(user):
@@ -95,25 +102,19 @@ def biometric_gate_view(request, access_code, attempt_id):
     })
 
 
-# 4. API REGISTRO BIOMÉTRICO (¡ACTUALIZADO!)
+# 4. API REGISTRO BIOMÉTRICO
 @require_POST
 def register_biometrics(request, attempt_id):
-    """
-    Recibe la selfie (reference_face) y la foto del DNI (dni_image).
-    """
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
         
-        # 1. Guardar Selfie (Rostro)
         if 'reference_face' in data:
             attempt.reference_face_url = data['reference_face']
         
-        # 2. Guardar DNI (Documento)
-        # El frontend ahora envía 'dni_image', lo guardamos en photo_id_url
         if 'dni_image' in data:
             attempt.photo_id_url = data['dni_image']
-        elif 'photo_id' in data: # Soporte legacy por las dudas
+        elif 'photo_id' in data:
             attempt.photo_id_url = data['photo_id']
             
         attempt.save()
@@ -122,7 +123,54 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
-# 5. RUNNER (Examen)
+# 5. VALIDACIÓN DNI (OCR) - ¡CORREGIDO PARA EASYOCR!
+@login_required
+@require_POST
+def validate_dni_ocr(request):
+    try:
+        data = json.loads(request.body)
+        image_data = data.get('image')
+
+        if not image_data:
+            return JsonResponse({'success': False, 'message': 'No se recibió imagen.'})
+
+        # Decodificar Base64
+        if ';base64,' in image_data:
+            _, imgstr = image_data.split(';base64,')
+        else:
+            imgstr = image_data
+
+        image_bytes = base64.b64decode(imgstr)
+        
+        # EasyOCR requiere array de NumPy
+        pil_image = Image.open(BytesIO(image_bytes))
+        image_np = np.array(pil_image)
+
+        # Inferencia
+        print("🧠 Procesando imagen con EasyOCR...")
+        result_list = reader.readtext(image_np, detail=0)
+        full_text = " ".join(result_list)
+        
+        # Limpieza
+        numbers_found = re.sub(r'[^0-9]', '', full_text)
+        expected_dni = request.user.username 
+
+        print(f"✅ OCR Resultado | Esperado: {expected_dni} | Encontrado: {numbers_found}")
+
+        if expected_dni and expected_dni in numbers_found:
+            return JsonResponse({'success': True, 'message': 'Identidad verificada correctamente.'})
+        else:
+            return JsonResponse({
+                'success': False, 
+                'message': f'No detectamos el número {expected_dni}. Intenta mejorar la luz y el enfoque.'
+            })
+
+    except Exception as e:
+        print(f"❌ Error OCR Crítico: {e}")
+        return JsonResponse({'success': False, 'message': 'Error interno de procesamiento.'}, status=500)
+
+
+# 6. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -162,7 +210,7 @@ def exam_runner_view(request, access_code, attempt_id):
     })
 
 
-# 6. GUARDAR RESPUESTA
+# 7. GUARDAR RESPUESTA
 @require_POST
 def save_answer(request, attempt_id):
     try:
@@ -179,7 +227,7 @@ def save_answer(request, attempt_id):
         return JsonResponse({'status': 'error'}, status=400)
 
 
-# 7. FINALIZAR
+# 8. FINALIZAR
 def submit_exam_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     if attempt.completed_at:
@@ -205,13 +253,13 @@ def submit_exam_view(request, attempt_id):
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
 
-# 8. PANTALLA FINAL
+# 9. PANTALLA FINAL
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/finished.html', {'attempt': attempt})
 
 
-# 9. LOG DE SEGURIDAD
+# 10. LOG DE SEGURIDAD
 @require_POST
 def log_event(request, attempt_id):
     try:
@@ -239,7 +287,7 @@ def log_event(request, attempt_id):
 # SECCIÓN DOCENTE (DASHBOARD & AUDITORÍA)
 # ==========================================
 
-# 10. DASHBOARD DEL DOCENTE
+# 11. DASHBOARD DEL DOCENTE
 @login_required
 @user_passes_test(is_staff)
 def teacher_dashboard_view(request, exam_id):
@@ -284,7 +332,7 @@ def teacher_dashboard_view(request, exam_id):
     })
 
 
-# 11. DETALLE DEL INTENTO
+# 12. DETALLE DEL INTENTO
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
@@ -296,7 +344,7 @@ def attempt_detail_view(request, attempt_id):
     })
 
 
-# 12. HOME DOCENTE
+# 13. HOME DOCENTE
 @login_required
 @user_passes_test(is_staff)
 def teacher_home_view(request):
@@ -305,14 +353,14 @@ def teacher_home_view(request):
         'exams': exams
     })
 
-# 13. PORTAL PRINCIPAL
+# 14. PORTAL PRINCIPAL
 @login_required
 @user_passes_test(is_staff)
 def portal_docente_view(request):
     return render(request, 'runner/portal_docente.html')
 
 
-# 14. GENERADOR PDF
+# 15. GENERADOR PDF
 @login_required
 @user_passes_test(es_docente_o_admin)
 def descargar_pdf_examen(request, exam_id):
@@ -383,66 +431,3 @@ def descargar_pdf_examen(request, exam_id):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
     return response
-
-    # runner/views.py
-
-import json
-import base64
-import re
-import pytesseract
-from io import BytesIO
-from PIL import Image
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
-
-# NOTA: Asegúrate de que request.user.username sea el DNI.
-# Si guardas el DNI en otro campo (ej: request.user.profile.dni), ajusta la variable 'expected_dni'.
-
-@login_required
-@require_POST
-def validate_dni_ocr(request):
-    try:
-        data = json.loads(request.body)
-        image_data = data.get('image')
-
-        if not image_data:
-            return JsonResponse({'success': False, 'message': 'No se recibió imagen.'})
-
-        # 1. Decodificar Base64
-        format, imgstr = image_data.split(';base64,')
-        image_bytes = base64.b64decode(imgstr)
-        
-        # EasyOCR lee bytes directamente o arrays numpy. 
-        # Convertimos la imagen a array para EasyOCR
-        pil_image = Image.open(BytesIO(image_bytes))
-        image_np = np.array(pil_image)
-
-        # 2. Procesar OCR
-        # detail=0 devuelve solo la lista de textos encontrados
-        result_list = reader.readtext(image_np, detail=0)
-        
-        # Unir todo el texto encontrado en un solo string
-        full_text = " ".join(result_list)
-        
-        # 3. Limpieza (solo dejamos números)
-        numbers_found = re.sub(r'[^0-9]', '', full_text)
-        
-        # 4. Validación
-        # Ajusta esto a donde tengas guardado el DNI real del usuario
-        expected_dni = request.user.username 
-
-        print(f"DEBUG EasyOCR - Esperado: {expected_dni} | Encontrado raw: {numbers_found}")
-
-        if expected_dni in numbers_found:
-            return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
-        else:
-            return JsonResponse({
-                'success': False, 
-                'message': f'No leímos el DNI {expected_dni}. Asegúrate que la imagen esté enfocada y sin brillos.'
-            })
-
-    except Exception as e:
-        print(f"Error OCR: {e}")
-        # En caso de error de memoria (OOM), avisar
-        return JsonResponse({'success': False, 'message': 'Error procesando la imagen. Intenta de nuevo.'}, status=500)
