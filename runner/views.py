@@ -4,7 +4,7 @@ import base64
 import re
 import os
 import traceback
-import requests  # <--- NUEVO: Usamos requests para llamar directo a la API
+import requests  # <--- Agregado para la conexión directa en DNI
 from io import BytesIO
 from PIL import Image
 
@@ -16,8 +16,9 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.template.loader import render_to_string
 
-# (Ya no usamos google.generativeai para evitar conflictos de versión)
-# import google.generativeai as genai 
+# Librerías Externas
+from weasyprint import HTML
+import google.generativeai as genai 
 
 # Modelos
 from exams.models import Exam
@@ -25,6 +26,10 @@ from .models import Attempt, AttemptEvent
 
 # --- CONFIGURACIÓN GEMINI ---
 GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+else:
+    print("⚠️ ADVERTENCIA: No se encontró GEMINI_API_KEY en las variables de entorno.")
 
 # --- FUNCIONES AUXILIARES ---
 def is_staff(user):
@@ -86,7 +91,7 @@ def biometric_gate_view(request, access_code, attempt_id):
         return redirect('runner:exam_finished', attempt_id=attempt.id)
     return render(request, 'runner/biometric_gate.html', {'exam': exam, 'attempt': attempt})
 
-# 4. REGISTRO BIOMÉTRICO
+# 4. REGISTRO BIOMÉTRICO (Selfie + DNI Urls)
 @require_POST
 def register_biometrics(request, attempt_id):
     try:
@@ -107,7 +112,7 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 # ---------------------------------------------------------
-# 5. VALIDACIÓN DNI - MODO DIRECTO (SIN SDK) 🚀
+# 5. VALIDACIÓN DNI - MODO DIRECTO MULTI-MODELO 🚀
 # ---------------------------------------------------------
 @require_POST
 def validate_dni_ocr(request, attempt_id):
@@ -122,7 +127,6 @@ def validate_dni_ocr(request, attempt_id):
             data = json.loads(request.body)
             image_data = data.get('image', '')
             if ';base64,' in image_data:
-                # Quitamos el header "data:image/jpeg;base64," si existe
                 base64_clean = image_data.split(';base64,')[1]
             else:
                 base64_clean = image_data
@@ -132,64 +136,70 @@ def validate_dni_ocr(request, attempt_id):
         except:
             return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
 
-        # 2. Llamada Directa a la API REST de Google (Bypass de librería)
+        # 2. Preparar Payload (Común para todos)
         print(f"📡 Validando identidad vía HTTP Directo...")
-        
-        # URL oficial de la API v1beta
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
         
         payload = {
             "contents": [{
                 "parts": [
-                    {
-                        "text": """
-                        Analiza esta imagen de identificación oficial.
-                        Responde EXCLUSIVAMENTE un JSON con este formato exacto:
-                        {"es_documento": true, "numeros": "12345678"}
-                        Si no es un documento de identidad, pon "es_documento": false.
-                        No uses markdown.
-                        """
-                    },
-                    {
-                        "inline_data": {
-                            "mime_type": "image/jpeg",
-                            "data": base64_clean
-                        }
-                    }
+                    { "text": "Analiza esta imagen. Responde SOLO JSON: {\"es_documento\": true, \"numeros\": \"123456\"}. Si no es DNI, false." },
+                    { "inline_data": { "mime_type": "image/jpeg", "data": base64_clean } }
                 ]
             }]
         }
-
         headers = {'Content-Type': 'application/json'}
-        
-        # Hacemos el POST directo
-        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
-        
-        if response.status_code != 200:
-            print(f"⚠️ Error API Google ({response.status_code}): {response.text}")
-            return JsonResponse({'success': False, 'message': f'Error API IA: {response.status_code}'})
 
-        # 3. Procesar Respuesta
-        ai_response = response.json()
-        
-        # Extraer texto de la estructura compleja de Google
-        try:
-            candidates = ai_response.get('candidates', [])
-            if not candidates:
-                 return JsonResponse({'success': False, 'message': 'La IA no devolvió candidatos (bloqueo de seguridad posible).'})
-            
-            raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
-            
-            # Limpiar JSON
-            clean_text = raw_text.replace('```json', '').replace('```', '').strip()
-            ai_data = json.loads(clean_text)
-            
-        except Exception as e:
-            print(f"❌ Error parseando JSON IA: {e}")
-            return JsonResponse({'success': False, 'message': 'Respuesta de IA ilegible.'})
+        # 3. LISTA DE MODELOS CANDIDATOS
+        # Probamos varios nombres porque Google a veces cambia las versiones en la API v1beta
+        candidate_models = [
+            "gemini-1.5-flash",          
+            "gemini-1.5-flash-latest",   
+            "gemini-1.5-flash-001",      
+            "gemini-1.5-pro",            
+            "gemini-pro-vision" 
+        ]
 
+        ai_data = None
+        last_error = ""
+
+        for model_name in candidate_models:
+            try:
+                # Construir URL específica para este modelo
+                api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
+                
+                print(f"🔄 Probando modelo: {model_name} ...")
+                response = requests.post(api_url, headers=headers, json=payload, timeout=15)
+                
+                if response.status_code == 200:
+                    print(f"✅ ¡Conectado con {model_name}!")
+                    json_res = response.json()
+                    candidates = json_res.get('candidates', [])
+                    if candidates:
+                        raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
+                        clean_text = raw_text.replace('```json', '').replace('```', '').strip()
+                        ai_data = json.loads(clean_text)
+                        break # ¡Éxito!
+                    else:
+                        print("⚠️ IA no devolvió candidatos.")
+                elif response.status_code == 404:
+                    print(f"❌ 404 No encontrado: {model_name}")
+                else:
+                    print(f"⚠️ Error {response.status_code} en {model_name}: {response.text}")
+                    last_error = f"Error {response.status_code}"
+
+            except Exception as e:
+                print(f"❌ Excepción con {model_name}: {e}")
+                last_error = str(e)
+                continue
+
+        # 4. Verificar resultado
+        if not ai_data:
+            print("❌ Todos los modelos fallaron.")
+            return JsonResponse({'success': False, 'message': f'Error de IA: No pudimos conectar con ningún modelo. ({last_error})'})
+
+        # 5. Lógica de Negocio
         if not ai_data.get('es_documento'):
-             return JsonResponse({'success': False, 'message': 'No es un documento válido. Enfoca mejor.'})
+             return JsonResponse({'success': False, 'message': 'No se detecta un documento válido. Enfoca mejor.'})
 
         numbers_found = str(ai_data.get('numeros', ''))
         legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
@@ -306,7 +316,7 @@ def log_event(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 11. DASHBOARD DOCENTE
+# 11. DASHBOARD DOCENTE (Restaurado completo)
 @login_required
 @user_passes_test(is_staff)
 def teacher_dashboard_view(request, exam_id):
@@ -361,7 +371,7 @@ def teacher_home_view(request):
 def portal_docente_view(request):
     return render(request, 'runner/portal_docente.html')
 
-# 15. PDF
+# 15. PDF (Restaurado completo)
 @login_required
 @user_passes_test(es_docente_o_admin)
 def descargar_pdf_examen(request, exam_id):
