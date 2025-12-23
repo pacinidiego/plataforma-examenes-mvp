@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load static %}
 
 {% block content %}
 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
@@ -19,7 +18,7 @@
                     <p class="text-sm text-gray-500" x-text="step === 1 ? 'Paso 1: Hardware' : 'Paso 2: Biometría e Identidad'"></p>
                 </div>
             </div>
-            <div x-show="isLoadingModels" class="text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full animate-pulse">
+            <div x-show="isLoadingModels" class="text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full animate-pulse border border-blue-200">
                 🧠 Cargando IA...
             </div>
         </header>
@@ -167,13 +166,12 @@
     </div>
 </div>
 
-<script src="{% static 'runner/face-api.min.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
 <script>
     function techCheck() {
         return {
             step: 1,
-            // Agregamos 'face' a los chequeos
             checks: { camera: false, audio: false, network: true, dni: false, face: false },
             audioLevel: 0,
             isScanning: false,
@@ -182,7 +180,6 @@
             detectionInterval: null,
             
             get allHardwarePassed() {
-                // Para pasar al paso 2 solo necesitamos hardware
                 return this.checks.camera && this.checks.audio && this.checks.network;
             },
 
@@ -199,19 +196,22 @@
             },
 
             async loadModels() {
-                const MODEL_URL = '/static/runner/models';
+                // ==============================================
+                // CORRECCIÓN 2: Cargamos Modelos desde CDN oficial
+                // ==============================================
+                const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
                 try {
                     await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                     this.isLoadingModels = false;
                     console.log("Modelos cargados");
                 } catch (error) {
                     console.error("Error cargando modelos:", error);
-                    alert("No se pudieron cargar los modelos de IA. Verifique /static/runner/models");
+                    alert("No se pudieron cargar los modelos de IA. Revisa tu conexión a internet.");
                 }
             },
 
             async startCamera() {
-                const video = this.$refs.videoElement; // Usamos x-ref para seguridad
+                const video = this.$refs.videoElement;
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ 
                         audio: true, 
@@ -221,7 +221,7 @@
                     this.checks.camera = true; 
                     this.setupAudio(stream);
 
-                    // Cuando el video inicie, arrancamos la detección facial
+                    // Importante: Iniciar detección solo cuando el video fluya
                     video.onplay = () => {
                         this.startDetection();
                     };
@@ -237,17 +237,15 @@
                 const video = this.$refs.videoElement;
                 if (this.detectionInterval) clearInterval(this.detectionInterval);
 
-                // Loop de detección cada 500ms
+                // Detectar cada 500ms
                 this.detectionInterval = setInterval(async () => {
-                    // Solo detectamos si el video está corriendo y estamos en la pestaña (ahorrar CPU)
                     if (video.paused || video.ended || !this.checks.camera) return;
 
-                    // Opciones optimizadas para rendimiento
+                    // Usamos TinyFaceDetector (ligero y rápido)
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
                     const detections = await faceapi.detectSingleFace(video, options);
 
-                    // Actualizamos estado (esto reactivamente bloquea/desbloquea el botón)
-                    this.checks.face = !!detections;
+                    this.checks.face = !!detections; // True si hay rostro, False si no
 
                 }, 500);
             },
@@ -288,7 +286,9 @@
                 const imageData = canvas.toDataURL('image/jpeg', 0.9);
 
                 try {
-                    // SOLUCIÓN AL ERROR DE CONEXIÓN: Usamos la URL generada por Django
+                    // ==============================================
+                    // CORRECCIÓN 3: URL generada por Django
+                    // ==============================================
                     const url = "{% url 'runner:validate_dni' %}";
                     const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
