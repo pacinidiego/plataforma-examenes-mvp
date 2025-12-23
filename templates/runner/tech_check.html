@@ -10,6 +10,19 @@
         [x-cloak] { display: none !important; }
         .bg-exam { background-color: #f3f4f6; }
         .bar-transition { transition: all 0.2s ease; }
+        /* Animación de escaneo para el DNI */
+        .scan-overlay {
+            background: linear-gradient(to bottom, transparent, rgba(79, 70, 229, 0.2), transparent);
+            position: absolute;
+            width: 100%;
+            height: 20%;
+            animation: scanning 2s linear infinite;
+            border-bottom: 2px solid #4f46e5;
+        }
+        @keyframes scanning {
+            0% { top: -20%; }
+            100% { top: 100%; }
+        }
     </style>
 </head>
 <body class="h-full flex items-center justify-center bg-exam p-4" x-data="techCheck()">
@@ -19,11 +32,12 @@
         <header class="bg-white border-b border-gray-100 p-6 flex justify-between items-center shrink-0">
             <div class="flex items-center gap-3">
                 <div class="bg-indigo-50 p-2 rounded-lg text-indigo-600">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <svg x-show="step===1" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <svg x-show="step===2" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0c0 .883.393 1.627 1 2.188V19.5a.5.5 0 01-1 0V8.188A2.997 2.997 0 0110 6z"></path></svg>
                 </div>
                 <div>
-                    <h1 class="font-bold text-xl text-gray-800">Chequeo de Hardware</h1>
-                    <p class="text-sm text-gray-500">Paso 1: Validación de dispositivos.</p>
+                    <h1 class="font-bold text-xl text-gray-800">Verificación de Ingreso</h1>
+                    <p class="text-sm text-gray-500" x-text="step === 1 ? 'Paso 1: Hardware' : 'Paso 2: Identidad (DNI)'"></p>
                 </div>
             </div>
         </header>
@@ -32,11 +46,22 @@
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full items-start">
                 
                 <div class="lg:col-span-7 flex flex-col gap-5">
-                    <div class="relative bg-gray-900 rounded-2xl overflow-hidden aspect-video shadow-sm border border-gray-300">
-                        <video id="videoInput" x-ref="video" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1]"></video>
+                    <div class="relative bg-gray-900 rounded-2xl overflow-hidden aspect-video shadow-sm border border-gray-300 group">
+                        <video id="videoInput" x-ref="video" autoplay playsinline muted 
+                               class="w-full h-full object-cover transform transition-transform duration-500"
+                               :class="step === 1 ? 'scale-x-[-1]' : 'scale-x-100'"></video>
+                        
+                        <canvas x-ref="canvas" class="hidden"></canvas>
+
+                        <div x-show="step === 2" x-transition class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <div class="w-3/5 h-3/5 border-2 border-white/50 rounded-lg relative overflow-hidden bg-white/10 backdrop-blur-sm">
+                                <div class="absolute top-2 left-0 w-full text-center text-white text-xs font-bold bg-black/50 py-1">ENCUADRE SU DNI AQUÍ</div>
+                                <div class="scan-overlay" x-show="isScanning"></div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="bg-gray-50 pl-4 pr-5 py-3 rounded-xl border border-gray-200 flex items-center gap-4">
+                    <div x-show="step === 1" class="bg-gray-50 pl-4 pr-5 py-3 rounded-xl border border-gray-200 flex items-center gap-4">
                          <div class="bg-white p-2 rounded-full text-gray-400 shadow-sm border border-gray-100 shrink-0">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
                          </div>
@@ -54,10 +79,22 @@
                             </div>
                         </div>
                     </div>
+
+                    <div x-show="step === 2" class="flex justify-center">
+                        <button @click="scanDNI()" 
+                                :disabled="isScanning || checks.dni"
+                                class="px-6 py-3 rounded-lg font-bold text-white shadow-lg transition-all flex items-center gap-2"
+                                :class="checks.dni ? 'bg-green-600 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-1'">
+                            
+                            <span x-show="!isScanning && !checks.dni">📸 Capturar DNI</span>
+                            <span x-show="isScanning">Analizando...</span>
+                            <span x-show="checks.dni">Identidad Confirmada</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="lg:col-span-5 flex flex-col h-full justify-center py-4 bg-gray-50/50 rounded-2xl px-6 border border-gray-100">
-                    <h3 class="text-base font-bold text-gray-800 mb-6 uppercase tracking-wider">Estado del Equipo</h3>
+                    <h3 class="text-base font-bold text-gray-800 mb-6 uppercase tracking-wider">Estado del Proceso</h3>
                     <div class="space-y-3 flex-1">
                         <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
                              :class="checks.audio ? 'border-green-500 shadow-green-50' : 'border-gray-100'">
@@ -77,17 +114,41 @@
                                 <h4 class="font-bold text-gray-900 flex items-center justify-between">Cámara <span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="checks.camera ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="checks.camera ? 'OK' : 'Pendiente'"></span></h4>
                             </div>
                         </div>
+                        
+                        <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
+                             :class="checks.dni ? 'border-green-500 shadow-green-50' : (step === 2 ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-100 opacity-60')">
+                             <div class="flex-1">
+                                <h4 class="font-bold text-gray-900 flex items-center justify-between">
+                                    Identidad 
+                                    <span class="text-xs font-medium px-2 py-0.5 rounded-full" 
+                                          :class="checks.dni ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" 
+                                          x-text="checks.dni ? 'VALIDADO' : 'Requerido'"></span>
+                                </h4>
+                                <p class="text-xs text-red-500 mt-1" x-show="errorMessage" x-text="errorMessage"></p>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mt-8">
+                        <button @click="step = 2" 
+                                x-show="step === 1"
+                                :disabled="!allHardwarePassed"
+                                class="w-full py-4 rounded-xl font-bold text-lg text-center transition-all shadow-sm flex items-center justify-center gap-3"
+                                :class="allHardwarePassed ? 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md cursor-pointer' : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+                            <span>Siguiente: Validar Identidad</span>
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
+                        </button>
+
                         <a href="{% url 'runner:biometric_gate' exam.access_code attempt.id %}"
+                           x-show="step === 2"
                            class="block w-full py-4 rounded-xl font-bold text-lg text-center transition-all shadow-sm flex items-center justify-center gap-3 relative overflow-hidden group"
-                           :class="allChecksPassed ? 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md cursor-pointer' : 'bg-gray-200 text-gray-400 cursor-not-allowed pointer-events-none'">
-                            <span>Siguiente: Verificación de Identidad</span>
-                            <svg x-show="allChecksPassed" class="w-6 h-6 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                           :class="checks.dni ? 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md cursor-pointer' : 'bg-gray-200 text-gray-400 cursor-not-allowed pointer-events-none'">
+                            <span>INGRESAR AL EXAMEN</span>
+                            <svg x-show="checks.dni" class="w-6 h-6 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
                         </a>
-                        <p class="text-center text-xs text-gray-400 mt-2" x-show="!allChecksPassed">
-                            Verifica tus dispositivos para continuar.
+                        
+                        <p class="text-center text-xs text-gray-400 mt-2" x-show="!checks.dni && step === 2">
+                            Debes validar tu DNI para habilitar el ingreso.
                         </p>
                     </div>
                 </div>
@@ -98,10 +159,13 @@
     <script>
         function techCheck() {
             return {
-                checks: { camera: false, audio: false, network: true },
+                step: 1,
+                checks: { camera: false, audio: false, network: true, dni: false },
                 audioLevel: 0,
+                isScanning: false,
+                errorMessage: '',
                 
-                get allChecksPassed() {
+                get allHardwarePassed() {
                     return this.checks.camera && this.checks.audio && this.checks.network;
                 },
 
@@ -112,14 +176,18 @@
                 async startCamera() {
                     const video = document.getElementById('videoInput');
                     try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 640, height: 480 } });
+                        // Solicitamos mejor resolución para que el OCR funcione
+                        const stream = await navigator.mediaDevices.getUserMedia({ 
+                            audio: true, 
+                            video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
+                        });
                         video.srcObject = stream;
                         this.checks.camera = true; 
                         this.setupAudio(stream);
                     } catch (err) {
                         console.error("Error cámara:", err);
                         this.checks.camera = false;
-                        alert("Error de acceso a cámara/mic. Revisa permisos.");
+                        alert("Error: No se pudo acceder a la cámara. Revisa permisos.");
                     }
                 },
 
@@ -142,6 +210,52 @@
                         this.audioLevel = Math.min(100, Math.round(average * 2));
                         if (average > 10) this.checks.audio = true;
                     };
+                },
+
+                async scanDNI() {
+                    if (this.isScanning) return;
+                    this.isScanning = true;
+                    this.errorMessage = '';
+
+                    const video = this.$refs.video;
+                    const canvas = this.$refs.canvas;
+                    const context = canvas.getContext('2d');
+
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    
+                    // Dibujamos el video en el canvas
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    // Convertimos a base64
+                    const imageData = canvas.toDataURL('image/jpeg', 0.9);
+
+                    try {
+                        const response = await fetch('/runner/api/validate-dni/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': '{{ csrf_token }}' // Django inyecta esto
+                            },
+                            body: JSON.stringify({ image: imageData })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            this.checks.dni = true;
+                            this.errorMessage = '';
+                        } else {
+                            this.checks.dni = false;
+                            this.errorMessage = result.message;
+                        }
+
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.errorMessage = "Error de conexión con el servidor.";
+                    } finally {
+                        this.isScanning = false;
+                    }
                 }
             }
         }
