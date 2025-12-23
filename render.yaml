@@ -18,6 +18,7 @@ services:
       pip install -r requirements.txt
       python manage.py collectstatic --no-input  # <-- CORRECCIÓN AÑADIDA AQUÍ
       python manage.py migrate
+      "export TMPDIR=$XR_APP_DIR/tmp_build && mkdir -p $TMPDIR && pip install --no-cache-dir -r requirements.txt && python manage.py collectstatic --noinput"
     startCommand: "gunicorn plataforma.wsgi"
     healthCheckPath: /health/
     envVars:
