@@ -4,7 +4,7 @@ import base64
 import re
 import os
 import traceback
-import requests  # <--- CRÍTICO: Para conexión directa a Google
+import requests  # Para conexión directa a Google
 from io import BytesIO
 from PIL import Image
 
@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.template.loader import render_to_string
+from django.core.files.base import ContentFile # <--- CRÍTICO: Para guardar la foto del DNI
 
 # Librerías Externas
 from weasyprint import HTML
@@ -115,7 +116,7 @@ def register_biometrics(request, attempt_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 # ---------------------------------------------------------
-# 5. VALIDACIÓN DNI - AUTO-DESCUBRIMIENTO DE MODELOS 🧠
+# 5. VALIDACIÓN DNI - AUTO-DESCUBRIMIENTO + GUARDADO 📸
 # ---------------------------------------------------------
 @require_POST
 def validate_dni_ocr(request, attempt_id):
@@ -145,42 +146,35 @@ def validate_dni_ocr(request, attempt_id):
         model_to_use = None
         
         try:
-            # Listamos modelos disponibles para esta API Key
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GOOGLE_API_KEY}"
             list_res = requests.get(list_url, timeout=5)
             
             if list_res.status_code == 200:
                 models_data = list_res.json().get('models', [])
-                # Filtramos solo los que pueden generar contenido
                 valid_names = [m['name'] for m in models_data if 'generateContent' in m.get('supportedGenerationMethods', [])]
+                print(f"ℹ️ Modelos habilitados: {valid_names}")
                 
-                print(f"ℹ️ Modelos habilitados en tu cuenta: {valid_names}")
-                
-                # Buscamos el mejor candidato en orden de preferencia
-                # Primero buscamos 'flash', luego 'pro-vision', luego cualquiera 'pro'
+                # Buscamos el mejor candidato: flash > vision > pro
                 for pref in ['flash', 'vision', 'pro']:
                     matches = [name for name in valid_names if pref in name]
                     if matches:
-                        # Tomamos el primero que coincida y quitamos 'models/' si viene incluido
                         model_to_use = matches[0].replace('models/', '')
                         break
                 
-                # Si no encontramos ninguno preferido, usamos el primero de la lista válida
                 if not model_to_use and valid_names:
                     model_to_use = valid_names[0].replace('models/', '')
-
             else:
-                print(f"⚠️ No se pudo listar modelos ({list_res.status_code}). Intentando fallback manual.")
+                print(f"⚠️ No se pudo listar modelos ({list_res.status_code}).")
 
         except Exception as e:
-            print(f"⚠️ Error listando modelos: {e}. Intentando fallback manual.")
+            print(f"⚠️ Error listando modelos: {e}.")
 
-        # Fallback de emergencia si el auto-descubrimiento falla
+        # Fallback de emergencia
         if not model_to_use:
             model_to_use = "gemini-1.5-flash"
 
-        # 3. Llamada a la API con el modelo encontrado
-        print(f"🚀 Intentando generar con: {model_to_use}")
+        # 3. Llamada a la API
+        print(f"🚀 Usando modelo: {model_to_use}")
         
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_to_use}:generateContent?key={GOOGLE_API_KEY}"
         
@@ -194,19 +188,18 @@ def validate_dni_ocr(request, attempt_id):
         }
         headers = {'Content-Type': 'application/json'}
         
-        # Timeout más largo por si es un modelo pesado
         response = requests.post(api_url, headers=headers, json=payload, timeout=25)
 
         if response.status_code != 200:
             print(f"❌ Error API: {response.text}")
-            return JsonResponse({'success': False, 'message': f'Error de IA ({response.status_code}): El modelo {model_to_use} no respondió.'})
+            return JsonResponse({'success': False, 'message': f'Error de IA ({response.status_code})'})
 
         # 4. Procesar Respuesta
         json_res = response.json()
         candidates = json_res.get('candidates', [])
         
         if not candidates:
-             return JsonResponse({'success': False, 'message': 'La IA bloqueó la imagen por seguridad. Intente otra foto.'})
+             return JsonResponse({'success': False, 'message': 'La IA bloqueó la imagen. Intente otra foto.'})
 
         raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
         clean_text = raw_text.replace('```json', '').replace('```', '').strip()
@@ -216,7 +209,7 @@ def validate_dni_ocr(request, attempt_id):
         except:
              return JsonResponse({'success': False, 'message': 'Error leyendo respuesta de IA.'})
 
-        # 5. Lógica de Negocio
+        # 5. Lógica de Negocio + GUARDADO
         if not ai_data.get('es_documento'):
              return JsonResponse({'success': False, 'message': 'No es un documento válido. Enfoca mejor.'})
 
@@ -226,6 +219,18 @@ def validate_dni_ocr(request, attempt_id):
         print(f"🔍 DNI: '{numbers_found}' vs Legajo: '{legajo_alumno}'")
 
         if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
+            
+            # --- NUEVO: GUARDAR IMAGEN DEL DNI ---
+            try:
+                file_name = f"dni_{attempt.id}_{attempt.student_legajo}.jpg"
+                image_file = ContentFile(base64.b64decode(base64_clean), name=file_name)
+                # Guardamos en el campo 'photo_id'
+                attempt.photo_id.save(file_name, image_file, save=True)
+                print("💾 DNI guardado correctamente.")
+            except Exception as save_err:
+                print(f"⚠️ Error guardando DNI: {save_err}")
+            # -------------------------------------
+
             return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
         else:
             return JsonResponse({
@@ -237,7 +242,7 @@ def validate_dni_ocr(request, attempt_id):
         print(traceback.format_exc())
         return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'}, status=200)
 
-# 6. RUNNER (Examen)
+# 6. RUNNER (Examen) - CORREGIDO EL TIMER ⏱️
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -245,6 +250,8 @@ def exam_runner_view(request, access_code, attempt_id):
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
+    # CORRECCIÓN: Solo iniciamos el timer si NO ha empezado antes.
+    # Esto evita que un intento viejo se cierre inmediatamente.
     if not attempt.start_time:
         attempt.start_time = timezone.now()
         attempt.save(update_fields=['start_time'])
