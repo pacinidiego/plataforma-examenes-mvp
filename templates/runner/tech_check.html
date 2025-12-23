@@ -289,7 +289,7 @@
                     // ==============================================
                     // CORRECCIÓN 3: URL generada por Django
                     // ==============================================
-                    const url = "{% url 'runner:validate_dni' %}";
+                    const url = "{% url 'runner:validate_dni' attempt.id %}";
                     const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
                     const response = await fetch(url, {
