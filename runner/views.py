@@ -338,12 +338,19 @@ def log_event(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 11-15. GESTIÓN DOCENTE (Sin Cambios)
+# 11-15. GESTIÓN DOCENTE
 @login_required
 @user_passes_test(is_staff)
 def teacher_dashboard_view(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id)
     attempts = Attempt.objects.filter(exam=exam).order_by('-start_time').prefetch_related('events')
+    
+    # --- CAMBIO: Lectura de configuración del Tenant ---
+    # Obtenemos los umbrales configurados en la institución
+    limit_medium = exam.tenant.risk_threshold_medium
+    limit_high = exam.tenant.risk_threshold_high
+    # ---------------------------------------------------
+
     results = []
     for attempt in attempts:
         events = attempt.events.all()
@@ -355,8 +362,12 @@ def teacher_dashboard_view(request, exam_id):
         risk_score += events.filter(event_type='IDENTITY_MISMATCH').count() * 10
         
         status_color = 'green'
-        if risk_score > 10: status_color = 'red'
-        elif risk_score > 4: status_color = 'yellow'
+        
+        # --- CAMBIO: Comparación Dinámica ---
+        if risk_score > limit_high: 
+            status_color = 'red'
+        elif risk_score > limit_medium: 
+            status_color = 'yellow'
         
         results.append({
             'attempt': attempt, 'risk_score': risk_score,
