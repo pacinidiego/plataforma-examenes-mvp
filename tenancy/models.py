@@ -11,6 +11,19 @@ class Tenant(models.Model):
     name = models.CharField(max_length=255, unique=True, verbose_name="Nombre de la Institución")
     created_at = models.DateTimeField(auto_now_add=True)
     # (Aquí irán los toggles y planes del S5b/S6)
+
+    # --- NUEVOS CAMPOS (Configuración de Semáforo) ---
+    risk_threshold_medium = models.PositiveIntegerField(
+        default=4,
+        verbose_name="Umbral de Riesgo Medio (Amarillo)",
+        help_text="Si el puntaje supera este número, el estado pasa a Amarillo."
+    )
+    risk_threshold_high = models.PositiveIntegerField(
+        default=10,
+        verbose_name="Umbral de Riesgo Alto (Rojo)",
+        help_text="Si el puntaje supera este número, el estado pasa a Rojo."
+    )
+    # -------------------------------------------------
     
     class Meta:
         verbose_name = _("Institución (Tenant)")
