@@ -6,7 +6,7 @@ import os
 import traceback
 import requests
 import time
-import uuid  # <--- Nuevo import para nombres de archivo únicos
+import uuid
 from io import BytesIO
 from PIL import Image
 
@@ -17,8 +17,8 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.template.loader import render_to_string
-from django.core.files.base import ContentFile # <--- Para convertir base64 a archivo
-from django.core.files.storage import default_storage # <--- Para subir a Cloudflare
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 # Librerías Externas
 from weasyprint import HTML
@@ -102,8 +102,6 @@ def register_biometrics(request, attempt_id):
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
         
-        # Nota: Aquí también podrías implementar la subida a Cloudflare si quisieras,
-        # pero por ahora lo dejamos simple para no romper el flujo.
         if 'reference_face' in data:
             attempt.reference_face_url = data['reference_face']
             
@@ -115,12 +113,16 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (CON UPLOAD A CLOUDFLARE R2 ☁️)
+# 5. VALIDACIÓN DNI (CORREGIDA: UN INTENTO POR FOTO)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # --- A. OBTENER Y SUBIR IMAGEN ---
+    # --- 1. CONTADOR DE INTENTOS ---
+    intentos_previos = Evidence.objects.filter(attempt=attempt).count()
+    intento_actual = intentos_previos + 1
+    
+    # --- 2. OBTENER Y SUBIR IMAGEN ---
     try:
         data = json.loads(request.body)
         image_data = data.get('image', '')
@@ -133,35 +135,40 @@ def validate_dni_ocr(request, attempt_id):
         if not base64_clean:
             return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
         
-        # 1. Decodificar la imagen en memoria
+        # Decodificar
         image_content = base64.b64decode(base64_clean)
         
-        # 2. Generar nombre único: evidence/{exam_id}/{attempt_id}_{random}.jpg
-        file_name = f"evidence/dni_{attempt.id}_{uuid.uuid4().hex[:8]}.jpg"
+        # Nombre único para evitar sobrescritura y tener historial
+        file_name = f"evidence/dni_{attempt.id}_intento_{intento_actual}_{uuid.uuid4().hex[:6]}.jpg"
         
-        # 3. ¡SUBIR A CLOUDFLARE! (Esto usa tu configuración de settings.py)
-        # default_storage.save devuelve el nombre con el que se guardó
+        # Subir a Cloudflare
         saved_path = default_storage.save(file_name, ContentFile(image_content))
-        
-        # 4. Obtener la URL pública (o firmada) del archivo
         file_url = default_storage.url(saved_path)
         
-        # 5. Guardar el LINK en la base de datos (mucho más ligero)
+        # Actualizar URL principal del intento
         attempt.photo_id_url = file_url
         attempt.save()
+
+        # --- 3. GUARDAR EVIDENCIA (FOTO) ---
+        Evidence.objects.create(
+            attempt=attempt,
+            file_url=file_url,
+            timestamp=timezone.now(),
+            gemini_analysis={'intento': intento_actual, 'status': 'procesando'}
+        )
 
     except Exception as e:
         print(f"Error subiendo imagen: {e}")
         return JsonResponse({'success': False, 'message': f'Error guardando imagen: {str(e)}'})
 
+    # --- 4. VALIDACIÓN IA ---
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Validación simulada (Sin API Key).'})
 
-    # --- B. CONFIGURACIÓN IA ---
-    model_name = "gemini-1.5-flash"
+    # Usamos modelo actualizado para evitar 404
+    model_name = "gemini-1.5-flash-latest"
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
     
-    # Enviamos el base64 a Gemini (Gemini necesita los bytes, no el link de Cloudflare)
     payload = {
         "contents": [{
             "parts": [
@@ -172,88 +179,63 @@ def validate_dni_ocr(request, attempt_id):
     }
     headers = {'Content-Type': 'application/json'}
 
-    # --- C. BUCLE DE 3 INTENTOS ---
+    error_actual = ""
     ia_success = False
-    
-    for i in range(3):
-        intento_num = i + 1
-        error_actual = ""
+
+    try:
+        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
         
-        # Guardar Evidencia de este intento (Ahora con URL de Cloudflare)
-        try:
-            # Reusamos la URL de la imagen que ya subimos (es la misma foto)
-            # O si cada intento fuera una foto distinta, tendríamos que subirla de nuevo.
-            # Asumimos que es la misma foto del request.
-            Evidence.objects.create(
-                attempt=attempt,
-                file_url=file_url, # <--- Guardamos el LINK de Cloudflare
-                timestamp=timezone.now(),
-                gemini_analysis={'intento': intento_num, 'status': 'procesando'}
-            )
-        except Exception:
-            pass # Si falla guardar el log, seguimos
-
-        try:
-            response = requests.post(api_url, headers=headers, json=payload, timeout=10)
-            
-            if response.status_code == 200:
-                json_res = response.json()
-                try:
-                    candidates = json_res.get('candidates', [])
-                    if not candidates:
-                         error_actual = "IA bloqueó la imagen (Seguridad)"
-                    else:
-                        raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
-                        clean_text = raw_text.replace('```json', '').replace('```', '').strip()
-                        ai_data = json.loads(clean_text)
-                        
-                        if ai_data.get('es_documento'):
-                            numbers_found = str(ai_data.get('numeros', ''))
-                            legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
-                            
-                            if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
-                                ia_success = True
-                                break 
-                            else:
-                                error_actual = f"Legajo no coincide (IA leyó: {numbers_found})"
-                        else:
-                            error_actual = "No parece un DNI válido"
-                except Exception as e:
-                    error_actual = f"Error leyendo respuesta IA: {str(e)}"
-            
-            elif response.status_code == 503:
-                error_actual = "Servidor IA ocupado (503)"
-                time.sleep(1) 
-            elif response.status_code == 404:
-                error_actual = "Modelo IA no encontrado (404)"
-            else:
-                error_actual = f"Error API: {response.status_code}"
-
-        except Exception as e:
-            error_actual = f"Error de red/timeout: {str(e)}"
-
-        if not ia_success:
+        if response.status_code == 200:
+            json_res = response.json()
             try:
-                AttemptEvent.objects.create(
-                    attempt=attempt, 
-                    event_type='IDENTITY_MISMATCH', 
-                    metadata={'reason': f'Fallo DNI (Intento {intento_num}): {error_actual}'}
-                )
-            except: pass
+                candidates = json_res.get('candidates', [])
+                if not candidates:
+                        error_actual = "IA bloqueó la imagen (Seguridad)"
+                else:
+                    raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
+                    clean_text = raw_text.replace('```json', '').replace('```', '').strip()
+                    ai_data = json.loads(clean_text)
+                    
+                    if ai_data.get('es_documento'):
+                        numbers_found = str(ai_data.get('numeros', ''))
+                        legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
+                        
+                        if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
+                            ia_success = True
+                        else:
+                            error_actual = f"Legajo no coincide (IA leyó: {numbers_found})"
+                    else:
+                        error_actual = "No parece un DNI válido"
+            except Exception as e:
+                error_actual = f"Error leyendo respuesta IA: {str(e)}"
+        
+        elif response.status_code == 404:
+            error_actual = "Modelo IA no encontrado (Revisar nombre/API Key)"
+        else:
+            error_actual = f"Error API: {response.status_code}"
 
-    # --- D. DECISIÓN FINAL ---
+    except Exception as e:
+        error_actual = f"Error de red/timeout: {str(e)}"
+
+    # --- 5. RESULTADO ---
     if ia_success:
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     else:
+        # Registrar evento de fallo
+        AttemptEvent.objects.create(
+            attempt=attempt, 
+            event_type='IDENTITY_MISMATCH', 
+            metadata={'reason': f'Fallo intento {intento_actual}: {error_actual}'}
+        )
+        
+        # Devolvemos retry=True para que el JS saque otra foto
         return JsonResponse({
-            'success': True, 
-            'message': 'Validación guardada para revisión manual.'
+            'success': False, 
+            'message': f'Fallo validación: {error_actual}. Reintentando...',
+            'retry': True
         })
 
-# 6. RUNNER (Examen)
-# Busca la función 'exam_runner_view' y REEMPLÁZALA por esto:
-# Reemplaza la función exam_runner_view completa con esto:
-
+# 6. RUNNER (EXAMEN - CORREGIDO ERROR 500)
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -271,19 +253,18 @@ def exam_runner_view(request, access_code, attempt_id):
         
         saved_answers = attempt.answers or {}
         
-        # --- CORRECCIÓN AQUÍ ---
-        # Si se acabó el tiempo y no respondió nada (posible error técnico previo),
-        # reiniciamos el contador a "AHORA" en lugar de "None".
+        # CORRECCIÓN DE BASE DE DATOS: 
+        # Si se agotó el tiempo pero no hay respuestas (error de carga inicial), 
+        # reiniciamos el reloj a "ahora" en lugar de ponerlo en Null.
         if remaining <= 0 and not saved_answers:
-             attempt.start_time = timezone.now() # <--- CAMBIO CLAVE
+             attempt.start_time = timezone.now() # <--- FIXED
              attempt.save()
              remaining = total_duration
     else:
-        # Si por alguna razón start_time es nulo (aunque la BD dice que no debe serlo),
-        # asumimos tiempo completo.
+        # Si start_time es nulo (inicio fresco), asumimos tiempo completo.
         remaining = total_duration
 
-    # 3. Si el tiempo real se acabó y hay respuestas (o no se reinició), enviar examen
+    # 3. Si el tiempo real se acabó y hay respuestas
     if remaining <= 0 and attempt.start_time:
         return redirect('runner:submit_exam', attempt_id=attempt.id)
 
@@ -306,8 +287,6 @@ def exam_runner_view(request, access_code, attempt_id):
         'initial_step': initial_step,
         'has_started': attempt.start_time is not None
     })
-
-
 
 # API: INICIAR TIMER
 @require_POST
