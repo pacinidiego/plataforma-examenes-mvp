@@ -118,6 +118,48 @@
     </div>
     {% endif %}
 
+    <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Detalle de Respuestas</h2>
+    <div class="space-y-4 mb-10">
+        {% for qa in qa_list %}
+        <div class="p-4 rounded-lg border flex flex-col md:flex-row md:items-start gap-4 shadow-sm
+            {% if qa.is_correct %}bg-green-50 border-green-200{% else %}bg-red-50 border-red-200{% endif %}">
+            
+            <div class="flex-shrink-0 mt-1">
+                {% if qa.is_correct %}
+                    <span class="text-green-600 text-xl">✅</span>
+                {% else %}
+                    <span class="text-red-600 text-xl">❌</span>
+                {% endif %}
+            </div>
+            
+            <div class="flex-1">
+                <h3 class="font-bold text-gray-900 mb-2">{{ qa.question }}</h3>
+                
+                <div class="grid md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="block text-xs uppercase font-bold text-gray-500 mb-1">Respuesta del Alumno</span>
+                        <div class="font-medium {% if qa.is_correct %}text-green-800{% else %}text-red-800{% endif %}">
+                            {{ qa.user_response|default:"Sin respuesta" }}
+                        </div>
+                    </div>
+                    
+                    {% if not qa.is_correct %}
+                    <div>
+                        <span class="block text-xs uppercase font-bold text-gray-500 mb-1">Respuesta Correcta</span>
+                        <div class="font-medium text-gray-800">
+                            {{ qa.correct_response }}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="p-6 bg-gray-50 border border-gray-200 rounded-lg text-center text-gray-500">
+            No hay preguntas o respuestas registradas para este examen.
+        </div>
+        {% endfor %}
+    </div>
     <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Bitácora de Vigilancia (Logs)</h2>
     <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
         <div class="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
