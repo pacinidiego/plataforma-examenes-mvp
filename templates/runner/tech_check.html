@@ -76,10 +76,14 @@
                                 :class="checks.dni ? 'bg-green-600 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-1'">
                             
                             <span x-show="!isScanning && !checks.dni">📸 Capturar DNI</span>
-                            <span x-show="isScanning">Validando con IA...</span>
+                            <span x-show="isScanning">
+                                <span x-show="!errorMessage">Validando con IA...</span>
+                                <span x-show="errorMessage">Reintentando...</span>
+                            </span>
                             <span x-show="checks.dni">Identidad Confirmada</span>
                         </button>
-                        <p class="text-xs text-gray-500" x-show="!checks.dni">Asegúrate de que haya buena luz y el texto sea legible.</p>
+                        <p class="text-xs text-gray-500" x-show="!checks.dni && !errorMessage">Asegúrate de que haya buena luz y el texto sea legible.</p>
+                        <p class="text-sm text-red-600 font-bold animate-pulse" x-show="errorMessage" x-text="errorMessage"></p>
                     </div>
                 </div>
 
@@ -130,7 +134,7 @@
                                           :class="checks.dni ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" 
                                           x-text="checks.dni ? 'VALIDADO' : 'Requerido'"></span>
                                 </div>
-                                <p class="text-xs text-red-500 mt-1" x-show="errorMessage && !checks.dni" x-text="errorMessage"></p>
+                                <p class="text-xs text-red-500 mt-1 font-semibold" x-show="errorMessage && !checks.dni" x-text="errorMessage"></p>
                                 
                                 <div x-show="checks.dni && !checks.face" class="mt-2 p-2 bg-blue-50 rounded border border-blue-100 animate-pulse">
                                     <p class="text-xs text-blue-700 font-bold flex items-center gap-2">
@@ -263,10 +267,19 @@
                 };
             },
 
-            async scanDNI() {
-                if (this.isScanning) return;
+            // --- FUNCIÓN MODIFICADA PARA REINTENTO AUTOMÁTICO ---
+            async scanDNI(isAutoRetry = false) {
+                // Si ya está escaneando y NO es un reintento automático, no hacer nada (evita doble clic)
+                if (this.isScanning && !isAutoRetry) return;
+                
                 this.isScanning = true;
-                this.errorMessage = '';
+                
+                // Solo limpiamos el mensaje si es el primer clic del usuario, 
+                // si es un reintento automático, dejamos el mensaje de error anterior visible
+                if (!isAutoRetry) {
+                     this.errorMessage = '';
+                }
+                
                 const video = this.$refs.videoElement;
                 const canvas = this.$refs.canvas;
                 const context = canvas.getContext('2d');
@@ -284,19 +297,36 @@
                         body: JSON.stringify({ image: imageData })
                     });
                     const result = await response.json();
+                    
                     if (result.success) {
+                        // Éxito: Detenemos escaneo y validamos
                         this.checks.dni = true;
                         this.errorMessage = '';
+                        this.isScanning = false;
                     } else {
+                        // Fallo
                         this.checks.dni = false;
                         this.errorMessage = result.message;
+                        
+                        // SI EL SERVER PIDE REINTENTAR (retry: true)
+                        if (result.retry) {
+                            console.log("Reintentando automáticamente en 2.5s...");
+                            // Mantenemos isScanning = true para bloquear el botón
+                            setTimeout(() => {
+                                // Llamada recursiva (Bucle controlado por el server)
+                                this.scanDNI(true); 
+                            }, 2500);
+                        } else {
+                            // Si el server dice que no (error fatal), paramos.
+                            this.isScanning = false;
+                        }
                     }
                 } catch (error) {
                     this.errorMessage = "Error de conexión.";
-                } finally {
                     this.isScanning = false;
                 }
             },
+            // ----------------------------------------------------
 
             async enterExam() {
                 if (this.isEntering) return;
