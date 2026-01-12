@@ -113,15 +113,15 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (CORREGIDO: TIMEOUT CON AVISO)
+# 5. VALIDACIÓN DNI (CORREGIDO: LISTA REAL DE MODELOS + TIMEOUT)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
     # --- 1. CONTADOR DE INTENTOS ---
+    MAX_INTENTOS = 3
     intentos_previos = Evidence.objects.filter(attempt=attempt).count()
     intento_actual = intentos_previos + 1
-    MAX_INTENTOS = 3 
     
     # --- 2. OBTENER Y SUBIR IMAGEN ---
     try:
@@ -136,21 +136,15 @@ def validate_dni_ocr(request, attempt_id):
         if not base64_clean:
             return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
         
-        # Decodificar
         image_content = base64.b64decode(base64_clean)
-        
-        # Nombre único
         file_name = f"evidence/dni_{attempt.id}_intento_{intento_actual}_{uuid.uuid4().hex[:8]}.jpg"
         
-        # Subir a Cloudflare
         saved_path = default_storage.save(file_name, ContentFile(image_content))
         file_url = default_storage.url(saved_path)
         
-        # Actualizar URL
         attempt.photo_id_url = file_url
         attempt.save()
 
-        # Guardar Evidencia
         Evidence.objects.create(
             attempt=attempt,
             file_url=file_url,
@@ -160,15 +154,19 @@ def validate_dni_ocr(request, attempt_id):
 
     except Exception as e:
         print(f"Error subiendo imagen: {e}")
-        return JsonResponse({'success': False, 'message': f'Error guardando imagen: {str(e)}'})
+        return JsonResponse({'success': False, 'message': f'Error imagen: {str(e)}'})
 
-    # --- 3. VALIDACIÓN IA ---
+    # --- 3. VALIDACIÓN IA (MODELOS REALES) ---
     if not GOOGLE_API_KEY:
-        return JsonResponse({'success': True, 'message': 'Validación simulada (Sin API Key).'})
+        return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    model_name = "gemini-1.5-flash"
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
+    # ¡ESTOS SON LOS MODELOS QUE SÍ TIENES!
+    modelos_a_probar = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-2.5-flash"]
     
+    ia_success = False
+    error_actual = ""
+    modelo_usado = ""
+
     payload = {
         "contents": [{
             "parts": [
@@ -179,92 +177,90 @@ def validate_dni_ocr(request, attempt_id):
     }
     headers = {'Content-Type': 'application/json'}
 
-    error_actual = ""
-    ia_success = False
-
-    try:
-        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            json_res = response.json()
-            try:
+    # Bucle para probar modelos
+    for model_name in modelos_a_probar:
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
+        try:
+            print(f"--- Intentando validar con modelo: {model_name} ---")
+            response = requests.post(api_url, headers=headers, json=payload, timeout=10)
+            
+            if response.status_code == 200:
+                modelo_usado = model_name
+                json_res = response.json()
+                
                 candidates = json_res.get('candidates', [])
                 if not candidates:
-                        error_actual = "IA bloqueó la imagen (Seguridad)"
-                else:
-                    raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
-                    clean_text = raw_text.replace('```json', '').replace('```', '').strip()
-                    ai_data = json.loads(clean_text)
+                    error_actual = "IA bloqueó la imagen (Seguridad)"
+                    break 
+                
+                raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
+                clean_text = raw_text.replace('```json', '').replace('```', '').strip()
+                ai_data = json.loads(clean_text)
+                
+                if ai_data.get('es_documento'):
+                    numbers_found = str(ai_data.get('numeros', ''))
+                    legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
                     
-                    if ai_data.get('es_documento'):
-                        numbers_found = str(ai_data.get('numeros', ''))
-                        legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
-                        
-                        if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
-                            ia_success = True
-                        else:
-                            error_actual = f"Legajo no coincide (IA leyó: {numbers_found})"
+                    if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
+                        ia_success = True
+                        error_actual = ""
+                        break 
                     else:
-                        error_actual = "No parece un DNI válido"
-            except Exception as e:
-                error_actual = f"Error leyendo respuesta IA: {str(e)}"
-        
-        elif response.status_code == 503:
-            error_actual = "Servidor IA ocupado (503)"
-        elif response.status_code == 404:
-            error_actual = "Modelo IA no encontrado (404)"
-        else:
-            error_actual = f"Error API: {response.status_code}"
-
-    except Exception as e:
-        error_actual = f"Error de red/timeout: {str(e)}"
-
-    # --- 4. DECISIÓN FINAL CON ETIQUETADO ---
-    if ia_success:
-        # Actualizamos la evidencia a 'success'
-        last_evidence = Evidence.objects.filter(attempt=attempt).last()
-        if last_evidence:
-            data = last_evidence.gemini_analysis or {}
-            data['status'] = 'success'
-            last_evidence.gemini_analysis = data
-            last_evidence.save()
+                        error_actual = f"Legajo no coincide (Leído: {numbers_found})"
+                        break # Datos mal, conexión OK.
+                else:
+                    error_actual = "No parece un DNI válido"
+                    break # Imagen mal, conexión OK.
             
+            elif response.status_code == 404:
+                error_actual = f"Modelo {model_name} no encontrado (404)"
+                continue # Probamos el siguiente
+            
+            else:
+                error_actual = f"Error API ({response.status_code})"
+                break 
+
+        except Exception as e:
+            error_actual = f"Error red: {str(e)}"
+            break
+
+    # --- 4. RESULTADO FINAL ---
+    if ia_success:
+        # ÉXITO
+        last_ev = Evidence.objects.filter(attempt=attempt).last()
+        if last_ev:
+            last_ev.gemini_analysis = {'status': 'success', 'modelo': modelo_usado}
+            last_ev.save()
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     
     else:
-        # Registramos el evento de fallo
+        # FALLO
         try:
             AttemptEvent.objects.create(
-                attempt=attempt, 
-                event_type='IDENTITY_MISMATCH', 
-                metadata={'reason': f'Fallo intento {intento_actual}: {error_actual}'}
+                attempt=attempt, event_type='IDENTITY_MISMATCH', 
+                metadata={'reason': f'Fallo ({intento_actual}): {error_actual}'}
             )
         except: pass
 
-        # SI SE ALCANZÓ EL LÍMITE (TIMEOUT)
         if intento_actual >= MAX_INTENTOS:
+            # TIMEOUT -> REVISIÓN MANUAL
+            last_ev = Evidence.objects.filter(attempt=attempt).last()
+            if last_ev:
+                last_ev.gemini_analysis = {'status': 'manual_review', 'error': error_actual}
+                last_ev.save()
             
-            # Marcamos evidencia como 'manual_review'
-            last_evidence = Evidence.objects.filter(attempt=attempt).last()
-            if last_evidence:
-                data = last_evidence.gemini_analysis or {}
-                data['status'] = 'manual_review'
-                last_evidence.gemini_analysis = data
-                last_evidence.save()
-
             return JsonResponse({
                 'success': True, 
-                'warning': True, # Señal para el frontend
-                'message': 'Límite de intentos alcanzado. Pase a revisión manual.',
+                'warning': True, # Activa modo revisión en frontend
+                'message': 'Pase a revisión manual.', 
                 'retry': False
             })
-            
-        # SI TODAVÍA QUEDAN INTENTOS
         else:
+            # REINTENTAR
             return JsonResponse({
                 'success': False, 
-                'message': f'Fallo validación: {error_actual}. Reintentando ({intento_actual}/{MAX_INTENTOS})...',
-                'retry': True 
+                'message': f'Fallo: {error_actual}. Reintentando...', 
+                'retry': True
             })
 
 # 6. RUNNER (Examen)
