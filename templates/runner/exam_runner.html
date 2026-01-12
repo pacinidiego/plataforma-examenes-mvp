@@ -178,6 +178,9 @@
                 saveStatus: '', 
                 isFullScreen: false,
                 
+                // 🔥 NUEVO: Bandera de Inmunidad
+                isSubmitting: false, 
+                
                 // Tiempos
                 globalSeconds: config.serverRemaining,
                 itemSeconds: config.timePerItem,
@@ -297,7 +300,6 @@
                     this.answers[questionId] = answer;
                     this.saveStatus = 'saving';
                     try {
-                        // CORRECCIÓN: Usamos la URL correcta 'runner:save_answer'
                         const response = await fetch("{% url 'runner:save_answer' attempt.id %}", {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
@@ -321,6 +323,8 @@
                 },
 
                 submitForm() {
+                    // 🔥 NUEVO: Activar Escudo antes de enviar
+                    this.isSubmitting = true;
                     document.getElementById('examForm').submit();
                 },
 
@@ -356,8 +360,10 @@
                 },
 
                 async logEvent(type, meta = {}) {
+                    // 🔥 NUEVO: Si estamos enviando, cancelar el reporte
+                    if (this.isSubmitting) return;
+
                     try {
-                        // CORRECCIÓN: Usamos la URL correcta 'runner:log_event'
                         await fetch("{% url 'runner:log_event' attempt.id %}", {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
