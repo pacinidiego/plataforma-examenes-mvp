@@ -3,57 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen Finalizado</title>
+    <title>Estado del Examen</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 h-screen flex items-center justify-center">
+    
     <div class="bg-white p-8 rounded-lg shadow-lg text-center max-w-md w-full max-h-[90vh] flex flex-col">
         
-        <div class="mb-4 text-green-500 flex-shrink-0">
-            <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-        </div>
-
-        <h1 class="text-2xl font-bold mb-2 flex-shrink-0">¡Examen Enviado!</h1>
-        <p class="text-gray-600 mb-4 flex-shrink-0">Tus respuestas han sido guardadas.</p>
-        
-        <div class="bg-blue-50 p-4 rounded mb-4 flex-shrink-0">
-            <p class="text-sm text-blue-800 font-semibold">Alumno</p>
-            <p class="text-lg">{{ attempt.student_name }}</p>
+        {% if en_revision %}
             
-            <hr class="my-2 border-blue-200">
-            <p class="text-sm text-blue-800 font-semibold">Calificación Final</p>
-            <p class="text-3xl font-bold text-blue-900">{{ attempt.score|floatformat:2 }} pts</p>
-        </div>
-
-        <div class="mb-6 text-left border-t pt-4 flex-grow overflow-y-auto">
-            <h3 class="font-bold text-gray-700 mb-2 text-sm uppercase tracking-wide">Detalle de Respuestas</h3>
-            
-            <div class="space-y-2">
-                {% for item in detalles %}
-                    <div class="flex justify-between items-center p-3 rounded-md bg-gray-50 border border-gray-100">
-                        <span class="text-gray-700 text-sm font-medium">Pregunta N° {{ forloop.counter }}</span>
-                        
-                        {% if item.es_correcta %}
-                            <div class="flex items-center text-green-600">
-                                <span class="font-bold mr-1">Correcta</span>
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                            </div>
-                        {% else %}
-                            <div class="flex items-center text-red-500">
-                                <span class="font-bold mr-1">Incorrecta</span>
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                            </div>
-                        {% endif %}
-                    </div>
-                {% empty %}
-                    <p class="text-sm text-gray-400 text-center italic">No hay detalles disponibles para mostrar.</p>
-                {% endfor %}
+            <div class="mb-4 text-yellow-500 flex-shrink-0">
+                <svg class="w-20 h-20 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
             </div>
-        </div>
 
-        <a href="{% url 'runner:lobby' attempt.exam.access_code %}" class="block w-full bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition font-semibold shadow flex-shrink-0">
+            <h1 class="text-2xl font-bold mb-2 text-gray-800">Examen bajo Revisión</h1>
+            
+            <div class="bg-yellow-50 p-4 rounded mb-6 border border-yellow-200">
+                <p class="text-yellow-800 font-medium">
+                    Hemos detectado inconsistencias en la validación de identidad o comportamiento.
+                </p>
+                <p class="text-sm text-yellow-700 mt-2">
+                    Tu calificación estará disponible una vez que el docente audite manualmente tus registros.
+                </p>
+            </div>
+
+            <p class="text-gray-500 text-sm mb-6">
+                Te notificaremos cuando tu nota sea liberada.
+            </p>
+
+        {% else %}
+
+            <div class="mb-4 text-green-500 flex-shrink-0">
+                <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+
+            <h1 class="text-2xl font-bold mb-2 flex-shrink-0">¡Examen Procesado!</h1>
+            <p class="text-gray-600 mb-4 flex-shrink-0">Aquí tienes tu resultado.</p>
+            
+            <div class="bg-blue-50 p-4 rounded mb-4 flex-shrink-0">
+                <p class="text-sm text-blue-800 font-semibold">Alumno</p>
+                <p class="text-lg">{{ attempt.student_name }}</p>
+                
+                <hr class="my-2 border-blue-200">
+                <p class="text-sm text-blue-800 font-semibold">Calificación Final</p>
+                <p class="text-3xl font-bold text-blue-900">{{ attempt.score|floatformat:2 }} pts</p>
+            </div>
+
+            <div class="mb-6 text-left border-t pt-4 flex-grow overflow-y-auto">
+                <h3 class="font-bold text-gray-700 mb-2 text-sm uppercase tracking-wide">Detalle de Respuestas</h3>
+                
+                <div class="space-y-2">
+                    {% for item in detalles %}
+                        <div class="flex justify-between items-center p-3 rounded-md bg-gray-50 border border-gray-100">
+                            <span class="text-gray-700 text-sm font-medium">Pregunta N° {{ forloop.counter }}</span>
+                            
+                            {% if item.es_correcta %}
+                                <div class="flex items-center text-green-600">
+                                    <span class="font-bold mr-1">Correcta</span>
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                </div>
+                            {% else %}
+                                <div class="flex items-center text-red-500">
+                                    <span class="font-bold mr-1">Incorrecta</span>
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <p class="text-sm text-gray-400 text-center italic">No hay detalles disponibles.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+        {% endif %}
+
+        <a href="{% url 'runner:lobby' attempt.exam.access_code %}" class="block w-full bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition font-semibold shadow flex-shrink-0 mt-auto">
             Volver al Inicio
         </a>
     </div>
