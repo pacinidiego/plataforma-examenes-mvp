@@ -118,10 +118,12 @@ def register_biometrics(request, attempt_id):
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
+    # --- 1. CONFIGURACIÓN ---
     MAX_INTENTOS = 3
     intentos_previos = Evidence.objects.filter(attempt=attempt).count()
     intento_actual = intentos_previos + 1
     
+    # --- 2. OBTENER Y SUBIR IMAGEN ---
     try:
         data = json.loads(request.body)
         image_data = data.get('image', '')
@@ -153,15 +155,12 @@ def validate_dni_ocr(request, attempt_id):
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'Error imagen: {str(e)}'})
 
+    # --- 3. VALIDACIÓN IA ---
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    # LISTA OPTIMIZADA
-    modelos_a_probar = [
-        "gemini-flash-lite-latest", 
-        "gemini-2.0-flash-lite", 
-        "gemini-2.0-flash"
-    ]
+    # PRIORIDAD DE MODELOS (Basado en tu lista disponible)
+    modelos_a_probar = ["gemini-flash-lite-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     
     ia_success = False
     error_actual = ""
@@ -178,6 +177,7 @@ def validate_dni_ocr(request, attempt_id):
     }
     headers = {'Content-Type': 'application/json'}
 
+    # Bucle para probar modelos
     for model_name in modelos_a_probar:
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
         try:
@@ -187,6 +187,7 @@ def validate_dni_ocr(request, attempt_id):
             if response.status_code == 200:
                 modelo_usado = model_name
                 json_res = response.json()
+                
                 candidates = json_res.get('candidates', [])
                 if not candidates:
                     error_actual = "IA bloqueó la imagen (Seguridad)"
@@ -229,6 +230,7 @@ def validate_dni_ocr(request, attempt_id):
             error_actual = f"Error red: {str(e)}"
             break
 
+    # --- 4. RESULTADO FINAL ---
     if ia_success:
         last_ev = Evidence.objects.filter(attempt=attempt).last()
         if last_ev:
@@ -263,7 +265,7 @@ def validate_dni_ocr(request, attempt_id):
                 'retry': True
             })
 
-# 6. RUNNER
+# 6. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -276,7 +278,9 @@ def exam_runner_view(request, access_code, attempt_id):
     if attempt.start_time:
         elapsed = (timezone.now() - attempt.start_time).total_seconds()
         remaining = max(0, total_duration - elapsed)
+        
         saved_answers = attempt.answers or {}
+        
         if remaining <= 0 and not saved_answers:
              attempt.start_time = timezone.now()
              attempt.save()
@@ -306,7 +310,7 @@ def exam_runner_view(request, access_code, attempt_id):
         'has_started': attempt.start_time is not None
     })
 
-# API: TIMER
+# API: INICIAR TIMER
 @require_POST
 def start_exam_timer(request, attempt_id):
     try:
@@ -323,6 +327,7 @@ def start_exam_timer(request, attempt_id):
 def save_answer(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
+        
         if not attempt.start_time:
             attempt.start_time = timezone.now()
             attempt.save(update_fields=['start_time'])
@@ -393,7 +398,7 @@ def log_event(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 11-15. GESTIÓN DOCENTE (MODIFICADO PARA MOSTRAR NOTA SI EL RIESGO ES BAJO)
+# 11-15. GESTIÓN DOCENTE
 @login_required
 @user_passes_test(is_staff)
 def teacher_dashboard_view(request, exam_id):
@@ -423,9 +428,7 @@ def teacher_dashboard_view(request, exam_id):
             status_color = 'yellow'
             status_text = "Riesgo Medio"
         
-        # LÓGICA DE VISIBILIDAD DE NOTA
-        # Si está en verde, mostramos la nota directo (Aprobado/Desaprobado)
-        # Si está en amarillo/rojo, ocultamos la nota para revisión.
+        # SI EL RIESGO ES BAJO, MOSTRAMOS LA NOTA DIRECTAMENTE
         show_grade = (status_color == 'green')
 
         results.append({
@@ -434,17 +437,51 @@ def teacher_dashboard_view(request, exam_id):
             'status_color': status_color, 
             'status_text': status_text,
             'event_count': events.count(),
-            'show_grade': show_grade # <--- VARIABLE CLAVE PARA EL TEMPLATE
+            'show_grade': show_grade
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
+# --- MODIFICACIÓN AQUÍ: AGREGADO DE DETALLE DE RESPUESTAS ---
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
+    
+    # 1. Obtenemos eventos y fotos (ya existía)
     events = attempt.events.all().order_by('timestamp')
     evidence_list = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
-    return render(request, 'runner/attempt_detail.html', {'attempt': attempt, 'events': events, 'evidence_list': evidence_list})
+    
+    # 2. NUEVO: Procesamos las preguntas y respuestas
+    items = attempt.exam.items.all()
+    student_answers = attempt.answers or {}
+    
+    qa_list = []
+    for item in items:
+        # Respuesta del alumno (ID de opción o Texto)
+        user_response = student_answers.get(str(item.id))
+        
+        # Buscamos cuál era la opción correcta
+        correct_option = next((o for o in (item.options or []) if o.get('correct')), None)
+        correct_text = correct_option.get('text') if correct_option else "N/A"
+        
+        # Verificamos si acertó
+        is_correct = False
+        if user_response and user_response == correct_text:
+            is_correct = True
+            
+        qa_list.append({
+            'question': item.stem,
+            'user_response': user_response,
+            'correct_response': correct_text,
+            'is_correct': is_correct
+        })
+
+    return render(request, 'runner/attempt_detail.html', {
+        'attempt': attempt, 
+        'events': events, 
+        'evidence_list': evidence_list,
+        'qa_list': qa_list # <--- Pasamos la lista a la plantilla
+    })
 
 @login_required
 @user_passes_test(is_staff)
