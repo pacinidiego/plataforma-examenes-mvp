@@ -59,13 +59,27 @@
 
                     <td class="py-3 px-6 text-center">
                         {% if item.show_grade %}
-                            <span class="text-lg font-bold text-gray-800">
-                                {{ item.attempt.score|default_if_none:"-"|floatformat:1 }}
-                            </span>
+                            <div class="flex flex-col items-center gap-1">
+                                <span class="text-lg font-bold text-gray-900">
+                                    {{ item.attempt.score|default_if_none:"0.0"|floatformat:1 }}
+                                </span>
+                                
+                                {% if item.attempt.score >= 6 %}
+                                    <span class="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">
+                                        APROBADO
+                                    </span>
+                                {% else %}
+                                    <span class="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                                        DESAPROBADO
+                                    </span>
+                                {% endif %}
+                            </div>
                         {% else %}
                             <div class="flex flex-col items-center">
                                 <span class="text-xs font-bold text-gray-400 italic">Retenida</span>
-                                <span class="text-[10px] text-red-500">Requiere revisión</span>
+                                <span class="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded mt-1">
+                                    ⚠️ Requiere Revisión
+                                </span>
                             </div>
                         {% endif %}
                     </td>
