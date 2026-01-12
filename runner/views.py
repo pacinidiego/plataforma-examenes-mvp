@@ -278,9 +278,7 @@ def exam_runner_view(request, access_code, attempt_id):
     if attempt.start_time:
         elapsed = (timezone.now() - attempt.start_time).total_seconds()
         remaining = max(0, total_duration - elapsed)
-        
         saved_answers = attempt.answers or {}
-        
         if remaining <= 0 and not saved_answers:
              attempt.start_time = timezone.now()
              attempt.save()
@@ -341,28 +339,43 @@ def save_answer(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error'}, status=400)
 
-# 8. FINALIZAR
+# 8. FINALIZAR (NORMALIZADO A ESCALA DE 10)
 def submit_exam_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
     exam = attempt.exam
-    score = 0
+    
+    score_obtained = 0
+    total_possible_points = 0
+    
     questions = exam.items.all()
     answers = attempt.answers or {}
 
     for q in questions:
+        # Calcular puntos posibles
+        link = exam.examitemlink_set.filter(item=q).first()
+        points_for_question = link.points if link else 1.0
+        total_possible_points += points_for_question
+
+        # Calcular puntos obtenidos
         selected = answers.get(str(q.id))
         if selected:
             correct = next((o for o in (q.options or []) if o.get('correct')), None)
             if correct and correct.get('text') == selected:
-                link = exam.examitemlink_set.filter(item=q).first()
-                score += link.points if link else 1.0
+                score_obtained += points_for_question
 
-    attempt.score = score
+    # Normalizar a escala de 10
+    if total_possible_points > 0:
+        final_grade = (score_obtained / total_possible_points) * 10
+    else:
+        final_grade = 0.0
+
+    attempt.score = final_grade
     attempt.completed_at = timezone.now()
     attempt.save()
+    
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
 # 9. PANTALLA FINAL
@@ -375,25 +388,11 @@ def exam_finished_view(request, attempt_id):
 def log_event(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
-        
-        if not attempt.start_time:
-             return JsonResponse({'status': 'ignored_not_started'}, status=200)
-
-        if attempt.completed_at:
-            return JsonResponse({'status': 'ignored_completed'}, status=200)
+        if not attempt.start_time: return JsonResponse({'status': 'ignored'}, status=200)
+        if attempt.completed_at: return JsonResponse({'status': 'ignored'}, status=200)
 
         data = json.loads(request.body)
-        event_type = data.get('event_type')
-        metadata = data.get('metadata', {})
-        
-        valid_types = [t[0] for t in AttemptEvent.EVENT_TYPES]
-        if event_type not in valid_types:
-            return JsonResponse({'status': 'ignored_invalid'}, status=200)
-
-        if (timezone.now() - attempt.start_time).total_seconds() < 15:
-            return JsonResponse({'status': 'ignored_grace'}, status=200)
-
-        AttemptEvent.objects.create(attempt=attempt, event_type=event_type, metadata=metadata)
+        AttemptEvent.objects.create(attempt=attempt, event_type=data.get('event_type'), metadata=data.get('metadata', {}))
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -428,7 +427,7 @@ def teacher_dashboard_view(request, exam_id):
             status_color = 'yellow'
             status_text = "Riesgo Medio"
         
-        # SI EL RIESGO ES BAJO, MOSTRAMOS LA NOTA DIRECTAMENTE
+        # MOSTRAR NOTA SI EL RIESGO ES BAJO (VERDE)
         show_grade = (status_color == 'green')
 
         results.append({
@@ -441,30 +440,24 @@ def teacher_dashboard_view(request, exam_id):
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# --- MODIFICACIÓN AQUÍ: AGREGADO DE DETALLE DE RESPUESTAS ---
+# 12. DETALLE DEL INTENTO (CON RESPUESTAS)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # 1. Obtenemos eventos y fotos (ya existía)
     events = attempt.events.all().order_by('timestamp')
     evidence_list = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
     
-    # 2. NUEVO: Procesamos las preguntas y respuestas
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
     
     qa_list = []
     for item in items:
-        # Respuesta del alumno (ID de opción o Texto)
         user_response = student_answers.get(str(item.id))
-        
-        # Buscamos cuál era la opción correcta
         correct_option = next((o for o in (item.options or []) if o.get('correct')), None)
         correct_text = correct_option.get('text') if correct_option else "N/A"
         
-        # Verificamos si acertó
         is_correct = False
         if user_response and user_response == correct_text:
             is_correct = True
@@ -480,7 +473,7 @@ def attempt_detail_view(request, attempt_id):
         'attempt': attempt, 
         'events': events, 
         'evidence_list': evidence_list,
-        'qa_list': qa_list # <--- Pasamos la lista a la plantilla
+        'qa_list': qa_list
     })
 
 @login_required
