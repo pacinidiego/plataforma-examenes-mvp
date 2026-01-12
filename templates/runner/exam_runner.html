@@ -13,9 +13,14 @@
         .timer-bar { transition: width 1s linear; }
         .read-only-mode { opacity: 0.8; pointer-events: none; background-color: #f3f4f6; border-color: #fb923c; }
         .blur-content { filter: blur(8px); pointer-events: none; user-select: none; }
+        .modal-enter { animation: modal-in 0.3s ease-out forwards; }
+        @keyframes modal-in {
+            0% { opacity: 0; transform: scale(0.95); }
+            100% { opacity: 1; transform: scale(1); }
+        }
     </style>
 </head>
-<body class="h-full flex flex-col overflow-hidden select-none" 
+<body class="h-full flex flex-col overflow-hidden select-none bg-gray-50" 
       x-data="examRunner({
           attemptId: '{{ attempt.id }}',
           serverRemaining: {{ remaining_seconds }},
@@ -29,46 +34,55 @@
     <video x-ref="webcam" autoplay playsinline muted class="fixed bottom-4 right-4 w-32 h-24 object-cover rounded-lg shadow-lg border-2 border-gray-800 z-50 opacity-80 pointer-events-none transform scale-x-[-1]"></video>
 
     <div x-show="!isFullScreen && !isSubmitting" 
-         class="fixed inset-0 z-[60] bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300"
+         class="fixed inset-0 z-[60] bg-white/90 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300"
          x-cloak>
-        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full animate-bounce-short">
-            <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+        
+        <div class="bg-white p-10 rounded-3xl shadow-2xl max-w-md w-full border border-gray-100 modal-enter relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
+
+            <div class="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
             </div>
-            <h2 class="text-2xl font-bold text-gray-900 mb-2">Modo Seguro Requerido</h2>
-            <p class="text-gray-600 mb-6">Para garantizar la integridad del examen, debes mantener la <b>Pantalla Completa</b>.</p>
+            
+            <h2 class="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">Modo Examen Seguro</h2>
+            <p class="text-gray-500 mb-8 text-lg leading-relaxed">
+                Para garantizar la validez de tu intento, el examen debe realizarse en <b>Pantalla Completa</b>.
+            </p>
+            
             <button @click="enableFullscreen()" 
-                    class="w-full py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transform transition hover:-translate-y-1">
-                Activar Pantalla Completa
+                    class="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-lg rounded-xl shadow-lg shadow-indigo-200 transform transition hover:-translate-y-1 active:scale-95">
+                Comenzar / Continuar
             </button>
+            
+            <p class="mt-4 text-xs text-gray-400">Si se cierra la pantalla completa, se registrará un incidente.</p>
         </div>
     </div>
 
     <div x-show="showConfirmModal" 
-         class="fixed inset-0 z-[70] bg-gray-900/80 backdrop-blur-sm flex items-center justify-center p-4"
+         class="fixed inset-0 z-[70] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4"
          x-cloak>
-        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center transform transition-all scale-100">
-            <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center modal-enter">
+            <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </div>
             <h3 class="text-xl font-bold text-gray-900 mb-2">¿Finalizar Examen?</h3>
-            <p class="text-gray-500 mb-6">Asegúrate de haber respondido todo. Una vez enviado, <b>no podrás volver atrás</b>.</p>
+            <p class="text-gray-500 mb-6">Confirma que has respondido todo.<br>Esta acción <b>no se puede deshacer</b>.</p>
             
             <div class="flex gap-3">
                 <button @click="showConfirmModal = false" 
-                        class="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">
-                    Cancelar
+                        class="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">
+                    Volver
                 </button>
                 <button @click="submitForm()" 
-                        class="flex-1 py-2.5 px-4 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-colors shadow-lg">
-                    Sí, Entregar
+                        class="flex-1 py-3 px-4 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-colors shadow-lg">
+                    Entregar
                 </button>
             </div>
         </div>
     </div>
 
-    <div class="flex-1 flex flex-col h-full transition-all duration-300"
-         :class="!isFullScreen ? 'blur-content' : ''">
+    <div class="flex-1 flex flex-col h-full transition-all duration-500"
+         :class="!isFullScreen ? 'blur-md scale-[0.98] grayscale-[0.5]' : ''">
 
         <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 sm:px-6 z-10 shrink-0 shadow-sm">
             <div class="flex items-center gap-4">
@@ -203,7 +217,7 @@
                 
                 // Estado de Modales
                 isSubmitting: false, 
-                showConfirmModal: false, // NUEVO: Controla el modal bonito
+                showConfirmModal: false, 
                 
                 // Tiempos
                 globalSeconds: config.serverRemaining,
@@ -341,16 +355,13 @@
                 },
 
                 finishExam() {
-                    // Reemplazamos el confirm() nativo por nuestro modal
                     this.showConfirmModal = true;
                 },
 
                 submitForm() {
-                    // 1. Activar Inmunidad (Para que no salte el cartel de Fullscreen)
-                    this.isSubmitting = true;
-                    // 2. Ocultar modal de confirmación
+                    // Evita que salte el cartel de seguridad al salir de fullscreen
+                    this.isSubmitting = true; 
                     this.showConfirmModal = false;
-                    // 3. Enviar
                     document.getElementById('examForm').submit();
                 },
 
@@ -373,7 +384,8 @@
                     
                     document.addEventListener('fullscreenchange', () => {
                         this.isFullScreen = !!document.fullscreenElement;
-                        if (!this.isFullScreen) this.logEvent('FULLSCREEN_EXIT');
+                        // Solo reportar si salieron de fullscreen Y NO están entregando
+                        if (!this.isFullScreen && !this.isSubmitting) this.logEvent('FULLSCREEN_EXIT');
                     });
                     this.isFullScreen = !!document.fullscreenElement;
                 },
@@ -386,7 +398,6 @@
                 },
 
                 async logEvent(type, meta = {}) {
-                    // Si estamos enviando, cancelar el reporte
                     if (this.isSubmitting) return;
 
                     try {
