@@ -5,6 +5,7 @@ import re
 import os
 import traceback
 import requests
+import time  # Necesario para los sleep en reintentos
 from io import BytesIO
 from PIL import Image
 
@@ -112,93 +113,123 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (Con Auto-Descubrimiento)
+# 5. VALIDACIÓN DNI (BLINDADA CON FAIL-OPEN Y GUARDADO INMEDIATO)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
+    attempt = get_object_or_404(Attempt, id=attempt_id)
+    
+    # --- PASO 1: GUARDADO INMEDIATO DE EVIDENCIA ---
     try:
-        attempt = get_object_or_404(Attempt, id=attempt_id)
-        
-        if not GOOGLE_API_KEY:
-            return JsonResponse({'success': False, 'message': 'Falta API Key.'})
-
-        try:
-            data = json.loads(request.body)
-            image_data = data.get('image', '')
-            if ';base64,' in image_data:
-                base64_clean = image_data.split(';base64,')[1]
-            else:
-                base64_clean = image_data
-                
-            if not base64_clean:
-                return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
-        except:
-            return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
-
-        print(f"📡 Validando DNI para legajo: {attempt.student_legajo}")
-
-        # Auto-Descubrimiento de Modelo
-        model_to_use = None
-        try:
-            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GOOGLE_API_KEY}"
-            list_res = requests.get(list_url, timeout=5)
-            if list_res.status_code == 200:
-                models_data = list_res.json().get('models', [])
-                valid_names = [m['name'] for m in models_data if 'generateContent' in m.get('supportedGenerationMethods', [])]
-                for pref in ['2.5-flash', '2.0-flash', '1.5-flash', 'vision', 'pro']:
-                    matches = [name for name in valid_names if pref in name]
-                    if matches:
-                        model_to_use = matches[0].replace('models/', '')
-                        break
-                if not model_to_use and valid_names:
-                    model_to_use = valid_names[0].replace('models/', '')
-        except: pass
-
-        if not model_to_use: model_to_use = "gemini-1.5-flash"
-        print(f"🚀 Usando modelo: {model_to_use}")
-
-        # Llamada API
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_to_use}:generateContent?key={GOOGLE_API_KEY}"
-        payload = {
-            "contents": [{
-                "parts": [
-                    { "text": "Analiza esta imagen. Responde SOLO JSON: {\"es_documento\": true, \"numeros\": \"123456\"}. Si no es DNI, false. No uses markdown." },
-                    { "inline_data": { "mime_type": "image/jpeg", "data": base64_clean } }
-                ]
-            }]
-        }
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(api_url, headers=headers, json=payload, timeout=25)
-
-        if response.status_code != 200:
-            return JsonResponse({'success': False, 'message': f'Error de IA ({response.status_code})'})
-
-        # Procesar
-        json_res = response.json()
-        candidates = json_res.get('candidates', [])
-        if not candidates:
-             return JsonResponse({'success': False, 'message': 'La IA bloqueó la imagen.'})
-
-        raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
-        clean_text = raw_text.replace('```json', '').replace('```', '').strip()
-        try: ai_data = json.loads(clean_text)
-        except: return JsonResponse({'success': False, 'message': 'Error leyendo respuesta.'})
-
-        if not ai_data.get('es_documento'):
-             return JsonResponse({'success': False, 'message': 'No es un documento válido.'})
-
-        numbers_found = str(ai_data.get('numeros', ''))
-        legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
-
-        if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
-            # Guardar DNI
-            attempt.photo_id_url = f"data:image/jpeg;base64,{base64_clean}"
-            attempt.save()
-            return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
+        data = json.loads(request.body)
+        image_data = data.get('image', '')
+        if ';base64,' in image_data:
+            base64_clean = image_data.split(';base64,')[1]
         else:
-            return JsonResponse({'success': False, 'message': f'El documento ({numbers_found}) no coincide.'})
+            base64_clean = image_data
+            
+        if not base64_clean:
+            return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
+        
+        # 🔥 CRÍTICO: Guardamos la foto AHORA MISMO.
+        # Así, pase lo que pase con la IA, tenemos la evidencia para auditar.
+        attempt.photo_id_url = f"data:image/jpeg;base64,{base64_clean}"
+        attempt.save()
+        
+    except Exception:
+        return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
 
-    except Exception as e:
-        return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'}, status=200)
+    # Si no hay API KEY, aprobamos simulado
+    if not GOOGLE_API_KEY:
+        return JsonResponse({'success': True, 'message': 'Validación simulada (Sin API Key).'})
+
+    print(f"📡 Validando DNI para legajo: {attempt.student_legajo}")
+
+    # --- PASO 2: CONFIGURACIÓN IA ---
+    model_to_use = "gemini-1.5-flash" 
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_to_use}:generateContent?key={GOOGLE_API_KEY}"
+    payload = {
+        "contents": [{
+            "parts": [
+                { "text": "Analiza esta imagen. Responde SOLO JSON: {\"es_documento\": true, \"numeros\": \"123456\"}. Si no es DNI, false. No uses markdown." },
+                { "inline_data": { "mime_type": "image/jpeg", "data": base64_clean } }
+            ]
+        }]
+    }
+    headers = {'Content-Type': 'application/json'}
+
+    # --- PASO 3: BUCLE DE REINTENTOS (3 VIDAS) ---
+    ia_success = False
+    error_message = ""
+    
+    for i in range(3):
+        try:
+            # print(f"Intento {i+1} con IA...")
+            response = requests.post(api_url, headers=headers, json=payload, timeout=25)
+            
+            # A. Error de Servidor (503) -> Reintentar
+            if response.status_code == 503:
+                # print("Gemini ocupado (503), reintentando...")
+                time.sleep(2)
+                continue 
+                
+            # B. Respuesta Exitosa (200) -> Analizar
+            if response.status_code == 200:
+                json_res = response.json()
+                try:
+                    candidates = json_res.get('candidates', [])
+                    if not candidates:
+                         error_message = "IA bloqueó la imagen (Filtro Seguridad)"
+                         break 
+                         
+                    raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
+                    clean_text = raw_text.replace('```json', '').replace('```', '').strip()
+                    ai_data = json.loads(clean_text)
+                    
+                    if ai_data.get('es_documento'):
+                        numbers_found = str(ai_data.get('numeros', ''))
+                        legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
+                        
+                        # Comparación Flexible
+                        if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
+                            ia_success = True
+                            break # ¡Éxito!
+                        else:
+                            error_message = f"Legajo no coincide (Leído: {numbers_found})"
+                            break 
+                    else:
+                        error_message = "No parece un DNI válido"
+                        break
+                        
+                except Exception as e:
+                    error_message = f"Error leyendo JSON IA: {str(e)}"
+                    break 
+            else:
+                error_message = f"Error API: {response.status_code}"
+                break
+                
+        except Exception as e:
+            error_message = f"Excepción red: {str(e)}"
+            time.sleep(1)
+
+    # --- PASO 4: DECISIÓN FINAL (FAIL OPEN) ---
+    
+    if ia_success:
+        return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
+    else:
+        # Si falló todo, dejamos pasar pero marcamos RIESGO ALTO.
+        print(f"🚩 Fallo validación ({error_message}). Aprobando con Flag de Riesgo.")
+        
+        AttemptEvent.objects.create(
+            attempt=attempt, 
+            event_type='IDENTITY_MISMATCH', 
+            metadata={'reason': f'Fallo Auto-Validación: {error_message}'}
+        )
+        
+        # Engañamos al frontend para que avance
+        return JsonResponse({
+            'success': True, 
+            'message': 'Validación guardada para revisión manual.'
+        })
 
 # 6. RUNNER (Examen)
 def exam_runner_view(request, access_code, attempt_id):
