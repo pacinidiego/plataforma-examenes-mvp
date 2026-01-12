@@ -252,76 +252,62 @@ def validate_dni_ocr(request, attempt_id):
 
 # 6. RUNNER (Examen)
 # Busca la función 'exam_runner_view' y REEMPLÁZALA por esto:
+# Reemplaza la función exam_runner_view completa con esto:
 
 def exam_runner_view(request, access_code, attempt_id):
-    print(f"--- DEBUG: Iniciando examen {access_code} para intento {attempt_id} ---")
+    exam = get_object_or_404(Exam, access_code=access_code)
+    attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    try:
-        # 1. Intentamos obtener los objetos básicos
-        exam = get_object_or_404(Exam, access_code=access_code)
-        attempt = get_object_or_404(Attempt, id=attempt_id)
-        
-        # 2. Verificamos si ya terminó
-        if attempt.completed_at:
-            return redirect('runner:exam_finished', attempt_id=attempt.id)
+    # 1. Si ya terminó, redirigir al final
+    if attempt.completed_at:
+        return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-        # 3. Cálculo de tiempos
-        total_duration = exam.get_total_duration_seconds()
-        
-        if attempt.start_time:
-            elapsed = (timezone.now() - attempt.start_time).total_seconds()
-            remaining = max(0, total_duration - elapsed)
-            
-            saved_answers = attempt.answers or {}
-            # Si se acabó el tiempo y no respondió nada, reiniciamos (lógica original)
-            if remaining <= 0 and not saved_answers:
-                 attempt.start_time = None 
-                 attempt.save()
-                 remaining = total_duration
-        else:
-            remaining = total_duration
-
-        # 4. Si se acabó el tiempo real
-        if remaining <= 0 and attempt.start_time:
-            return redirect('runner:submit_exam', attempt_id=attempt.id)
-
-        # 5. Carga de preguntas (POSIBLE PUNTO DE FALLO)
-        print("--- DEBUG: Cargando items del examen ---")
-        items = list(exam.items.all())
-        
-        if not items:
-            print("--- WARNING: El examen no tiene preguntas ---")
-
-        if exam.shuffle_items:
-            random.Random(str(attempt.id)).shuffle(items)
+    total_duration = exam.get_total_duration_seconds()
+    
+    # 2. Verificar tiempo restante
+    if attempt.start_time:
+        elapsed = (timezone.now() - attempt.start_time).total_seconds()
+        remaining = max(0, total_duration - elapsed)
         
         saved_answers = attempt.answers or {}
-        initial_step = len(saved_answers)
-        if initial_step >= len(items): initial_step = len(items) - 1
-
-        print("--- DEBUG: Renderizando plantilla ---")
-        return render(request, 'runner/exam_runner.html', {
-            'exam': exam,
-            'attempt': attempt,
-            'items': items,
-            'total_questions': len(items),
-            'remaining_seconds': int(remaining),
-            'time_per_item': exam.time_per_item,
-            'initial_step': initial_step,
-            'has_started': attempt.start_time is not None
-        })
-
-    except Exception as e:
-        # AQUI ESTÁ LA MAGIA: Imprimimos el error completo en los logs
-        print("\n" + "="*50)
-        print("¡¡¡ ERROR FATAL EN EXAM RUNNER !!!")
-        print(f"Mensaje: {str(e)}")
-        print("--- TRACEBACK COMPLETO ---")
-        print(traceback.format_exc()) # Esto nos dirá la línea exacta
-        print("="*50 + "\n")
         
-        # Devolvemos el error en pantalla para que lo veas sin ir a los logs (solo temporalmente)
-        return HttpResponse(f"<h2>Error Detectado (Modo Debug)</h2><pre>{traceback.format_exc()}</pre>", status=500)
+        # --- CORRECCIÓN AQUÍ ---
+        # Si se acabó el tiempo y no respondió nada (posible error técnico previo),
+        # reiniciamos el contador a "AHORA" en lugar de "None".
+        if remaining <= 0 and not saved_answers:
+             attempt.start_time = timezone.now() # <--- CAMBIO CLAVE
+             attempt.save()
+             remaining = total_duration
+    else:
+        # Si por alguna razón start_time es nulo (aunque la BD dice que no debe serlo),
+        # asumimos tiempo completo.
+        remaining = total_duration
+
+    # 3. Si el tiempo real se acabó y hay respuestas (o no se reinició), enviar examen
+    if remaining <= 0 and attempt.start_time:
+        return redirect('runner:submit_exam', attempt_id=attempt.id)
+
+    # 4. Cargar preguntas
+    items = list(exam.items.all())
+    if exam.shuffle_items:
+        random.Random(str(attempt.id)).shuffle(items)
+    
+    saved_answers = attempt.answers or {}
+    initial_step = len(saved_answers)
+    if initial_step >= len(items): initial_step = len(items) - 1
+
+    return render(request, 'runner/exam_runner.html', {
+        'exam': exam,
+        'attempt': attempt,
+        'items': items,
+        'total_questions': len(items),
+        'remaining_seconds': int(remaining),
+        'time_per_item': exam.time_per_item,
+        'initial_step': initial_step,
+        'has_started': attempt.start_time is not None
+    })
+
+
 
 # API: INICIAR TIMER
 @require_POST
