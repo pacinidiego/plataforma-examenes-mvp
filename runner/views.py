@@ -6,7 +6,7 @@ import os
 import traceback
 import requests
 import time
-import uuid  # <--- Nuevo import para nombres de archivo únicos
+import uuid
 from io import BytesIO
 from PIL import Image
 
@@ -17,8 +17,8 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.template.loader import render_to_string
-from django.core.files.base import ContentFile # <--- Para convertir base64 a archivo
-from django.core.files.storage import default_storage # <--- Para subir a Cloudflare
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 # Librerías Externas
 from weasyprint import HTML
@@ -102,8 +102,6 @@ def register_biometrics(request, attempt_id):
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
         
-        # Nota: Aquí también podrías implementar la subida a Cloudflare si quisieras,
-        # pero por ahora lo dejamos simple para no romper el flujo.
         if 'reference_face' in data:
             attempt.reference_face_url = data['reference_face']
             
@@ -115,7 +113,7 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (CORREGIDO: UN INTENTO POR FOTO)
+# 5. VALIDACIÓN DNI (CORREGIDO: TIMEOUT CON AVISO)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -123,7 +121,7 @@ def validate_dni_ocr(request, attempt_id):
     # --- 1. CONTADOR DE INTENTOS ---
     intentos_previos = Evidence.objects.filter(attempt=attempt).count()
     intento_actual = intentos_previos + 1
-    MAX_INTENTOS = 3 # <--- LÍMITE DE INTENTOS
+    MAX_INTENTOS = 3 
     
     # --- 2. OBTENER Y SUBIR IMAGEN ---
     try:
@@ -142,13 +140,13 @@ def validate_dni_ocr(request, attempt_id):
         image_content = base64.b64decode(base64_clean)
         
         # Nombre único
-        file_name = f"evidence/dni_{attempt.id}_intento_{intento_actual}_{uuid.uuid4().hex[:6]}.jpg"
+        file_name = f"evidence/dni_{attempt.id}_intento_{intento_actual}_{uuid.uuid4().hex[:8]}.jpg"
         
         # Subir a Cloudflare
         saved_path = default_storage.save(file_name, ContentFile(image_content))
         file_url = default_storage.url(saved_path)
         
-        # Guardar URL en el intento
+        # Actualizar URL
         attempt.photo_id_url = file_url
         attempt.save()
 
@@ -221,29 +219,47 @@ def validate_dni_ocr(request, attempt_id):
     except Exception as e:
         error_actual = f"Error de red/timeout: {str(e)}"
 
-    # --- 4. DECISIÓN FINAL (AQUÍ ESTÁ EL ARREGLO) ---
-    
+    # --- 4. DECISIÓN FINAL CON ETIQUETADO ---
     if ia_success:
-        # CASO 1: Éxito real
+        # Actualizamos la evidencia a 'success'
+        last_evidence = Evidence.objects.filter(attempt=attempt).last()
+        if last_evidence:
+            data = last_evidence.gemini_analysis or {}
+            data['status'] = 'success'
+            last_evidence.gemini_analysis = data
+            last_evidence.save()
+            
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     
     else:
-        # Registramos el error en el log
-        AttemptEvent.objects.create(
-            attempt=attempt, 
-            event_type='IDENTITY_MISMATCH', 
-            metadata={'reason': f'Fallo intento {intento_actual}: {error_actual}'}
-        )
+        # Registramos el evento de fallo
+        try:
+            AttemptEvent.objects.create(
+                attempt=attempt, 
+                event_type='IDENTITY_MISMATCH', 
+                metadata={'reason': f'Fallo intento {intento_actual}: {error_actual}'}
+            )
+        except: pass
 
-        # CASO 2: Falló, PERO ya llegamos al límite de intentos (Timeout)
+        # SI SE ALCANZÓ EL LÍMITE (TIMEOUT)
         if intento_actual >= MAX_INTENTOS:
+            
+            # Marcamos evidencia como 'manual_review'
+            last_evidence = Evidence.objects.filter(attempt=attempt).last()
+            if last_evidence:
+                data = last_evidence.gemini_analysis or {}
+                data['status'] = 'manual_review'
+                last_evidence.gemini_analysis = data
+                last_evidence.save()
+
             return JsonResponse({
-                'success': True,  # <--- IMPORTANTE: Devolvemos True para que el Frontend avance
-                'message': 'Límite de intentos alcanzado. Se permite ingreso a revisión manual.',
+                'success': True, 
+                'warning': True, # Señal para el frontend
+                'message': 'Límite de intentos alcanzado. Pase a revisión manual.',
                 'retry': False
             })
             
-        # CASO 3: Falló y todavía quedan intentos
+        # SI TODAVÍA QUEDAN INTENTOS
         else:
             return JsonResponse({
                 'success': False, 
@@ -251,42 +267,32 @@ def validate_dni_ocr(request, attempt_id):
                 'retry': True 
             })
 
-
-
 # 6. RUNNER (Examen)
-# CORREGIDO EL ERROR 500 DE BASE DE DATOS
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # 1. Si ya terminó, redirigir al final
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
     total_duration = exam.get_total_duration_seconds()
     
-    # 2. Verificar tiempo restante
     if attempt.start_time:
         elapsed = (timezone.now() - attempt.start_time).total_seconds()
         remaining = max(0, total_duration - elapsed)
         
         saved_answers = attempt.answers or {}
         
-        # --- CORRECCIÓN AQUÍ ---
-        # Si se acabó el tiempo y no respondió nada, reiniciamos el reloj.
-        # USAMOS timezone.now() EN LUGAR DE None PARA EVITAR ERROR DB.
         if remaining <= 0 and not saved_answers:
-             attempt.start_time = timezone.now() # <--- CORREGIDO
+             attempt.start_time = timezone.now()
              attempt.save()
              remaining = total_duration
     else:
         remaining = total_duration
 
-    # 3. Si el tiempo real se acabó y hay respuestas (o no se reinició), enviar examen
     if remaining <= 0 and attempt.start_time:
         return redirect('runner:submit_exam', attempt_id=attempt.id)
 
-    # 4. Cargar preguntas
     items = list(exam.items.all())
     if exam.shuffle_items:
         random.Random(str(attempt.id)).shuffle(items)
