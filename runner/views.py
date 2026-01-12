@@ -22,7 +22,7 @@ from weasyprint import HTML
 import google.generativeai as genai 
 
 # Modelos
-# 🔥 AGREGAMOS 'Evidence' A LOS IMPORTS
+# Ahora sí funcionará este import porque Evidence está en models.py
 from exams.models import Exam
 from .models import Attempt, AttemptEvent, Evidence
 
@@ -111,7 +111,7 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (LÓGICA DETALLADA POR INTENTO) 📸
+# 5. VALIDACIÓN DNI (LÓGICA DETALLADA POR INTENTO)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -128,7 +128,7 @@ def validate_dni_ocr(request, attempt_id):
         if not base64_clean:
             return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
         
-        # Actualizamos la "foto principal" del intento con la última captura
+        # Actualizamos la "foto principal" del intento
         attempt.photo_id_url = f"data:image/jpeg;base64,{base64_clean}"
         attempt.save()
 
@@ -139,7 +139,6 @@ def validate_dni_ocr(request, attempt_id):
         return JsonResponse({'success': True, 'message': 'Validación simulada (Sin API Key).'})
 
     # --- CONFIGURACIÓN IA ---
-    # Nota: El error 404 suele ser modelo incorrecto. Forzamos 'gemini-1.5-flash' limpio.
     model_name = "gemini-1.5-flash"
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
     
@@ -153,15 +152,14 @@ def validate_dni_ocr(request, attempt_id):
     }
     headers = {'Content-Type': 'application/json'}
 
-    # --- BUCLE DE 3 INTENTOS (CON EVIDENCIA INDIVIDUAL) ---
+    # --- BUCLE DE 3 INTENTOS ---
     ia_success = False
     
     for i in range(3):
         intento_num = i + 1
         error_actual = ""
         
-        # 1. Guardar Evidencia de ESTE intento específico
-        # Creamos un objeto Evidence nuevo para que quede en el historial
+        # 1. Guardar Evidencia de ESTE intento
         Evidence.objects.create(
             attempt=attempt,
             file_url=f"data:image/jpeg;base64,{base64_clean}",
@@ -170,7 +168,7 @@ def validate_dni_ocr(request, attempt_id):
         )
         
         try:
-            print(f"🔄 Validando DNI (Intento {intento_num}/3)...")
+            # print(f"Validando DNI Intento {intento_num}...")
             response = requests.post(api_url, headers=headers, json=payload, timeout=25)
             
             if response.status_code == 200:
@@ -190,7 +188,7 @@ def validate_dni_ocr(request, attempt_id):
                             
                             if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
                                 ia_success = True
-                                break # ¡ÉXITO! Salimos del bucle
+                                break 
                             else:
                                 error_actual = f"Legajo no coincide (IA leyó: {numbers_found})"
                         else:
@@ -200,10 +198,9 @@ def validate_dni_ocr(request, attempt_id):
             
             elif response.status_code == 503:
                 error_actual = "Servidor IA ocupado (503)"
-                time.sleep(2) # Esperar antes de reintentar
+                time.sleep(2) 
             elif response.status_code == 404:
-                error_actual = "Modelo IA no encontrado (404) - Verifica API Key/Plan"
-                # Un 404 no se arregla reintentando, pero seguimos el protocolo
+                error_actual = "Modelo IA no encontrado (404)"
             else:
                 error_actual = f"Error API: {response.status_code}"
 
@@ -211,21 +208,17 @@ def validate_dni_ocr(request, attempt_id):
             error_actual = f"Error de red: {str(e)}"
             time.sleep(1)
 
-        # 2. Registrar el fallo de ESTE intento en la bitácora
         if not ia_success:
-            print(f"⚠️ Falló intento {intento_num}: {error_actual}")
             AttemptEvent.objects.create(
                 attempt=attempt, 
-                event_type='IDENTITY_MISMATCH', # Usamos este tipo para que salga la alerta
+                event_type='IDENTITY_MISMATCH', 
                 metadata={'reason': f'Fallo DNI (Intento {intento_num}): {error_actual}'}
             )
 
-    # --- DECISIÓN FINAL (FAIL OPEN) ---
+    # --- DECISIÓN FINAL ---
     if ia_success:
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     else:
-        # Si llegamos aquí, fallaron los 3 intentos.
-        # Dejamos pasar (success: True) pero ya generamos 3 alertas y 3 fotos.
         return JsonResponse({
             'success': True, 
             'message': 'Validación guardada para revisión manual.'
@@ -401,7 +394,6 @@ def teacher_dashboard_view(request, exam_id):
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all().order_by('timestamp')
-    # También pasamos la evidencia (fotos) a la vista
     evidence_list = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
     return render(request, 'runner/attempt_detail.html', {'attempt': attempt, 'events': events, 'evidence_list': evidence_list})
 
@@ -455,17 +447,3 @@ def descargar_pdf_examen(request, exam_id):
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
-
-# --- PEGAR ESTO AL FINAL DE runner/models.py ---
-
-class Evidence(models.Model):
-    attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='evidence_list')
-    file_url = models.TextField(help_text="URL o Base64 de la imagen")
-    timestamp = models.DateTimeField(default=timezone.now)
-    gemini_analysis = models.JSONField(default=dict, blank=True, help_text="Respuesta cruda de la IA")
-
-    class Meta:
-        ordering = ['timestamp']
-
-    def __str__(self):
-        return f"Evidencia {self.id} - {self.attempt}"
