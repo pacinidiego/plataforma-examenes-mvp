@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.utils import timezone # <--- Importante para las fechas
 from exams.models import Exam
 
 class Attempt(models.Model):
@@ -20,13 +21,14 @@ class Attempt(models.Model):
     student_name = models.CharField(max_length=255, blank=True, verbose_name="Nombre del Alumno")
     student_legajo = models.CharField(max_length=100, blank=True, verbose_name="Legajo/DNI")
     
-    # BIOMETRÍA Y SEGURIDAD (NUEVO)
-    # Guardamos la foto base para auditoría manual
+    # BIOMETRÍA Y SEGURIDAD
+    # Guardamos la foto base para auditoría manual (última aceptada o intento final)
     photo_id_url = models.TextField(null=True, blank=True, verbose_name="Foto DNI (Base64)")
     reference_face_url = models.TextField(null=True, blank=True, verbose_name="Foto Cara Ref (Base64)")
     
     # Tiempos
-    start_time = models.DateTimeField(auto_now_add=True, verbose_name="Inicio")
+    # Nota: auto_now_add=True marca la fecha de creación del registro (Lobby)
+    start_time = models.DateTimeField(auto_now_add=True, verbose_name="Inicio") 
     end_time = models.DateTimeField(null=True, blank=True, verbose_name="Fin")
     completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Completado el")
     
@@ -63,7 +65,8 @@ class AttemptEvent(models.Model):
         ('MULTI_FACE', 'Múltiples rostros detectados'),
         ('NO_FACE', 'Rostro no detectado'),
         ('AUDIO_SPIKE', 'Sonido/Voz detectada'),
-        ('IDENTITY_MISMATCH', 'Suplantación de Identidad (Cara incorrecta)'), # NUEVO
+        ('IDENTITY_MISMATCH', 'Suplantación de Identidad (Cara incorrecta)'),
+        ('CAMERA_ERROR', 'Error de Cámara'), # Agregado por robustez
     ]
     event_type = models.CharField(max_length=50, choices=EVENT_TYPES)
     
@@ -78,3 +81,21 @@ class AttemptEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_event_type_display()} - {self.timestamp.strftime('%H:%M:%S')}"
+
+
+# --- NUEVA CLASE PARA EVIDENCIA FOTOGRÁFICA ---
+class Evidence(models.Model):
+    """
+    Almacena fotos individuales de cada intento de validación o monitoreo.
+    Fundamental para ver el historial de intentos fallidos de DNI.
+    """
+    attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='evidence_list')
+    file_url = models.TextField(help_text="URL o Base64 de la imagen")
+    timestamp = models.DateTimeField(default=timezone.now)
+    gemini_analysis = models.JSONField(default=dict, blank=True, help_text="Respuesta cruda de la IA")
+
+    class Meta:
+        ordering = ['timestamp']
+
+    def __str__(self):
+        return f"Evidencia {self.id} - {self.attempt}"
