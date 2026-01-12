@@ -28,10 +28,10 @@
 
     <video x-ref="webcam" autoplay playsinline muted class="fixed bottom-4 right-4 w-32 h-24 object-cover rounded-lg shadow-lg border-2 border-gray-800 z-50 opacity-80 pointer-events-none transform scale-x-[-1]"></video>
 
-    <div x-show="!isFullScreen" 
+    <div x-show="!isFullScreen && !isSubmitting" 
          class="fixed inset-0 z-[60] bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300"
          x-cloak>
-        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full animate-bounce-short">
             <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
             </div>
@@ -41,6 +41,29 @@
                     class="w-full py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transform transition hover:-translate-y-1">
                 Activar Pantalla Completa
             </button>
+        </div>
+    </div>
+
+    <div x-show="showConfirmModal" 
+         class="fixed inset-0 z-[70] bg-gray-900/80 backdrop-blur-sm flex items-center justify-center p-4"
+         x-cloak>
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center transform transition-all scale-100">
+            <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-2">¿Finalizar Examen?</h3>
+            <p class="text-gray-500 mb-6">Asegúrate de haber respondido todo. Una vez enviado, <b>no podrás volver atrás</b>.</p>
+            
+            <div class="flex gap-3">
+                <button @click="showConfirmModal = false" 
+                        class="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">
+                    Cancelar
+                </button>
+                <button @click="submitForm()" 
+                        class="flex-1 py-2.5 px-4 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-colors shadow-lg">
+                    Sí, Entregar
+                </button>
+            </div>
         </div>
     </div>
 
@@ -178,8 +201,9 @@
                 saveStatus: '', 
                 isFullScreen: false,
                 
-                // 🔥 NUEVO: Bandera de Inmunidad
+                // Estado de Modales
                 isSubmitting: false, 
+                showConfirmModal: false, // NUEVO: Controla el modal bonito
                 
                 // Tiempos
                 globalSeconds: config.serverRemaining,
@@ -290,7 +314,7 @@
                         this.itemProgress = 100;
                         document.querySelector('main').scrollTo({top: 0, behavior: 'smooth'});
                     } else if (auto) {
-                        this.submitForm();
+                        this.finishExam();
                     }
                 },
 
@@ -317,14 +341,16 @@
                 },
 
                 finishExam() {
-                    if(confirm('¿Estás seguro de que quieres finalizar el examen? No podrás volver atrás.')) {
-                        this.submitForm();
-                    }
+                    // Reemplazamos el confirm() nativo por nuestro modal
+                    this.showConfirmModal = true;
                 },
 
                 submitForm() {
-                    // 🔥 NUEVO: Activar Escudo antes de enviar
+                    // 1. Activar Inmunidad (Para que no salte el cartel de Fullscreen)
                     this.isSubmitting = true;
+                    // 2. Ocultar modal de confirmación
+                    this.showConfirmModal = false;
+                    // 3. Enviar
                     document.getElementById('examForm').submit();
                 },
 
@@ -360,7 +386,7 @@
                 },
 
                 async logEvent(type, meta = {}) {
-                    // 🔥 NUEVO: Si estamos enviando, cancelar el reporte
+                    // Si estamos enviando, cancelar el reporte
                     if (this.isSubmitting) return;
 
                     try {
