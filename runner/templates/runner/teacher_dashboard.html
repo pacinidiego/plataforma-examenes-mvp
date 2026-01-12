@@ -64,7 +64,7 @@
                                     {{ item.attempt.score|default_if_none:"0.0"|floatformat:1 }}
                                 </span>
                                 
-                                {% if item.attempt.score >= 6 %}
+                                {% if item.attempt.score >= 4 %}
                                     <span class="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">
                                         APROBADO
                                     </span>
