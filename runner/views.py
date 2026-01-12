@@ -121,11 +121,11 @@ def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
     # --- 1. CONTADOR DE INTENTOS ---
-    # Contamos cuántas evidencias ya existen para este intento
     intentos_previos = Evidence.objects.filter(attempt=attempt).count()
     intento_actual = intentos_previos + 1
+    MAX_INTENTOS = 3 # <--- LÍMITE DE INTENTOS
     
-    # --- A. OBTENER Y SUBIR IMAGEN ---
+    # --- 2. OBTENER Y SUBIR IMAGEN ---
     try:
         data = json.loads(request.body)
         image_data = data.get('image', '')
@@ -138,23 +138,21 @@ def validate_dni_ocr(request, attempt_id):
         if not base64_clean:
             return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
         
-        # 1. Decodificar la imagen en memoria
+        # Decodificar
         image_content = base64.b64decode(base64_clean)
         
-        # 2. Generar nombre único para CADA intento: evidence/dni_{attempt}_{intento}_{uid}.jpg
-        file_name = f"evidence/dni_{attempt.id}_intento_{intento_actual}_{uuid.uuid4().hex[:8]}.jpg"
+        # Nombre único
+        file_name = f"evidence/dni_{attempt.id}_intento_{intento_actual}_{uuid.uuid4().hex[:6]}.jpg"
         
-        # 3. ¡SUBIR A CLOUDFLARE!
+        # Subir a Cloudflare
         saved_path = default_storage.save(file_name, ContentFile(image_content))
-        
-        # 4. Obtener la URL pública
         file_url = default_storage.url(saved_path)
         
-        # 5. Actualizar la foto principal del intento (siempre la última)
+        # Guardar URL en el intento
         attempt.photo_id_url = file_url
         attempt.save()
 
-        # 6. GUARDAR LA EVIDENCIA (Historial)
+        # Guardar Evidencia
         Evidence.objects.create(
             attempt=attempt,
             file_url=file_url,
@@ -166,14 +164,13 @@ def validate_dni_ocr(request, attempt_id):
         print(f"Error subiendo imagen: {e}")
         return JsonResponse({'success': False, 'message': f'Error guardando imagen: {str(e)}'})
 
+    # --- 3. VALIDACIÓN IA ---
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Validación simulada (Sin API Key).'})
 
-    # --- B. CONFIGURACIÓN IA ---
     model_name = "gemini-1.5-flash"
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
     
-    # Enviamos el base64 a Gemini
     payload = {
         "contents": [{
             "parts": [
@@ -184,9 +181,8 @@ def validate_dni_ocr(request, attempt_id):
     }
     headers = {'Content-Type': 'application/json'}
 
-    # --- C. VALIDACIÓN (SIN BUCLE, UN SOLO PASE) ---
-    ia_success = False
     error_actual = ""
+    ia_success = False
 
     try:
         response = requests.post(api_url, headers=headers, json=payload, timeout=10)
@@ -225,25 +221,37 @@ def validate_dni_ocr(request, attempt_id):
     except Exception as e:
         error_actual = f"Error de red/timeout: {str(e)}"
 
-    # --- D. DECISIÓN FINAL ---
+    # --- 4. DECISIÓN FINAL (AQUÍ ESTÁ EL ARREGLO) ---
+    
     if ia_success:
+        # CASO 1: Éxito real
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
+    
     else:
-        # Registramos el fallo
-        try:
-            AttemptEvent.objects.create(
-                attempt=attempt, 
-                event_type='IDENTITY_MISMATCH', 
-                metadata={'reason': f'Fallo intento {intento_actual}: {error_actual}'}
-            )
-        except: pass
+        # Registramos el error en el log
+        AttemptEvent.objects.create(
+            attempt=attempt, 
+            event_type='IDENTITY_MISMATCH', 
+            metadata={'reason': f'Fallo intento {intento_actual}: {error_actual}'}
+        )
 
-        # DEVOLVEMOS RETRY=TRUE PARA QUE EL FRONTEND SAQUE OTRA FOTO
-        return JsonResponse({
-            'success': False, 
-            'message': f'Fallo validación: {error_actual}. Reintentando...',
-            'retry': True 
-        })
+        # CASO 2: Falló, PERO ya llegamos al límite de intentos (Timeout)
+        if intento_actual >= MAX_INTENTOS:
+            return JsonResponse({
+                'success': True,  # <--- IMPORTANTE: Devolvemos True para que el Frontend avance
+                'message': 'Límite de intentos alcanzado. Se permite ingreso a revisión manual.',
+                'retry': False
+            })
+            
+        # CASO 3: Falló y todavía quedan intentos
+        else:
+            return JsonResponse({
+                'success': False, 
+                'message': f'Fallo validación: {error_actual}. Reintentando ({intento_actual}/{MAX_INTENTOS})...',
+                'retry': True 
+            })
+
+
 
 # 6. RUNNER (Examen)
 # CORREGIDO EL ERROR 500 DE BASE DE DATOS
