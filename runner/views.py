@@ -48,7 +48,7 @@ def es_docente_o_admin(user):
 # SECCIÓN ALUMNO
 # ==========================================
 
-# 1. LOBBY
+# 1. LOBBY (MODIFICADO: REDIRECCIÓN SI YA TERMINÓ)
 def lobby_view(request, access_code):
     exam = get_object_or_404(Exam, access_code=access_code)
     
@@ -56,16 +56,16 @@ def lobby_view(request, access_code):
         nombre = request.POST.get('full_name', '').strip()
         legajo = request.POST.get('student_id', '').strip()
         
+        # Buscamos si ya tiene un intento finalizado
         finished_attempt = Attempt.objects.filter(
             exam=exam, student_legajo__iexact=legajo, completed_at__isnull=False
         ).first()
 
         if finished_attempt:
-            return render(request, 'runner/lobby.html', {
-                'exam': exam,
-                'error': f'Acceso denegado. El alumno con legajo "{legajo}" ya envió este examen.'
-            })
+            # CAMBIO PRINCIPAL: Si ya terminó, lo mandamos a ver su nota directamente
+            return redirect('runner:exam_finished', attempt_id=finished_attempt.id)
             
+        # Buscamos si tiene un intento activo (sin terminar)
         active_attempt = Attempt.objects.filter(
             exam=exam, student_legajo__iexact=legajo, completed_at__isnull=True
         ).first()
@@ -75,6 +75,7 @@ def lobby_view(request, access_code):
             active_attempt.save()
             return redirect('runner:tech_check', access_code=exam.access_code, attempt_id=active_attempt.id)
 
+        # Si es nuevo, creamos el intento
         attempt = Attempt.objects.create(
             exam=exam, student_name=nombre, student_legajo=legajo,
             ip_address=request.META.get('REMOTE_ADDR')
@@ -159,7 +160,7 @@ def validate_dni_ocr(request, attempt_id):
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    # PRIORIDAD DE MODELOS (Basado en tu lista disponible)
+    # PRIORIDAD DE MODELOS
     modelos_a_probar = ["gemini-flash-lite-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     
     ia_success = False
@@ -378,10 +379,46 @@ def submit_exam_view(request, attempt_id):
     
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-# 9. PANTALLA FINAL
+# 9. PANTALLA FINAL (MODIFICADO: CON CÁLCULO DE DETALLES)
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
-    return render(request, 'runner/finished.html', {'attempt': attempt})
+    
+    # 1. Recuperamos las preguntas y las respuestas del alumno
+    items = attempt.exam.items.all()
+    student_answers = attempt.answers or {}
+    
+    detalles = []
+    
+    # 2. Recorremos cada pregunta para ver si acertó
+    for item in items:
+        # Respuesta del alumno (texto)
+        user_response = student_answers.get(str(item.id))
+        
+        # Buscamos cuál era la opción correcta en la base de datos
+        correct_option = next((o for o in (item.options or []) if o.get('correct')), None)
+        correct_text = correct_option.get('text') if correct_option else None
+        
+        # Verificamos si coinciden
+        es_correcta = False
+        if user_response and correct_text and user_response == correct_text:
+            es_correcta = True
+            
+        # Agregamos a la lista que irá al HTML
+        detalles.append({
+            'es_correcta': es_correcta,
+            'pregunta_id': item.id
+        })
+
+    # 3. Calculamos el porcentaje para mostrar (ej: 80%)
+    score_percentage = 0
+    if attempt.score is not None:
+        score_percentage = int((attempt.score / 10) * 100)
+
+    return render(request, 'runner/finished.html', {
+        'attempt': attempt,
+        'detalles': detalles,
+        'score_percentage': score_percentage
+    })
 
 # 10. LOGS
 @require_POST
