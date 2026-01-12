@@ -113,17 +113,17 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (CORREGIDO: LISTA REAL DE MODELOS + TIMEOUT)
+# 5. VALIDACIÓN DNI (CORREGIDO: USO DE MODELOS LITE DE ALTA CAPACIDAD)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # --- 1. CONTADOR DE INTENTOS ---
+    # --- 1. CONFIGURACIÓN ---
     MAX_INTENTOS = 3
     intentos_previos = Evidence.objects.filter(attempt=attempt).count()
     intento_actual = intentos_previos + 1
     
-    # --- 2. OBTENER Y SUBIR IMAGEN ---
+    # --- 2. PROCESAR IMAGEN ---
     try:
         data = json.loads(request.body)
         image_data = data.get('image', '')
@@ -153,19 +153,22 @@ def validate_dni_ocr(request, attempt_id):
         )
 
     except Exception as e:
-        print(f"Error subiendo imagen: {e}")
         return JsonResponse({'success': False, 'message': f'Error imagen: {str(e)}'})
 
-    # --- 3. VALIDACIÓN IA (MODELOS REALES) ---
+    # --- 3. VALIDACIÓN IA ---
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    # ¡ESTOS SON LOS MODELOS QUE SÍ TIENES!
-    modelos_a_probar = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+    # PRIORIDAD DE MODELOS (Basado en tu lista disponible)
+    # 1. Flash-Lite: El más rápido y con mayor límite de cuota (ideal para Pay-as-you-go)
+    # 2. Flash 2.0: La versión estándar nueva.
+    # 3. Flash Latest: El alias genérico.
+    modelos_a_probar = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"]
     
     ia_success = False
     error_actual = ""
     modelo_usado = ""
+    force_manual_review = False 
 
     payload = {
         "contents": [{
@@ -207,14 +210,19 @@ def validate_dni_ocr(request, attempt_id):
                         break 
                     else:
                         error_actual = f"Legajo no coincide (Leído: {numbers_found})"
-                        break # Datos mal, conexión OK.
+                        break 
                 else:
                     error_actual = "No parece un DNI válido"
-                    break # Imagen mal, conexión OK.
+                    break 
             
             elif response.status_code == 404:
                 error_actual = f"Modelo {model_name} no encontrado (404)"
-                continue # Probamos el siguiente
+                continue 
+            
+            elif response.status_code == 429:
+                # Si falla el Lite por cuota (raro pagando), probamos el siguiente
+                error_actual = f"Cuota excedida en {model_name} (429)."
+                continue
             
             else:
                 error_actual = f"Error API ({response.status_code})"
@@ -224,9 +232,12 @@ def validate_dni_ocr(request, attempt_id):
             error_actual = f"Error red: {str(e)}"
             break
 
+    # Si terminamos el bucle y sigue habiendo error 429 en TODOS, forzamos manual
+    if "429" in error_actual and not ia_success:
+        force_manual_review = True
+
     # --- 4. RESULTADO FINAL ---
     if ia_success:
-        # ÉXITO
         last_ev = Evidence.objects.filter(attempt=attempt).last()
         if last_ev:
             last_ev.gemini_analysis = {'status': 'success', 'modelo': modelo_usado}
@@ -234,7 +245,6 @@ def validate_dni_ocr(request, attempt_id):
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     
     else:
-        # FALLO
         try:
             AttemptEvent.objects.create(
                 attempt=attempt, event_type='IDENTITY_MISMATCH', 
@@ -242,8 +252,7 @@ def validate_dni_ocr(request, attempt_id):
             )
         except: pass
 
-        if intento_actual >= MAX_INTENTOS:
-            # TIMEOUT -> REVISIÓN MANUAL
+        if intento_actual >= MAX_INTENTOS or force_manual_review:
             last_ev = Evidence.objects.filter(attempt=attempt).last()
             if last_ev:
                 last_ev.gemini_analysis = {'status': 'manual_review', 'error': error_actual}
@@ -251,12 +260,11 @@ def validate_dni_ocr(request, attempt_id):
             
             return JsonResponse({
                 'success': True, 
-                'warning': True, # Activa modo revisión en frontend
+                'warning': True,
                 'message': 'Pase a revisión manual.', 
                 'retry': False
             })
         else:
-            # REINTENTAR
             return JsonResponse({
                 'success': False, 
                 'message': f'Fallo: {error_actual}. Reintentando...', 
