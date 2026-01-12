@@ -380,36 +380,54 @@ def submit_exam_view(request, attempt_id):
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
 # 9. PANTALLA FINAL (MODIFICADO: CON CÁLCULO DE DETALLES)
+# 9. PANTALLA FINAL (CON FILTRO DE SEGURIDAD/RIESGO)
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # 1. Recuperamos las preguntas y las respuestas del alumno
+    # --- 1. CALCULAR RIESGO (Misma lógica que el Dashboard) ---
+    events = attempt.events.all()
+    risk_score = 0
+    risk_score += events.filter(event_type='FOCUS_LOST').count() * 1
+    risk_score += events.filter(event_type='FULLSCREEN_EXIT').count() * 2
+    risk_score += events.filter(event_type='NO_FACE').count() * 3
+    risk_score += events.filter(event_type='MULTI_FACE').count() * 5
+    risk_score += events.filter(event_type='IDENTITY_MISMATCH').count() * 10
+    
+    # Obtenemos el límite de riesgo alto configurado en el tenant
+    limit_high = attempt.exam.tenant.risk_threshold_high
+    
+    # Determinamos si debe ir a revisión
+    # Si supera el riesgo O si ya estaba marcado manualmente como 'requires_review' (si tu modelo lo tiene)
+    en_revision = risk_score > limit_high
+
+    # Si está en revisión, NO calculamos detalles ni mostramos nota
+    if en_revision:
+        return render(request, 'runner/finished.html', {
+            'attempt': attempt,
+            'en_revision': True,  # <--- Bandera clave para el HTML
+            'risk_score': risk_score # Opcional, por si quieres debuggear
+        })
+
+    # --- 2. SI ES SEGURO: CALCULAR NOTA Y DETALLES ---
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
     
     detalles = []
     
-    # 2. Recorremos cada pregunta para ver si acertó
     for item in items:
-        # Respuesta del alumno (texto)
         user_response = student_answers.get(str(item.id))
-        
-        # Buscamos cuál era la opción correcta en la base de datos
         correct_option = next((o for o in (item.options or []) if o.get('correct')), None)
         correct_text = correct_option.get('text') if correct_option else None
         
-        # Verificamos si coinciden
         es_correcta = False
         if user_response and correct_text and user_response == correct_text:
             es_correcta = True
             
-        # Agregamos a la lista que irá al HTML
         detalles.append({
             'es_correcta': es_correcta,
             'pregunta_id': item.id
         })
 
-    # 3. Calculamos el porcentaje para mostrar (ej: 80%)
     score_percentage = 0
     if attempt.score is not None:
         score_percentage = int((attempt.score / 10) * 100)
@@ -417,7 +435,8 @@ def exam_finished_view(request, attempt_id):
     return render(request, 'runner/finished.html', {
         'attempt': attempt,
         'detalles': detalles,
-        'score_percentage': score_percentage
+        'score_percentage': score_percentage,
+        'en_revision': False
     })
 
 # 10. LOGS
