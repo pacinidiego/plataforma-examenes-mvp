@@ -455,3 +455,17 @@ def descargar_pdf_examen(request, exam_id):
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+# --- PEGAR ESTO AL FINAL DE runner/models.py ---
+
+class Evidence(models.Model):
+    attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='evidence_list')
+    file_url = models.TextField(help_text="URL o Base64 de la imagen")
+    timestamp = models.DateTimeField(default=timezone.now)
+    gemini_analysis = models.JSONField(default=dict, blank=True, help_text="Respuesta cruda de la IA")
+
+    class Meta:
+        ordering = ['timestamp']
+
+    def __str__(self):
+        return f"Evidencia {self.id} - {self.attempt}"
