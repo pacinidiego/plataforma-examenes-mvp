@@ -6,6 +6,7 @@ import os
 import traceback
 import requests
 import time
+import uuid  # <--- Nuevo import para nombres de archivo únicos
 from io import BytesIO
 from PIL import Image
 
@@ -16,13 +17,14 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.template.loader import render_to_string
+from django.core.files.base import ContentFile # <--- Para convertir base64 a archivo
+from django.core.files.storage import default_storage # <--- Para subir a Cloudflare
 
 # Librerías Externas
 from weasyprint import HTML
 import google.generativeai as genai 
 
 # Modelos
-# Ahora sí funcionará este import porque Evidence está en models.py
 from exams.models import Exam
 from .models import Attempt, AttemptEvent, Evidence
 
@@ -100,6 +102,8 @@ def register_biometrics(request, attempt_id):
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
         
+        # Nota: Aquí también podrías implementar la subida a Cloudflare si quisieras,
+        # pero por ahora lo dejamos simple para no romper el flujo.
         if 'reference_face' in data:
             attempt.reference_face_url = data['reference_face']
             
@@ -111,15 +115,16 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (LÓGICA DETALLADA POR INTENTO)
+# 5. VALIDACIÓN DNI (CON UPLOAD A CLOUDFLARE R2 ☁️)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # --- PREPARAR IMAGEN ---
+    # --- A. OBTENER Y SUBIR IMAGEN ---
     try:
         data = json.loads(request.body)
         image_data = data.get('image', '')
+        
         if ';base64,' in image_data:
             base64_clean = image_data.split(';base64,')[1]
         else:
@@ -128,20 +133,35 @@ def validate_dni_ocr(request, attempt_id):
         if not base64_clean:
             return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
         
-        # Actualizamos la "foto principal" del intento
-        attempt.photo_id_url = f"data:image/jpeg;base64,{base64_clean}"
+        # 1. Decodificar la imagen en memoria
+        image_content = base64.b64decode(base64_clean)
+        
+        # 2. Generar nombre único: evidence/{exam_id}/{attempt_id}_{random}.jpg
+        file_name = f"evidence/dni_{attempt.id}_{uuid.uuid4().hex[:8]}.jpg"
+        
+        # 3. ¡SUBIR A CLOUDFLARE! (Esto usa tu configuración de settings.py)
+        # default_storage.save devuelve el nombre con el que se guardó
+        saved_path = default_storage.save(file_name, ContentFile(image_content))
+        
+        # 4. Obtener la URL pública (o firmada) del archivo
+        file_url = default_storage.url(saved_path)
+        
+        # 5. Guardar el LINK en la base de datos (mucho más ligero)
+        attempt.photo_id_url = file_url
         attempt.save()
 
-    except Exception:
-        return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
+    except Exception as e:
+        print(f"Error subiendo imagen: {e}")
+        return JsonResponse({'success': False, 'message': f'Error guardando imagen: {str(e)}'})
 
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Validación simulada (Sin API Key).'})
 
-    # --- CONFIGURACIÓN IA ---
+    # --- B. CONFIGURACIÓN IA ---
     model_name = "gemini-1.5-flash"
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
     
+    # Enviamos el base64 a Gemini (Gemini necesita los bytes, no el link de Cloudflare)
     payload = {
         "contents": [{
             "parts": [
@@ -152,24 +172,29 @@ def validate_dni_ocr(request, attempt_id):
     }
     headers = {'Content-Type': 'application/json'}
 
-    # --- BUCLE DE 3 INTENTOS ---
+    # --- C. BUCLE DE 3 INTENTOS ---
     ia_success = False
     
     for i in range(3):
         intento_num = i + 1
         error_actual = ""
         
-        # 1. Guardar Evidencia de ESTE intento
-        Evidence.objects.create(
-            attempt=attempt,
-            file_url=f"data:image/jpeg;base64,{base64_clean}",
-            timestamp=timezone.now(),
-            gemini_analysis={'intento': intento_num, 'status': 'procesando'}
-        )
-        
+        # Guardar Evidencia de este intento (Ahora con URL de Cloudflare)
         try:
-            # print(f"Validando DNI Intento {intento_num}...")
-            response = requests.post(api_url, headers=headers, json=payload, timeout=25)
+            # Reusamos la URL de la imagen que ya subimos (es la misma foto)
+            # O si cada intento fuera una foto distinta, tendríamos que subirla de nuevo.
+            # Asumimos que es la misma foto del request.
+            Evidence.objects.create(
+                attempt=attempt,
+                file_url=file_url, # <--- Guardamos el LINK de Cloudflare
+                timestamp=timezone.now(),
+                gemini_analysis={'intento': intento_num, 'status': 'procesando'}
+            )
+        except Exception:
+            pass # Si falla guardar el log, seguimos
+
+        try:
+            response = requests.post(api_url, headers=headers, json=payload, timeout=10)
             
             if response.status_code == 200:
                 json_res = response.json()
@@ -198,24 +223,25 @@ def validate_dni_ocr(request, attempt_id):
             
             elif response.status_code == 503:
                 error_actual = "Servidor IA ocupado (503)"
-                time.sleep(2) 
+                time.sleep(1) 
             elif response.status_code == 404:
                 error_actual = "Modelo IA no encontrado (404)"
             else:
                 error_actual = f"Error API: {response.status_code}"
 
         except Exception as e:
-            error_actual = f"Error de red: {str(e)}"
-            time.sleep(1)
+            error_actual = f"Error de red/timeout: {str(e)}"
 
         if not ia_success:
-            AttemptEvent.objects.create(
-                attempt=attempt, 
-                event_type='IDENTITY_MISMATCH', 
-                metadata={'reason': f'Fallo DNI (Intento {intento_num}): {error_actual}'}
-            )
+            try:
+                AttemptEvent.objects.create(
+                    attempt=attempt, 
+                    event_type='IDENTITY_MISMATCH', 
+                    metadata={'reason': f'Fallo DNI (Intento {intento_num}): {error_actual}'}
+                )
+            except: pass
 
-    # --- DECISIÓN FINAL ---
+    # --- D. DECISIÓN FINAL ---
     if ia_success:
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     else:
