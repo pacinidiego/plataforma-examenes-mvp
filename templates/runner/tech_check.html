@@ -73,15 +73,26 @@
                         <button @click="scanDNI()" 
                                 :disabled="isScanning || checks.dni"
                                 class="px-6 py-3 rounded-lg font-bold text-white shadow-lg transition-all flex items-center gap-2"
-                                :class="checks.dni ? 'bg-green-600 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-1'">
+                                :class="{
+                                    'bg-green-600 cursor-default': checks.dni && !isManualReview,
+                                    'bg-yellow-600 cursor-default': checks.dni && isManualReview,
+                                    'bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-1': !checks.dni
+                                }">
                             
                             <span x-show="!isScanning && !checks.dni">📸 Capturar DNI</span>
                             <span x-show="isScanning">
                                 <span x-show="!errorMessage">Validando con IA...</span>
                                 <span x-show="errorMessage">Reintentando...</span>
                             </span>
-                            <span x-show="checks.dni">Identidad Confirmada</span>
+                            
+                            <span x-show="checks.dni && !isManualReview">Identidad Confirmada ✅</span>
+                            <span x-show="checks.dni && isManualReview">⚠️ A Revisión Manual</span>
                         </button>
+                        
+                        <p class="text-xs text-yellow-700 font-bold mt-2 bg-yellow-100 px-3 py-1 rounded" x-show="isManualReview">
+                            No pudimos validar tu DNI automáticamente. Se permite el ingreso, pero un docente verificará tu identidad.
+                        </p>
+
                         <p class="text-xs text-gray-500" x-show="!checks.dni && !errorMessage">Asegúrate de que haya buena luz y el texto sea legible.</p>
                         <p class="text-sm text-red-600 font-bold animate-pulse" x-show="errorMessage" x-text="errorMessage"></p>
                     </div>
@@ -126,14 +137,22 @@
                         </div>
 
                         <div class="flex items-start p-4 bg-white rounded-xl border-2 transition-all duration-300 shadow-sm"
-                             :class="checks.dni ? 'border-green-500 shadow-green-50' : (step === 2 ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-100 opacity-60')">
+                             :class="checks.dni ? (isManualReview ? 'border-yellow-500 shadow-yellow-50' : 'border-green-500 shadow-green-50') : (step === 2 ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-100 opacity-60')">
                              <div class="flex-1">
                                 <div class="flex justify-between items-center">
                                     <h4 class="font-bold text-gray-900">Identidad (DNI)</h4>
+                                    
                                     <span class="text-xs font-medium px-2 py-0.5 rounded-full" 
-                                          :class="checks.dni ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" 
-                                          x-text="checks.dni ? 'VALIDADO' : 'Requerido'"></span>
+                                          x-show="!checks.dni"
+                                          class="bg-gray-100 text-gray-500">Requerido</span>
+                                          
+                                    <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700" 
+                                          x-show="checks.dni && !isManualReview">VALIDADO</span>
+
+                                    <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700" 
+                                          x-show="checks.dni && isManualReview">REVISIÓN</span>
                                 </div>
+                                
                                 <p class="text-xs text-red-500 mt-1 font-semibold" x-show="errorMessage && !checks.dni" x-text="errorMessage"></p>
                                 
                                 <div x-show="checks.dni && !checks.face" class="mt-2 p-2 bg-blue-50 rounded border border-blue-100 animate-pulse">
@@ -162,7 +181,7 @@
                            x-show="step === 2"
                            :disabled="!checks.dni || !checks.face"
                            class="block w-full py-4 rounded-xl font-bold text-lg text-center transition-all shadow-sm flex items-center justify-center gap-3 relative overflow-hidden group"
-                           :class="(checks.dni && checks.face) ? 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed'">
+                           :class="(checks.dni && checks.face) ? (isManualReview ? 'bg-yellow-600 text-white hover:bg-yellow-700' : 'bg-green-600 text-white hover:bg-green-700') + ' hover:shadow-md cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed'">
                             
                             <span x-text="(checks.dni && checks.face) ? 'INGRESAR AL EXAMEN' : 'COMPLETE REQUISITOS'"></span>
                             
@@ -187,6 +206,7 @@
         return {
             step: 1,
             checks: { camera: false, audio: false, network: true, dni: false, face: false },
+            isManualReview: false,
             audioLevel: 0,
             isScanning: false,
             isEntering: false,
@@ -267,18 +287,11 @@
                 };
             },
 
-            // --- FUNCIÓN MODIFICADA PARA REINTENTO AUTOMÁTICO ---
             async scanDNI(isAutoRetry = false) {
-                // Si ya está escaneando y NO es un reintento automático, no hacer nada (evita doble clic)
                 if (this.isScanning && !isAutoRetry) return;
                 
                 this.isScanning = true;
-                
-                // Solo limpiamos el mensaje si es el primer clic del usuario, 
-                // si es un reintento automático, dejamos el mensaje de error anterior visible
-                if (!isAutoRetry) {
-                     this.errorMessage = '';
-                }
+                if (!isAutoRetry) this.errorMessage = '';
                 
                 const video = this.$refs.videoElement;
                 const canvas = this.$refs.canvas;
@@ -299,25 +312,26 @@
                     const result = await response.json();
                     
                     if (result.success) {
-                        // Éxito: Detenemos escaneo y validamos
                         this.checks.dni = true;
                         this.errorMessage = '';
                         this.isScanning = false;
+                        
+                        // Si trae warning, es REVISIÓN MANUAL
+                        if (result.warning) {
+                            this.isManualReview = true;
+                        } else {
+                            this.isManualReview = false;
+                        }
+
                     } else {
-                        // Fallo
                         this.checks.dni = false;
                         this.errorMessage = result.message;
                         
-                        // SI EL SERVER PIDE REINTENTAR (retry: true)
                         if (result.retry) {
-                            console.log("Reintentando automáticamente en 2.5s...");
-                            // Mantenemos isScanning = true para bloquear el botón
                             setTimeout(() => {
-                                // Llamada recursiva (Bucle controlado por el server)
                                 this.scanDNI(true); 
                             }, 2500);
                         } else {
-                            // Si el server dice que no (error fatal), paramos.
                             this.isScanning = false;
                         }
                     }
@@ -326,13 +340,11 @@
                     this.isScanning = false;
                 }
             },
-            // ----------------------------------------------------
 
             async enterExam() {
                 if (this.isEntering) return;
                 this.isEntering = true;
                 
-                // 1. Capturar foto actual para referencia
                 const video = this.$refs.videoElement;
                 const canvas = this.$refs.canvas;
                 const context = canvas.getContext('2d');
@@ -342,7 +354,6 @@
                 const faceImage = canvas.toDataURL('image/jpeg', 0.9);
                 
                 try {
-                    // 2. Enviar al servidor como 'reference_face'
                     const url = "{% url 'runner:register_biometrics' attempt.id %}";
                     const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
                     
@@ -352,7 +363,6 @@
                         body: JSON.stringify({ reference_face: faceImage })
                     });
                     
-                    // 3. Redirigir DIRECTO al examen (Saltando Gate)
                     window.location.href = "{% url 'runner:exam_runner' access_code=exam.access_code attempt_id=attempt.id %}";
                     
                 } catch (e) {
