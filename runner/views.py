@@ -113,7 +113,7 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (CORREGIDO: USO DE MODELOS LITE DE ALTA CAPACIDAD)
+# 5. VALIDACIÓN DNI (CORREGIDO: EL MODELO GANADOR VA PRIMERO)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -123,7 +123,7 @@ def validate_dni_ocr(request, attempt_id):
     intentos_previos = Evidence.objects.filter(attempt=attempt).count()
     intento_actual = intentos_previos + 1
     
-    # --- 2. PROCESAR IMAGEN ---
+    # --- 2. OBTENER Y SUBIR IMAGEN ---
     try:
         data = json.loads(request.body)
         image_data = data.get('image', '')
@@ -159,11 +159,14 @@ def validate_dni_ocr(request, attempt_id):
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    # PRIORIDAD DE MODELOS (Basado en tu lista disponible)
-    # 1. Flash-Lite: El más rápido y con mayor límite de cuota (ideal para Pay-as-you-go)
-    # 2. Flash 2.0: La versión estándar nueva.
-    # 3. Flash Latest: El alias genérico.
-    modelos_a_probar = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"]
+    # LISTA OPTIMIZADA SEGÚN TU PRUEBA DE CONSOLA
+    # 1. El que funcionó (200 OK)
+    # 2 y 3. Los que dieron 429 (por si se libera la cuota)
+    modelos_a_probar = [
+        "gemini-flash-lite-latest", 
+        "gemini-2.0-flash-lite", 
+        "gemini-2.0-flash"
+    ]
     
     ia_success = False
     error_actual = ""
@@ -220,8 +223,10 @@ def validate_dni_ocr(request, attempt_id):
                 continue 
             
             elif response.status_code == 429:
-                # Si falla el Lite por cuota (raro pagando), probamos el siguiente
                 error_actual = f"Cuota excedida en {model_name} (429)."
+                # Si es el último de la lista y falló, marcamos error fatal
+                if model_name == modelos_a_probar[-1]:
+                     force_manual_review = True
                 continue
             
             else:
@@ -231,10 +236,6 @@ def validate_dni_ocr(request, attempt_id):
         except Exception as e:
             error_actual = f"Error red: {str(e)}"
             break
-
-    # Si terminamos el bucle y sigue habiendo error 429 en TODOS, forzamos manual
-    if "429" in error_actual and not ia_success:
-        force_manual_review = True
 
     # --- 4. RESULTADO FINAL ---
     if ia_success:
