@@ -5,7 +5,7 @@ import re
 import os
 import traceback
 import requests
-import time  # Necesario para los sleep en reintentos
+import time
 from io import BytesIO
 from PIL import Image
 
@@ -22,8 +22,9 @@ from weasyprint import HTML
 import google.generativeai as genai 
 
 # Modelos
+# 🔥 AGREGAMOS 'Evidence' A LOS IMPORTS
 from exams.models import Exam
-from .models import Attempt, AttemptEvent
+from .models import Attempt, AttemptEvent, Evidence
 
 # --- CONFIGURACIÓN GEMINI ---
 GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -86,25 +87,22 @@ def tech_check_view(request, access_code, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/tech_check.html', {'exam': exam, 'attempt': attempt})
 
-# 3. BIOMETRIC GATE (OBSOLETA - Nos la saltaremos desde el HTML, pero la dejamos por si acaso)
+# 3. BIOMETRIC GATE
 def biometric_gate_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
-    # Redirección directa al examen si alguien cae aquí por error
     return redirect('runner:exam_runner', access_code=access_code, attempt_id=attempt.id)
 
-# 4. REGISTRO BIOMÉTRICO (Usado ahora por Tech Check para guardar la cara)
+# 4. REGISTRO BIOMÉTRICO
 @require_POST
 def register_biometrics(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
         
-        # Guardamos la cara de referencia
         if 'reference_face' in data:
             attempt.reference_face_url = data['reference_face']
             
-        # El DNI se guarda en validate_dni, pero por si acaso llega aquí:
         if 'dni_image' in data:
             attempt.photo_id_url = data['dni_image']
             
@@ -113,12 +111,12 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (BLINDADA CON FAIL-OPEN Y GUARDADO INMEDIATO)
+# 5. VALIDACIÓN DNI (LÓGICA DETALLADA POR INTENTO) 📸
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # --- PASO 1: GUARDADO INMEDIATO DE EVIDENCIA ---
+    # --- PREPARAR IMAGEN ---
     try:
         data = json.loads(request.body)
         image_data = data.get('image', '')
@@ -130,23 +128,21 @@ def validate_dni_ocr(request, attempt_id):
         if not base64_clean:
             return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
         
-        # 🔥 CRÍTICO: Guardamos la foto AHORA MISMO.
-        # Así, pase lo que pase con la IA, tenemos la evidencia para auditar.
+        # Actualizamos la "foto principal" del intento con la última captura
         attempt.photo_id_url = f"data:image/jpeg;base64,{base64_clean}"
         attempt.save()
-        
+
     except Exception:
         return JsonResponse({'success': False, 'message': 'Error leyendo imagen.'})
 
-    # Si no hay API KEY, aprobamos simulado
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Validación simulada (Sin API Key).'})
 
-    print(f"📡 Validando DNI para legajo: {attempt.student_legajo}")
-
-    # --- PASO 2: CONFIGURACIÓN IA ---
-    model_to_use = "gemini-1.5-flash" 
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_to_use}:generateContent?key={GOOGLE_API_KEY}"
+    # --- CONFIGURACIÓN IA ---
+    # Nota: El error 404 suele ser modelo incorrecto. Forzamos 'gemini-1.5-flash' limpio.
+    model_name = "gemini-1.5-flash"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
+    
     payload = {
         "contents": [{
             "parts": [
@@ -157,75 +153,79 @@ def validate_dni_ocr(request, attempt_id):
     }
     headers = {'Content-Type': 'application/json'}
 
-    # --- PASO 3: BUCLE DE REINTENTOS (3 VIDAS) ---
+    # --- BUCLE DE 3 INTENTOS (CON EVIDENCIA INDIVIDUAL) ---
     ia_success = False
-    error_message = ""
     
     for i in range(3):
+        intento_num = i + 1
+        error_actual = ""
+        
+        # 1. Guardar Evidencia de ESTE intento específico
+        # Creamos un objeto Evidence nuevo para que quede en el historial
+        Evidence.objects.create(
+            attempt=attempt,
+            file_url=f"data:image/jpeg;base64,{base64_clean}",
+            timestamp=timezone.now(),
+            gemini_analysis={'intento': intento_num, 'status': 'procesando'}
+        )
+        
         try:
-            # print(f"Intento {i+1} con IA...")
+            print(f"🔄 Validando DNI (Intento {intento_num}/3)...")
             response = requests.post(api_url, headers=headers, json=payload, timeout=25)
             
-            # A. Error de Servidor (503) -> Reintentar
-            if response.status_code == 503:
-                # print("Gemini ocupado (503), reintentando...")
-                time.sleep(2)
-                continue 
-                
-            # B. Respuesta Exitosa (200) -> Analizar
             if response.status_code == 200:
                 json_res = response.json()
                 try:
                     candidates = json_res.get('candidates', [])
                     if not candidates:
-                         error_message = "IA bloqueó la imagen (Filtro Seguridad)"
-                         break 
-                         
-                    raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
-                    clean_text = raw_text.replace('```json', '').replace('```', '').strip()
-                    ai_data = json.loads(clean_text)
-                    
-                    if ai_data.get('es_documento'):
-                        numbers_found = str(ai_data.get('numeros', ''))
-                        legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
-                        
-                        # Comparación Flexible
-                        if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
-                            ia_success = True
-                            break # ¡Éxito!
-                        else:
-                            error_message = f"Legajo no coincide (Leído: {numbers_found})"
-                            break 
+                         error_actual = "IA bloqueó la imagen (Seguridad)"
                     else:
-                        error_message = "No parece un DNI válido"
-                        break
+                        raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
+                        clean_text = raw_text.replace('```json', '').replace('```', '').strip()
+                        ai_data = json.loads(clean_text)
                         
+                        if ai_data.get('es_documento'):
+                            numbers_found = str(ai_data.get('numeros', ''))
+                            legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
+                            
+                            if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
+                                ia_success = True
+                                break # ¡ÉXITO! Salimos del bucle
+                            else:
+                                error_actual = f"Legajo no coincide (IA leyó: {numbers_found})"
+                        else:
+                            error_actual = "No parece un DNI válido"
                 except Exception as e:
-                    error_message = f"Error leyendo JSON IA: {str(e)}"
-                    break 
+                    error_actual = f"Error leyendo respuesta IA: {str(e)}"
+            
+            elif response.status_code == 503:
+                error_actual = "Servidor IA ocupado (503)"
+                time.sleep(2) # Esperar antes de reintentar
+            elif response.status_code == 404:
+                error_actual = "Modelo IA no encontrado (404) - Verifica API Key/Plan"
+                # Un 404 no se arregla reintentando, pero seguimos el protocolo
             else:
-                error_message = f"Error API: {response.status_code}"
-                break
-                
+                error_actual = f"Error API: {response.status_code}"
+
         except Exception as e:
-            error_message = f"Excepción red: {str(e)}"
+            error_actual = f"Error de red: {str(e)}"
             time.sleep(1)
 
-    # --- PASO 4: DECISIÓN FINAL (FAIL OPEN) ---
-    
+        # 2. Registrar el fallo de ESTE intento en la bitácora
+        if not ia_success:
+            print(f"⚠️ Falló intento {intento_num}: {error_actual}")
+            AttemptEvent.objects.create(
+                attempt=attempt, 
+                event_type='IDENTITY_MISMATCH', # Usamos este tipo para que salga la alerta
+                metadata={'reason': f'Fallo DNI (Intento {intento_num}): {error_actual}'}
+            )
+
+    # --- DECISIÓN FINAL (FAIL OPEN) ---
     if ia_success:
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     else:
-        # Si falló todo, dejamos pasar pero marcamos RIESGO ALTO.
-        print(f"🚩 Fallo validación ({error_message}). Aprobando con Flag de Riesgo.")
-        
-        AttemptEvent.objects.create(
-            attempt=attempt, 
-            event_type='IDENTITY_MISMATCH', 
-            metadata={'reason': f'Fallo Auto-Validación: {error_message}'}
-        )
-        
-        # Engañamos al frontend para que avance
+        # Si llegamos aquí, fallaron los 3 intentos.
+        # Dejamos pasar (success: True) pero ya generamos 3 alertas y 3 fotos.
         return JsonResponse({
             'success': True, 
             'message': 'Validación guardada para revisión manual.'
@@ -239,15 +239,12 @@ def exam_runner_view(request, access_code, attempt_id):
     if attempt.completed_at:
         return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-    # NO INICIAMOS EL TIMER AQUÍ. Esperamos al Fullscreen.
-    
     total_duration = exam.get_total_duration_seconds()
     
     if attempt.start_time:
         elapsed = (timezone.now() - attempt.start_time).total_seconds()
         remaining = max(0, total_duration - elapsed)
         
-        # Válvula de seguridad (Nota 0 fix)
         saved_answers = attempt.answers or {}
         if remaining <= 0 and not saved_answers:
              attempt.start_time = None 
@@ -278,7 +275,7 @@ def exam_runner_view(request, access_code, attempt_id):
         'has_started': attempt.start_time is not None
     })
 
-# API: INICIAR TIMER (Fullscreen Trigger)
+# API: INICIAR TIMER
 @require_POST
 def start_exam_timer(request, attempt_id):
     try:
@@ -338,17 +335,15 @@ def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return render(request, 'runner/finished.html', {'attempt': attempt})
 
-# 10. LOGS - CORREGIDO (SOLO SI EL EXAMEN INICIÓ) 🛡️
+# 10. LOGS
 @require_POST
 def log_event(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         
-        # 1. REGLA DE ORO: Si el timer no arrancó, NO LOGUEAMOS NADA.
         if not attempt.start_time:
              return JsonResponse({'status': 'ignored_not_started'}, status=200)
 
-        # 2. Si ya terminó, ignoramos
         if attempt.completed_at:
             return JsonResponse({'status': 'ignored_completed'}, status=200)
 
@@ -360,7 +355,6 @@ def log_event(request, attempt_id):
         if event_type not in valid_types:
             return JsonResponse({'status': 'ignored_invalid'}, status=200)
 
-        # 3. Periodo de gracia inicial (15s)
         if (timezone.now() - attempt.start_time).total_seconds() < 15:
             return JsonResponse({'status': 'ignored_grace'}, status=200)
 
@@ -376,11 +370,8 @@ def teacher_dashboard_view(request, exam_id):
     exam = get_object_or_404(Exam, id=exam_id)
     attempts = Attempt.objects.filter(exam=exam).order_by('-start_time').prefetch_related('events')
     
-    # --- CAMBIO: Lectura de configuración del Tenant ---
-    # Obtenemos los umbrales configurados en la institución
     limit_medium = exam.tenant.risk_threshold_medium
     limit_high = exam.tenant.risk_threshold_high
-    # ---------------------------------------------------
 
     results = []
     for attempt in attempts:
@@ -394,7 +385,6 @@ def teacher_dashboard_view(request, exam_id):
         
         status_color = 'green'
         
-        # --- CAMBIO: Comparación Dinámica ---
         if risk_score > limit_high: 
             status_color = 'red'
         elif risk_score > limit_medium: 
@@ -411,7 +401,9 @@ def teacher_dashboard_view(request, exam_id):
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all().order_by('timestamp')
-    return render(request, 'runner/attempt_detail.html', {'attempt': attempt, 'events': events})
+    # También pasamos la evidencia (fotos) a la vista
+    evidence_list = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
+    return render(request, 'runner/attempt_detail.html', {'attempt': attempt, 'events': events, 'evidence_list': evidence_list})
 
 @login_required
 @user_passes_test(is_staff)
