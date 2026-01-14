@@ -37,7 +37,7 @@
                         
                         <div x-show="step === 2 && !isScanning" class="absolute top-2 left-2 px-2 py-1 rounded text-xs font-bold text-white transition-colors z-10"
                              :class="checks.face ? 'bg-green-600' : 'bg-red-600'">
-                             <span x-text="checks.face ? 'ROSTRO DETECTADO ✅' : 'NO SE DETECTA ROSTRO ❌'"></span>
+                            <span x-text="checks.face ? 'ROSTRO DETECTADO ✅' : 'NO SE DETECTA ROSTRO ❌'"></span>
                         </div>
 
                         <canvas x-ref="canvas" class="hidden"></canvas>
@@ -145,7 +145,7 @@
                                     <span class="text-xs font-medium px-2 py-0.5 rounded-full" 
                                           x-show="!checks.dni"
                                           class="bg-gray-100 text-gray-500">Requerido</span>
-                                          
+                                    
                                     <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700" 
                                           x-show="checks.dni && !isManualReview">VALIDADO</span>
 
@@ -316,7 +316,6 @@
                         this.errorMessage = '';
                         this.isScanning = false;
                         
-                        // Si trae warning, es REVISIÓN MANUAL
                         if (result.warning) {
                             this.isManualReview = true;
                         } else {
@@ -324,6 +323,11 @@
                         }
 
                     } else {
+                        // --- LÓGICA DE CAPTURA DE EVIDENCIA SILENCIOSA ---
+                        // Si falla, tomamos la foto actual (donde se ve la cara) y la enviamos al log
+                        this.captureSilentEvidence(result.message);
+                        // -------------------------------------------------
+
                         this.checks.dni = false;
                         this.errorMessage = result.message;
                         
@@ -339,6 +343,33 @@
                     this.errorMessage = "Error de conexión.";
                     this.isScanning = false;
                 }
+            },
+
+            // NUEVA FUNCIÓN AUXILIAR
+            captureSilentEvidence(reason) {
+                const video = this.$refs.videoElement;
+                if (!video) return;
+
+                // Usamos un canvas temporal para no ensuciar el principal
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                // Calidad media (0.6) para subir rápido
+                const imageBase64 = canvas.toDataURL('image/jpeg', 0.6); 
+
+                const url = "{% url 'runner:log_event' attempt.id %}";
+                const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                    body: JSON.stringify({
+                        event_type: 'IDENTITY_MISMATCH',
+                        metadata: { reason: reason || 'Fallo DNI' },
+                        image: imageBase64
+                    })
+                }).catch(err => console.error("Error subiendo evidencia silenciosa:", err));
             },
 
             async enterExam() {
