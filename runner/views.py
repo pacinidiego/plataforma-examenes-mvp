@@ -440,15 +440,65 @@ def exam_finished_view(request, attempt_id):
     })
 
 # 10. LOGS
+# Busca la función # 10. LOGS y reemplázala con esta versión:
+
 @require_POST
 def log_event(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
-        if not attempt.start_time: return JsonResponse({'status': 'ignored'}, status=200)
-        if attempt.completed_at: return JsonResponse({'status': 'ignored'}, status=200)
-
+        
+        # Parseamos los datos que vienen del navegador
         data = json.loads(request.body)
-        AttemptEvent.objects.create(attempt=attempt, event_type=data.get('event_type'), metadata=data.get('metadata', {}))
+        event_type = data.get('event_type')
+        metadata = data.get('metadata', {})
+        
+        # --- NUEVO: MANEJO DE IMAGEN DE INCIDENTE ---
+        image_data = data.get('image', None) 
+
+        evidence_url = None # Por defecto no hay foto
+
+        if image_data:
+            # 1. Limpiamos el base64 (quitamos el encabezado 'data:image/jpeg;base64,')
+            if ';base64,' in image_data:
+                base64_clean = image_data.split(';base64,')[1]
+            else:
+                base64_clean = image_data
+            
+            # 2. Convertimos texto a archivo en memoria
+            image_content = base64.b64decode(base64_clean)
+            
+            # 3. Definimos nombre (INCIDENTE_ + ID + Aleatorio)
+            filename = f"evidence/INCIDENTE_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
+            
+            # 4. ¡AQUÍ OCURRE LA MAGIA! 
+            # default_storage.save sube el archivo a Cloudflare R2
+            saved_path = default_storage.save(filename, ContentFile(image_content))
+            
+            # 5. Obtenemos la URL pública de Cloudflare
+            evidence_url = default_storage.url(saved_path)
+
+            # 6. Creamos el registro en la tabla Evidence (apuntando a la URL)
+            Evidence.objects.create(
+                attempt=attempt,
+                file_url=evidence_url, # <--- Guardamos solo el LINK
+                timestamp=timezone.now(),
+                gemini_analysis={
+                    'tipo': 'INCIDENTE', 
+                    'motivo': event_type, 
+                    'alerta': 'ALTA'
+                }
+            )
+            
+            # Agregamos la URL al log de texto también por si acaso
+            metadata['evidence_url'] = evidence_url
+
+        # Guardamos el evento de log normal
+        AttemptEvent.objects.create(
+            attempt=attempt, 
+            event_type=event_type, 
+            metadata=metadata
+        )
+        
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
