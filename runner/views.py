@@ -138,15 +138,18 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI
+# 5. VALIDACIÓN DNI (CORREGIDO: ERROR 500 ELIMINADO)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
-    attempt = get_object_or_404(Attempt, id=attempt_id)
-    # Contamos intentos excluyendo incidentes de vigilancia
-    intentos_previos = Evidence.objects.filter(attempt=attempt).exclude(gemini_analysis__tipo='INCIDENTE').count()
-    intento_actual = intentos_previos + 1
-    
+    # Movemos todo dentro del try para capturar cualquier error
     try:
+        attempt = get_object_or_404(Attempt, id=attempt_id)
+        
+        # MÉTODO SEGURO: Contamos archivos que NO tengan 'INCIDENTE' en el nombre.
+        # Esto evita errores de base de datos con campos JSON.
+        intentos_previos = Evidence.objects.filter(attempt=attempt).exclude(file_url__contains='INCIDENTE').count()
+        intento_actual = intentos_previos + 1
+        
         data = json.loads(request.body)
         image_data = data.get('image', '')
         
@@ -175,7 +178,8 @@ def validate_dni_ocr(request, attempt_id):
         )
 
     except Exception as e:
-        return JsonResponse({'success': False, 'message': f'Error imagen: {str(e)}'})
+        # Devuelve el error como JSON en lugar de pantalla de error 500
+        return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'})
 
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
@@ -185,6 +189,7 @@ def validate_dni_ocr(request, attempt_id):
     error_actual = ""
     modelo_usado = ""
     force_manual_review = False 
+    MAX_INTENTOS = 3
 
     payload = {
         "contents": [{
@@ -324,10 +329,7 @@ def save_answer(request, attempt_id):
         current_answers[str(data.get('question_id'))] = data.get('answer')
         attempt.answers = current_answers
         attempt.save(update_fields=['answers', 'last_heartbeat']) 
-        
-        # Logueamos respuesta para análisis de tiempos de trampa
         AttemptEvent.objects.create(attempt=attempt, event_type='ANSWER_SAVED', metadata={'qid': data.get('question_id')})
-        
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error'}, status=400)
@@ -417,7 +419,6 @@ def log_event(request, attempt_id):
             saved_path = default_storage.save(filename, ContentFile(image_content))
             evidence_url = default_storage.url(saved_path)
 
-            # Evidencia tipo INCIDENTE para que no se mezcle con las validaciones
             Evidence.objects.create(
                 attempt=attempt, file_url=evidence_url, timestamp=timezone.now(),
                 gemini_analysis={'tipo': 'INCIDENTE', 'motivo': event_type, 'alerta': 'ALTA'}
@@ -459,68 +460,55 @@ def teacher_dashboard_view(request, exam_id):
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO (CORREGIDO: STORYTELLING DE EVENTOS Y FILTRO EVIDENCIA)
+# 12. DETALLE DEL INTENTO (CORREGIDO: FILTRO SEGURO POR NOMBRE DE ARCHIVO)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # 1. PROCESAR EVENTOS PARA CREAR SECUENCIA LÓGICA (Salida -> Regreso -> Respuesta)
+    # 1. PROCESAR EVENTOS
     raw_events = list(attempt.events.all().order_by('timestamp'))
     processed_events = []
-    ids_to_skip = set() # Para no repetir eventos que agrupamos
+    ids_to_skip = set()
 
     for i, event in enumerate(raw_events):
         if event.id in ids_to_skip:
             continue
 
-        # Si es una Salida (Foco o Fullscreen), buscamos su retorno y consecuencia
         if event.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
-            
-            # Buscamos el evento de retorno (FOCUS_GAINED)
             for j in range(i + 1, len(raw_events)):
                 next_ev = raw_events[j]
-                
-                # Encontramos el retorno
                 if next_ev.event_type == 'FOCUS_GAINED':
                     delta = (next_ev.timestamp - event.timestamp).total_seconds()
                     event.duration_away = int(delta)
                     event.return_timestamp = next_ev.timestamp
-                    
-                    # Marcamos el retorno para ocultarlo de la lista principal
                     ids_to_skip.add(next_ev.id) 
                     
-                    # Buscamos si respondió rápido después de volver (en los siguientes eventos)
                     for k in range(j + 1, len(raw_events)):
                         future_ev = raw_events[k]
-                        
                         if future_ev.event_type == 'ANSWER_SAVED':
                             reaction_seconds = (future_ev.timestamp - next_ev.timestamp).total_seconds()
-                            # Si respondió en menos de 20 segs tras volver
                             if reaction_seconds < 20: 
                                 event.suspicious_answer = True
                                 event.reaction_time = int(reaction_seconds)
-                            break # Solo analizamos la primera acción
-                        
-                        # Si vuelve a perder el foco, cortamos el análisis
+                            break 
                         if future_ev.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
                             break
-                    
-                    break # Ya encontramos el retorno, salimos del loop j
+                    break 
 
-            # Si no encontramos retorno (sigue afuera o terminó así), calculamos hasta el siguiente evento cualquiera
             if not getattr(event, 'duration_away', None) and i + 1 < len(raw_events):
                  delta = (raw_events[i+1].timestamp - event.timestamp).total_seconds()
                  event.duration_away = int(delta)
         
         processed_events.append(event)
 
-    # 2. FILTRAR EVIDENCIA (Mostrar todos los intentos de validación, ocultar incidentes de examen)
-    # Incluimos todo lo que NO sea tipo 'INCIDENTE' (para que salga manual review, fallidos, etc)
+    # 2. FILTRAR EVIDENCIA (USANDO MÉTODO SEGURO POR NOMBRE DE ARCHIVO)
+    # Filtramos todo lo que NO tenga "INCIDENTE" en el nombre (así trae los DNI/Cara)
+    # Esto evita el error de intentar leer JSON en bases de datos que no lo soportan bien
     evidence_all = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
     evidence_validation = [
         ev for ev in evidence_all 
-        if ev.gemini_analysis.get('tipo') != 'INCIDENTE'
+        if "INCIDENTE" not in (ev.file_url or "")
     ]
 
     items = attempt.exam.items.all()
@@ -538,7 +526,7 @@ def attempt_detail_view(request, attempt_id):
         })
 
     return render(request, 'runner/attempt_detail.html', {
-        'attempt': attempt, 'events': processed_events, # Usamos la lista procesada
+        'attempt': attempt, 'events': processed_events, 
         'evidence_list': evidence_validation, 'qa_list': qa_list
     })
 
