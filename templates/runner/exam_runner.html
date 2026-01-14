@@ -31,7 +31,7 @@
       })"
       x-init="init()">
 
-    <video x-ref="webcam" autoplay playsinline muted class="fixed bottom-4 right-4 w-32 h-24 object-cover rounded-lg shadow-lg border-2 border-gray-800 z-50 opacity-80 pointer-events-none transform scale-x-[-1]"></video>
+    <video x-ref="webcam" id="webcam-video" autoplay playsinline muted class="fixed bottom-4 right-4 w-32 h-24 object-cover rounded-lg shadow-lg border-2 border-gray-800 z-50 opacity-80 pointer-events-none transform scale-x-[-1]"></video>
 
     <div x-show="!isFullScreen && !isSubmitting" 
          class="fixed inset-0 z-[60] bg-white/90 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 transition-opacity duration-300"
@@ -232,13 +232,14 @@
                 isUploadingEvidence: false, // Control para no saturar subidas
 
                 init() {
-                    this.setupSecurity();
                     this.startTimers();
-                    this.startProctoring();
+                    // Importante: Iniciar proctoring antes de la seguridad
+                    this.startProctoring().then(() => {
+                        this.setupSecurity(); // Ahora la seguridad usará la cámara activa
+                    });
                 },
 
                 startTimers() {
-                    // Timer Global
                     setInterval(() => {
                         if (this.globalSeconds > 0) {
                             this.globalSeconds--;
@@ -247,7 +248,6 @@
                         }
                     }, 1000);
 
-                    // Timer por Pregunta
                     setInterval(() => {
                         if (this.currentStep < this.total && this.currentStep >= this.initialStep) { 
                             if (this.itemSeconds > 0) {
@@ -286,7 +286,8 @@
                         console.error("Error iniciando proctoring:", e);
                         this.aiStatus = 'error';
                         this.aiMessage = 'Error de Cámara';
-                        this.logEvent('CAMERA_ERROR', { error: e.toString() });
+                        // AHORA SÍ SACA FOTO DEL ERROR (O NEGRO SI NO HAY)
+                        this.logRiskEventWithEvidence('CAMERA_ERROR', e.toString());
                     }
                 },
 
@@ -307,7 +308,7 @@
                                         this.aiStatus = 'warning';
                                         this.aiMessage = 'Identidad dudosa';
                                         // MODIFICADO: Llamada a función de evidencia
-                                        this.logRiskEventWithEvidence('IDENTITY_MISMATCH', 'Rostro no coincide con referencia (Distancia: ' + distance.toFixed(2) + ')');
+                                        this.logRiskEventWithEvidence('IDENTITY_MISMATCH', 'Rostro no coincide (Distancia: ' + distance.toFixed(2) + ')');
                                     }
                                 }
                             } else {
@@ -321,23 +322,31 @@
                     setTimeout(() => this.detectLoop(), 1000);
                 },
 
-                // --- NUEVA FUNCIÓN: LOGUEO CON FOTO ---
+                // --- NUEVA FUNCIÓN UNIFICADA: SIEMPRE INTENTA SACAR FOTO ---
                 async logRiskEventWithEvidence(type, reason) {
+                    if (this.isSubmitting) return; // No loguear si ya está entregando
                     if (this.isUploadingEvidence) return; // Debounce
+                    
                     this.isUploadingEvidence = true;
 
                     const video = this.$refs.webcam;
-                    if (!video) return;
+                    let imageBase64 = null;
 
-                    // Capturar Frame
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const imageBase64 = canvas.toDataURL('image/jpeg', 0.6); // Calidad media
+                    // Intentar capturar frame si el video está activo
+                    if (video && video.readyState === 4) {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                        } catch (err) {
+                            console.warn("No se pudo capturar foto para el evento:", type);
+                        }
+                    }
 
-                    // Enviar
+                    // Enviar Log (con o sin foto)
                     try {
                         await fetch("{% url 'runner:log_event' attempt.id %}", {
                             method: 'POST',
@@ -348,20 +357,42 @@
                                 image: imageBase64 
                             })
                         });
-                        console.log("Evidencia subida:", type);
+                        console.log("Evidencia registrada:", type);
                     } catch (e) {
                         console.error("Error subiendo evidencia", e);
                     } finally {
-                        // Esperar 5 segundos antes de permitir otra foto
-                        setTimeout(() => { this.isUploadingEvidence = false; }, 5000);
+                        // REBAJADO: Solo 1.5 segundos de espera entre fotos para capturar ráfagas de eventos
+                        setTimeout(() => { this.isUploadingEvidence = false; }, 1500);
                     }
+                },
+
+                // --- SEGURIDAD Y LOGS (MODIFICADO) ---
+                setupSecurity() {
+                    // CAMBIO DE PESTAÑA: Ahora usa logRiskEventWithEvidence (con foto)
+                    document.addEventListener("visibilitychange", () => {
+                        if (document.hidden) {
+                            this.logRiskEventWithEvidence('FOCUS_LOST', 'Pestaña oculta / Cambio de aplicación');
+                        }
+                    });
+                    
+                    window.addEventListener("blur", () => {
+                        this.logRiskEventWithEvidence('FOCUS_LOST', 'Foco de ventana perdido (Clic fuera)');
+                    });
+                    
+                    document.addEventListener('fullscreenchange', () => {
+                        this.isFullScreen = !!document.fullscreenElement;
+                        // Solo reportar si salieron de fullscreen Y NO están entregando
+                        if (!this.isFullScreen && !this.isSubmitting) {
+                            this.logRiskEventWithEvidence('FULLSCREEN_EXIT', 'Salida de Pantalla Completa');
+                        }
+                    });
+                    this.isFullScreen = !!document.fullscreenElement;
                 },
 
                 // --- NAVEGACIÓN Y GUARDADO ---
                 nextQuestion(auto = false) {
                     if (this.currentStep < this.total - 1) {
                         if (this.currentStep === this.initialStep) this.initialStep++;
-                        
                         this.currentStep++;
                         this.itemSeconds = this.maxItemSeconds;
                         this.itemProgress = 100;
@@ -373,7 +404,6 @@
 
                 async saveAnswer(questionId, answer) {
                     if (this.currentStep < this.initialStep) return;
-
                     this.answers[questionId] = answer;
                     this.saveStatus = 'saving';
                     try {
@@ -382,51 +412,20 @@
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                             body: JSON.stringify({ question_id: questionId, answer: answer })
                         });
-                        
                         if (response.ok) {
                             setTimeout(() => this.saveStatus = 'saved', 500);
                         } else {
                             this.saveStatus = 'error';
                         }
-                    } catch (error) { 
-                        this.saveStatus = 'error'; 
-                    }
+                    } catch (error) { this.saveStatus = 'error'; }
                 },
 
-                finishExam() {
-                    this.showConfirmModal = true;
-                },
+                finishExam() { this.showConfirmModal = true; },
 
                 submitForm() {
-                    // Evita que salte el cartel de seguridad al salir de fullscreen
                     this.isSubmitting = true; 
                     this.showConfirmModal = false;
                     document.getElementById('examForm').submit();
-                },
-
-                formatTime(seconds) {
-                    const h = Math.floor(seconds / 3600);
-                    const m = Math.floor((seconds % 3600) / 60);
-                    const s = seconds % 60;
-                    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` 
-                                 : `${m}:${s.toString().padStart(2, '0')}`;
-                },
-
-                // --- SEGURIDAD Y LOGS ---
-                setupSecurity() {
-                    document.addEventListener("visibilitychange", () => {
-                        if (document.hidden) this.logEvent('FOCUS_LOST', { reason: 'tab_hidden' });
-                    });
-                    window.addEventListener("blur", () => {
-                        this.logEvent('FOCUS_LOST', { reason: 'window_blur' });
-                    });
-                    
-                    document.addEventListener('fullscreenchange', () => {
-                        this.isFullScreen = !!document.fullscreenElement;
-                        // Solo reportar si salieron de fullscreen Y NO están entregando
-                        if (!this.isFullScreen && !this.isSubmitting) this.logEvent('FULLSCREEN_EXIT');
-                    });
-                    this.isFullScreen = !!document.fullscreenElement;
                 },
 
                 enableFullscreen() {
@@ -436,16 +435,12 @@
                     }
                 },
 
-                async logEvent(type, meta = {}) {
-                    if (this.isSubmitting) return;
-
-                    try {
-                        await fetch("{% url 'runner:log_event' attempt.id %}", {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
-                            body: JSON.stringify({ event_type: type, metadata: meta })
-                        });
-                    } catch (e) {}
+                formatTime(seconds) {
+                    const h = Math.floor(seconds / 3600);
+                    const m = Math.floor((seconds % 3600) / 60);
+                    const s = seconds % 60;
+                    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` 
+                                 : `${m}:${s.toString().padStart(2, '0')}`;
                 }
             }
         }
