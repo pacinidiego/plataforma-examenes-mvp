@@ -160,6 +160,7 @@
         </div>
         {% endfor %}
     </div>
+
     <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Bitácora de Vigilancia (Logs)</h2>
     <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
         <div class="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
@@ -182,22 +183,43 @@
                     {% endif %}
                 </div>
                 
-                <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded border border-gray-200 shadow-sm">
-                    <div class="flex items-center justify-between space-x-2 mb-1">
-                        <div class="font-bold text-gray-900">{{ event.get_event_type_display }}</div>
-                        <time class="font-caveat font-medium text-indigo-500">{{ event.timestamp|date:"H:i:s" }}</time>
+                <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded border border-gray-200 shadow-sm flex flex-col sm:flex-row gap-4 items-start">
+                    
+                    <div class="flex-1 w-full">
+                        <div class="flex items-center justify-between space-x-2 mb-1">
+                            <div class="font-bold text-gray-900">{{ event.get_event_type_display }}</div>
+                            <time class="font-caveat font-medium text-indigo-500 whitespace-nowrap">{{ event.timestamp|date:"H:i:s" }}</time>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            {% if event.metadata %}
+                                <div class="bg-gray-50 p-2 rounded text-xs overflow-x-auto border border-gray-100">
+                                    {% for key, value in event.metadata.items %}
+                                        {% if key != 'evidence_url' and key != 'image' %}
+                                            <div class="mb-1"><span class="font-bold text-gray-600">{{ key }}:</span> {{ value }}</div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                Sin datos adicionales.
+                            {% endif %}
+                        </div>
                     </div>
-                    <div class="text-sm text-gray-500">
-                        {% if event.metadata %}
-                            <div class="bg-gray-50 p-2 rounded text-xs overflow-x-auto border border-gray-100">
-                                {% for key, value in event.metadata.items %}
-                                    <div class="mb-1"><span class="font-bold text-gray-600">{{ key }}:</span> {{ value }}</div>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            Sin datos adicionales.
-                        {% endif %}
-                    </div>
+
+                    {% if event.metadata.evidence_url %}
+                        <div class="shrink-0 mx-auto sm:mx-0">
+                            <a href="{{ event.metadata.evidence_url }}" target="_blank" class="block group relative w-32 h-24">
+                                <img src="{{ event.metadata.evidence_url }}" 
+                                     class="w-full h-full object-cover rounded border border-gray-300 shadow-sm group-hover:opacity-90 transition-opacity" 
+                                     alt="Evidencia"
+                                     loading="lazy">
+                                
+                                <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity rounded">
+                                    <span class="text-white text-xs font-bold">🔍 Ver</span>
+                                </div>
+                            </a>
+                            <p class="text-[9px] text-gray-400 text-center mt-1 uppercase">Evidencia</p>
+                        </div>
+                    {% endif %}
                 </div>
             </div>
             {% empty %}
