@@ -386,18 +386,37 @@
                     }
                 },
 
+                // --- FUNCIÓN LOG SIMPLE (SIN FOTO, PARA RETORNO) ---
+                async logEvent(type, meta = {}) {
+                    if (this.isSubmitting) return;
+                    try { 
+                        await fetch("{% url 'runner:log_event' attempt.id %}", { 
+                            method: 'POST', 
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken }, 
+                            body: JSON.stringify({ event_type: type, metadata: meta }) 
+                        }); 
+                    } catch (e) {}
+                },
+
                 // --- SEGURIDAD Y LOGS (ACTUALIZADO) ---
                 setupSecurity() {
-                    // Ahora TODOS usan logRiskEventWithEvidence (con foto)
+                    // Ahora TODOS los eventos de riesgo usan logRiskEventWithEvidence (con foto)
                     
                     document.addEventListener("visibilitychange", () => {
                         if (document.hidden) {
                             this.logRiskEventWithEvidence('FOCUS_LOST', 'Pestaña oculta / Cambio de aplicación');
+                        } else {
+                            // SI VUELVE, LOGUEAMOS FOCUS_GAINED (SIN FOTO) PARA CALCULAR TIEMPO
+                            this.logEvent('FOCUS_GAINED', { status: 'returned' });
                         }
                     });
                     
                     window.addEventListener("blur", () => {
                         this.logRiskEventWithEvidence('FOCUS_LOST', 'Foco de ventana perdido (Clic fuera)');
+                    });
+
+                    window.addEventListener("focus", () => {
+                        this.logEvent('FOCUS_GAINED', { status: 'focus_restored' });
                     });
                     
                     document.addEventListener('fullscreenchange', () => {
