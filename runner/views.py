@@ -62,7 +62,7 @@ def lobby_view(request, access_code):
         ).first()
 
         if finished_attempt:
-            # CAMBIO PRINCIPAL: Si ya terminó, lo mandamos a ver su nota directamente
+            # Si ya terminó, lo mandamos a ver su nota directamente
             return redirect('runner:exam_finished', attempt_id=finished_attempt.id)
             
         # Buscamos si tiene un intento activo (sin terminar)
@@ -96,25 +96,62 @@ def biometric_gate_view(request, access_code, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return redirect('runner:exam_runner', access_code=access_code, attempt_id=attempt.id)
 
-# 4. REGISTRO BIOMÉTRICO
+# 4. REGISTRO BIOMÉTRICO (CORREGIDO: SUBE A CLOUDFLARE)
 @require_POST
 def register_biometrics(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
         
+        # --- PROCESAR CARA DE REFERENCIA (INITIAL FACE) ---
         if 'reference_face' in data:
-            attempt.reference_face_url = data['reference_face']
-            
+            image_data = data['reference_face']
+            if image_data:
+                # 1. Limpiar Base64
+                if ';base64,' in image_data:
+                    base64_clean = image_data.split(';base64,')[1]
+                else:
+                    base64_clean = image_data
+                
+                # 2. Decodificar y subir a Cloudflare
+                try:
+                    image_content = base64.b64decode(base64_clean)
+                    filename = f"evidence/FACE_REF_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
+                    
+                    # default_storage sube a R2/S3 según tu configuración
+                    saved_path = default_storage.save(filename, ContentFile(image_content))
+                    file_url = default_storage.url(saved_path)
+                    
+                    # 3. Guardar SOLO EL LINK en la base de datos
+                    attempt.reference_face_url = file_url
+                except Exception as e:
+                    print(f"Error subiendo referencia facial: {e}")
+
+        # --- PROCESAR DNI (SI VINIERA POR AQUÍ) ---
         if 'dni_image' in data:
-            attempt.photo_id_url = data['dni_image']
+             image_data = data['dni_image']
+             if image_data:
+                if ';base64,' in image_data:
+                    base64_clean = image_data.split(';base64,')[1]
+                else:
+                    base64_clean = image_data
+                
+                try:
+                    image_content = base64.b64decode(base64_clean)
+                    filename = f"evidence/DNI_REF_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
+                    saved_path = default_storage.save(filename, ContentFile(image_content))
+                    file_url = default_storage.url(saved_path)
+                    
+                    attempt.photo_id_url = file_url
+                except Exception as e:
+                    print(f"Error subiendo referencia DNI: {e}")
             
         attempt.save()
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI
+# 5. VALIDACIÓN DNI (CORREGIDO: SUBE A CLOUDFLARE)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -138,14 +175,18 @@ def validate_dni_ocr(request, attempt_id):
             return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
         
         image_content = base64.b64decode(base64_clean)
+        # Nombre único para Cloudflare
         file_name = f"evidence/dni_{attempt.id}_intento_{intento_actual}_{uuid.uuid4().hex[:8]}.jpg"
         
+        # Subida a Cloudflare
         saved_path = default_storage.save(file_name, ContentFile(image_content))
         file_url = default_storage.url(saved_path)
         
+        # Guardamos URL en BD (No el base64)
         attempt.photo_id_url = file_url
         attempt.save()
 
+        # Creamos evidencia apuntando al link de Cloudflare
         Evidence.objects.create(
             attempt=attempt,
             file_url=file_url,
@@ -379,7 +420,6 @@ def submit_exam_view(request, attempt_id):
     
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-# 9. PANTALLA FINAL (MODIFICADO: CON CÁLCULO DE DETALLES)
 # 9. PANTALLA FINAL (CON FILTRO DE SEGURIDAD/RIESGO)
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
@@ -397,15 +437,14 @@ def exam_finished_view(request, attempt_id):
     limit_high = attempt.exam.tenant.risk_threshold_high
     
     # Determinamos si debe ir a revisión
-    # Si supera el riesgo O si ya estaba marcado manualmente como 'requires_review' (si tu modelo lo tiene)
     en_revision = risk_score > limit_high
 
     # Si está en revisión, NO calculamos detalles ni mostramos nota
     if en_revision:
         return render(request, 'runner/finished.html', {
             'attempt': attempt,
-            'en_revision': True,  # <--- Bandera clave para el HTML
-            'risk_score': risk_score # Opcional, por si quieres debuggear
+            'en_revision': True, 
+            'risk_score': risk_score 
         })
 
     # --- 2. SI ES SEGURO: CALCULAR NOTA Y DETALLES ---
@@ -439,48 +478,37 @@ def exam_finished_view(request, attempt_id):
         'en_revision': False
     })
 
-# 10. LOGS
-# Busca la función # 10. LOGS y reemplázala con esta versión:
-
+# 10. LOGS (CORREGIDO: SUBE FOTOS DE INCIDENTES A CLOUDFLARE)
 @require_POST
 def log_event(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         
-        # Parseamos los datos que vienen del navegador
         data = json.loads(request.body)
         event_type = data.get('event_type')
         metadata = data.get('metadata', {})
         
-        # --- NUEVO: MANEJO DE IMAGEN DE INCIDENTE ---
+        # --- MANEJO DE IMAGEN DE INCIDENTE ---
         image_data = data.get('image', None) 
-
-        evidence_url = None # Por defecto no hay foto
+        evidence_url = None
 
         if image_data:
-            # 1. Limpiamos el base64 (quitamos el encabezado 'data:image/jpeg;base64,')
             if ';base64,' in image_data:
                 base64_clean = image_data.split(';base64,')[1]
             else:
                 base64_clean = image_data
             
-            # 2. Convertimos texto a archivo en memoria
+            # Decodificar y subir
             image_content = base64.b64decode(base64_clean)
-            
-            # 3. Definimos nombre (INCIDENTE_ + ID + Aleatorio)
             filename = f"evidence/INCIDENTE_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
-            
-            # 4. ¡AQUÍ OCURRE LA MAGIA! 
-            # default_storage.save sube el archivo a Cloudflare R2
             saved_path = default_storage.save(filename, ContentFile(image_content))
             
-            # 5. Obtenemos la URL pública de Cloudflare
+            # Obtener URL y guardar
             evidence_url = default_storage.url(saved_path)
 
-            # 6. Creamos el registro en la tabla Evidence (apuntando a la URL)
             Evidence.objects.create(
                 attempt=attempt,
-                file_url=evidence_url, # <--- Guardamos solo el LINK
+                file_url=evidence_url, # Solo guardamos el Link
                 timestamp=timezone.now(),
                 gemini_analysis={
                     'tipo': 'INCIDENTE', 
@@ -489,10 +517,9 @@ def log_event(request, attempt_id):
                 }
             )
             
-            # Agregamos la URL al log de texto también por si acaso
             metadata['evidence_url'] = evidence_url
 
-        # Guardamos el evento de log normal
+        # Guardamos el evento de log
         AttemptEvent.objects.create(
             attempt=attempt, 
             event_type=event_type, 
@@ -533,7 +560,6 @@ def teacher_dashboard_view(request, exam_id):
             status_color = 'yellow'
             status_text = "Riesgo Medio"
         
-        # MOSTRAR NOTA SI EL RIESGO ES BAJO (VERDE)
         show_grade = (status_color == 'green')
 
         results.append({
