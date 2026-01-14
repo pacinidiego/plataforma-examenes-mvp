@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <style>
         [x-cloak] { display: none !important; }
@@ -233,9 +234,8 @@
 
                 init() {
                     this.startTimers();
-                    // Importante: Iniciar proctoring antes de la seguridad
                     this.startProctoring().then(() => {
-                        this.setupSecurity(); // Ahora la seguridad usará la cámara activa
+                        this.setupSecurity(); 
                     });
                 },
 
@@ -286,7 +286,6 @@
                         console.error("Error iniciando proctoring:", e);
                         this.aiStatus = 'error';
                         this.aiMessage = 'Error de Cámara';
-                        // AHORA SÍ SACA FOTO DEL ERROR (O NEGRO SI NO HAY)
                         this.logRiskEventWithEvidence('CAMERA_ERROR', e.toString());
                     }
                 },
@@ -307,14 +306,14 @@
                                     if (distance > 0.6) {
                                         this.aiStatus = 'warning';
                                         this.aiMessage = 'Identidad dudosa';
-                                        // MODIFICADO: Llamada a función de evidencia
+                                        // EVIDENCIA DE ROSTRO
                                         this.logRiskEventWithEvidence('IDENTITY_MISMATCH', 'Rostro no coincide (Distancia: ' + distance.toFixed(2) + ')');
                                     }
                                 }
                             } else {
                                 this.aiStatus = 'warning';
                                 this.aiMessage = 'Rostro no visible';
-                                // MODIFICADO: Llamada a función de evidencia
+                                // EVIDENCIA DE ROSTRO
                                 this.logRiskEventWithEvidence('NO_FACE', 'Rostro no detectado en cámara');
                             }
                         } catch (err) {}
@@ -322,53 +321,75 @@
                     setTimeout(() => this.detectLoop(), 1000);
                 },
 
-                // --- NUEVA FUNCIÓN UNIFICADA: SIEMPRE INTENTA SACAR FOTO ---
+                // --- FUNCIÓN INTELIGENTE DE EVIDENCIA (Screenshot vs Webcam) ---
                 async logRiskEventWithEvidence(type, reason) {
-                    if (this.isSubmitting) return; // No loguear si ya está entregando
-                    if (this.isUploadingEvidence) return; // Debounce
+                    if (this.isSubmitting) return; 
+                    if (this.isUploadingEvidence) return; 
                     
                     this.isUploadingEvidence = true;
-
-                    const video = this.$refs.webcam;
                     let imageBase64 = null;
 
-                    // Intentar capturar frame si el video está activo
-                    if (video && video.readyState === 4) {
-                        try {
-                            const canvas = document.createElement('canvas');
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                            imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
-                        } catch (err) {
-                            console.warn("No se pudo capturar foto para el evento:", type);
-                        }
-                    }
-
-                    // Enviar Log (con o sin foto)
                     try {
+                        // --- CASO A: EVIDENCIA DE PANTALLA (Focus/Fullscreen) ---
+                        // "Si el alumno se va, sacamos foto de qué pregunta estaba viendo"
+                        if (type === 'FOCUS_LOST' || type === 'FULLSCREEN_EXIT') {
+                            
+                            // Ocultamos la webcam flotante para que no salga en la captura
+                            const webcamEl = document.getElementById('webcam-video');
+                            if(webcamEl) webcamEl.style.opacity = '0';
+
+                            // Captura del examen (Contexto)
+                            const canvas = await html2canvas(document.body, {
+                                useCORS: true,
+                                ignoreElements: (el) => el.id === 'webcam-video',
+                                scale: 0.7, // Calidad media para rapidez
+                                windowWidth: document.body.scrollWidth,
+                                windowHeight: document.body.scrollHeight
+                            });
+                            
+                            // Restauramos webcam
+                            if(webcamEl) webcamEl.style.opacity = '0.8';
+                            
+                            imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                        } 
+                        
+                        // --- CASO B: EVIDENCIA DE ROSTRO (Identidad) ---
+                        else {
+                            const video = this.$refs.webcam;
+                            if (video && video.readyState === 4) {
+                                const canvas = document.createElement('canvas');
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                                imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                            }
+                        }
+
+                        // Enviar al Backend
                         await fetch("{% url 'runner:log_event' attempt.id %}", {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                             body: JSON.stringify({
                                 event_type: type,
                                 metadata: { reason: reason },
-                                image: imageBase64 
+                                image: imageBase64 // Enviamos la evidencia generada
                             })
                         });
-                        console.log("Evidencia registrada:", type);
+                        console.log("Evidencia registrada para:", type);
+
                     } catch (e) {
-                        console.error("Error subiendo evidencia", e);
+                        console.error("Error generando evidencia", e);
                     } finally {
-                        // REBAJADO: Solo 1.5 segundos de espera entre fotos para capturar ráfagas de eventos
+                        // Espera corta (1.5s) para capturar ráfagas de eventos
                         setTimeout(() => { this.isUploadingEvidence = false; }, 1500);
                     }
                 },
 
-                // --- SEGURIDAD Y LOGS (MODIFICADO) ---
+                // --- SEGURIDAD Y LOGS (ACTUALIZADO) ---
                 setupSecurity() {
-                    // CAMBIO DE PESTAÑA: Ahora usa logRiskEventWithEvidence (con foto)
+                    // Ahora TODOS usan logRiskEventWithEvidence (con foto)
+                    
                     document.addEventListener("visibilitychange", () => {
                         if (document.hidden) {
                             this.logRiskEventWithEvidence('FOCUS_LOST', 'Pestaña oculta / Cambio de aplicación');
@@ -381,7 +402,6 @@
                     
                     document.addEventListener('fullscreenchange', () => {
                         this.isFullScreen = !!document.fullscreenElement;
-                        // Solo reportar si salieron de fullscreen Y NO están entregando
                         if (!this.isFullScreen && !this.isSubmitting) {
                             this.logRiskEventWithEvidence('FULLSCREEN_EXIT', 'Salida de Pantalla Completa');
                         }
