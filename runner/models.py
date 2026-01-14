@@ -40,6 +40,26 @@ class Attempt(models.Model):
     score = models.FloatField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
+    # --- NUEVOS CAMPOS PARA REVISIÓN DOCENTE ---
+    REVIEW_STATUS_CHOICES = [
+        ('pending', 'Pendiente de Revisión'),
+        ('approved', 'Aprobado / Validado'),
+        ('rejected', 'Anulado (Fraude Detectado)'),
+        ('revision', 'Requiere Ajuste Manual'),
+    ]
+    
+    review_status = models.CharField(
+        max_length=20, 
+        choices=REVIEW_STATUS_CHOICES, 
+        default='pending',
+        verbose_name="Estado de Revisión"
+    )
+    teacher_comment = models.TextField(
+        blank=True, 
+        null=True, 
+        help_text="Feedback del docente al alumno o justificación de anulación"
+    )
+
     class Meta:
         ordering = ['-start_time']
 
@@ -67,6 +87,7 @@ class AttemptEvent(models.Model):
         ('AUDIO_SPIKE', 'Sonido/Voz detectada'),
         ('IDENTITY_MISMATCH', 'Suplantación de Identidad (Cara incorrecta)'),
         ('CAMERA_ERROR', 'Error de Cámara'), # Agregado por robustez
+        ('ANSWER_SAVED', 'Respuesta Guardada'), # Agregado para tracking
     ]
     event_type = models.CharField(max_length=50, choices=EVENT_TYPES)
     
