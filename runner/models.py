@@ -2,7 +2,7 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
-from django.core.files.storage import default_storage
+from django.core.files.storage import default_storage # <--- Necesario para firmar links
 from exams.models import Exam
 
 class Attempt(models.Model):
@@ -21,7 +21,7 @@ class Attempt(models.Model):
     student_legajo = models.CharField(max_length=100, blank=True, verbose_name="Legajo/DNI")
     
     # BIOMETRÍA Y SEGURIDAD
-    # Guardamos la RUTA (path) del archivo, no la URL firmada que caduca
+    # Guardamos la RUTA (path) del archivo, no la URL completa
     photo_id_url = models.TextField(null=True, blank=True, verbose_name="Foto DNI (Path)")
     reference_face_url = models.TextField(null=True, blank=True, verbose_name="Foto Cara Ref (Path)")
     
@@ -58,18 +58,17 @@ class Attempt(models.Model):
         help_text="Feedback del docente al alumno o justificación de anulación"
     )
     
-    # NUEVO: Lista de IDs de preguntas anuladas por fraude (ej: ["102", "105"])
+    # NUEVO: Lista de IDs de preguntas anuladas por fraude
     penalized_items = models.JSONField(default=list, blank=True)
     
     # NUEVO: Puntos a restar manualmente de la nota final
     penalty_points = models.FloatField(default=0.0, verbose_name="Puntos de Penalidad")
 
-    # --- PROPIEDADES DINÁMICAS (Arreglo definitivo XML Error) ---
+    # --- SOLUCIÓN ERROR XML: Generador de Links Dinámicos ---
     @property
     def signed_photo_id_url(self):
-        """Genera un link válido por 1h al momento de consultar"""
         if self.photo_id_url:
-            # Soporte retroactivo: si ya es URL, la devuelve. Si es path, la firma.
+            # Si es un link viejo (http), lo devolvemos tal cual. Si es path, lo firmamos.
             if self.photo_id_url.startswith('http'): return self.photo_id_url
             try: return default_storage.url(self.photo_id_url)
             except: return ""
@@ -87,8 +86,9 @@ class Attempt(models.Model):
         ordering = ['-start_time']
 
     def __str__(self):
-        nombre = self.user.username if self.user else f"{self.student_name} ({self.student_legajo})"
-        return f"{nombre} - {self.exam.title}"
+        if self.user:
+            return f"{self.user.username} - {self.exam.title}"
+        return f"{self.student_name} ({self.student_legajo}) - {self.exam.title}"
 
 
 class AttemptEvent(models.Model):
