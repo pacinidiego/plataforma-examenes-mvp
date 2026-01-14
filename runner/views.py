@@ -139,13 +139,13 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (CORREGIDO: NO CREA EVENTOS DE LOG, SOLO EVIDENCIA)
+# 5. VALIDACIÓN DNI
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         
-        # Conteo de intentos previos
+        # Conteo de intentos
         intentos_previos = Evidence.objects.filter(attempt=attempt).exclude(file_url__contains='INCIDENTE').count()
         intento_actual = intentos_previos + 1
         MAX_INTENTOS = 3
@@ -170,6 +170,7 @@ def validate_dni_ocr(request, attempt_id):
         attempt.photo_id_url = file_url
         attempt.save()
 
+        # Creamos evidencia visual
         evidencia_actual = Evidence.objects.create(
             attempt=attempt,
             file_url=file_url,
@@ -246,9 +247,8 @@ def validate_dni_ocr(request, attempt_id):
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     
     else:
-        # CORRECCIÓN: NO CREAMOS AttemptEvent AQUÍ.
-        # Solo actualizamos la evidencia para el historial visual.
-        # Esto evita que aparezca "Rostro no coincide" en la bitácora de vigilancia.
+        # IMPORTANTE: NO CREAMOS AttemptEvent AQUÍ.
+        # El fallo queda registrado solo en la tabla Evidence para el historial superior.
 
         if intento_actual >= MAX_INTENTOS:
             evidencia_actual.gemini_analysis = {'status': 'manual_review', 'error': error_actual, 'intento': intento_actual}
@@ -473,7 +473,7 @@ def teacher_dashboard_view(request, exam_id):
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO (CORREGIDO: FILTRA LOGS DE VALIDACIÓN DNI)
+# 12. DETALLE DEL INTENTO (CORREGIDO: FILTRO AGRESIVO DE ERRORES DNI)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
@@ -487,15 +487,14 @@ def attempt_detail_view(request, attempt_id):
     final_events = []
     processed_ids = set() 
 
-    # Paso 1: Procesar agrupaciones
     for i, event in enumerate(raw_events):
         if event.id in processed_ids:
             continue
         
-        # CORRECCIÓN: Filtramos logs de 'IDENTITY_MISMATCH' que vienen del validador de DNI
-        # Si la metadata dice 'Fallo (' o 'No parece un DNI', es basura de validación, no trampa.
+        # CORRECCIÓN DEFINITIVA: Filtramos eventos basura de DNI
+        # Buscamos 'Fallo', 'DNI' o 'Intente' o 'No parece' en la razón para cubrir todas las variaciones.
         reason = event.metadata.get('reason', '')
-        if event.event_type == 'IDENTITY_MISMATCH' and ('Fallo (' in reason or 'No parece' in reason):
+        if event.event_type == 'IDENTITY_MISMATCH' and ('Fallo' in reason or 'DNI' in reason or 'Intente' in reason or 'No parece' in reason):
             continue
 
         if event.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
