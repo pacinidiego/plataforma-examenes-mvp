@@ -44,6 +44,45 @@ def is_staff(user):
 def es_docente_o_admin(user):
     return user.is_staff or user.groups.filter(name='Docente').exists()
 
+# --- NUEVO: CÁLCULO DE NOTA CENTRALIZADO ---
+def calculate_final_score(attempt):
+    """
+    Calcula la nota considerando:
+    1. Respuestas correctas.
+    2. Preguntas anuladas (valen 0).
+    3. Penalidad manual.
+    """
+    exam = attempt.exam
+    score_obtained = 0
+    total_possible_points = 0
+    questions = exam.items.all()
+    answers = attempt.answers or {}
+    penalized = attempt.penalized_items or [] # Lista de IDs anulados
+
+    for q in questions:
+        link = exam.examitemlink_set.filter(item=q).first()
+        points_for_question = link.points if link else 1.0
+        total_possible_points += points_for_question
+        
+        # Si la pregunta está anulada, suma 0 puntos
+        if str(q.id) in penalized:
+            continue 
+
+        selected = answers.get(str(q.id))
+        if selected:
+            correct = next((o for o in (q.options or []) if o.get('correct')), None)
+            if correct and correct.get('text') == selected:
+                score_obtained += points_for_question
+
+    final_score = 0.0
+    if total_possible_points > 0: 
+        final_score = (score_obtained / total_possible_points) * 10
+    
+    # Restar la penalidad manual (si existe)
+    final_score -= attempt.penalty_points
+    
+    return max(0.0, final_score)
+
 # ==========================================
 # SECCIÓN ALUMNO
 # ==========================================
@@ -168,7 +207,7 @@ def validate_dni_ocr(request, attempt_id):
         attempt.photo_id_url = file_url
         attempt.save()
 
-        evidencia_actual = Evidence.objects.create(
+        Evidence.objects.create(
             attempt=attempt,
             file_url=file_url,
             timestamp=timezone.now(),
@@ -179,8 +218,6 @@ def validate_dni_ocr(request, attempt_id):
         return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'})
 
     if not GOOGLE_API_KEY:
-        evidencia_actual.gemini_analysis = {'status': 'success', 'intento': intento_actual, 'modelo': 'simulado'}
-        evidencia_actual.save()
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
     modelos_a_probar = ["gemini-flash-lite-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
@@ -225,10 +262,10 @@ def validate_dni_ocr(request, attempt_id):
                         break 
                     else:
                         error_actual = f"Legajo no coincide (Leído: {numbers_found})"
-                        # No break, probamos otro modelo
+                        break 
                 else:
                     error_actual = "No parece un DNI válido"
-                    # No break
+                    break 
             elif response.status_code == 404: continue 
             elif response.status_code == 429:
                 if model_name == modelos_a_probar[-1]: force_manual_review = True
@@ -241,21 +278,27 @@ def validate_dni_ocr(request, attempt_id):
             break
 
     if ia_success:
-        evidencia_actual.gemini_analysis = {'status': 'success', 'modelo': modelo_usado, 'intento': intento_actual}
-        evidencia_actual.save()
+        last_ev = Evidence.objects.filter(attempt=attempt).last()
+        if last_ev:
+            last_ev.gemini_analysis = {'status': 'success', 'modelo': modelo_usado, 'intento': intento_actual}
+            last_ev.save()
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     
     else:
-        # IMPORTANTE: NO CREAMOS AttemptEvent AQUÍ PARA EVITAR RUIDO EN LA BITÁCORA.
-        # El fallo queda registrado solo en la tabla Evidence.
+        try:
+            AttemptEvent.objects.create(
+                attempt=attempt, event_type='IDENTITY_MISMATCH', 
+                metadata={'reason': f'Fallo ({intento_actual}): {error_actual}'}
+            )
+        except: pass
 
         if intento_actual >= MAX_INTENTOS or force_manual_review:
-            evidencia_actual.gemini_analysis = {'status': 'manual_review', 'error': error_actual, 'intento': intento_actual}
-            evidencia_actual.save()
+            last_ev = Evidence.objects.filter(attempt=attempt).last()
+            if last_ev:
+                last_ev.gemini_analysis = {'status': 'manual_review', 'error': error_actual, 'intento': intento_actual}
+                last_ev.save()
             return JsonResponse({'success': True, 'warning': True, 'message': 'Pase a revisión manual.', 'retry': False})
         else:
-            evidencia_actual.gemini_analysis = {'status': 'failed', 'error': error_actual, 'intento': intento_actual}
-            evidencia_actual.save()
             return JsonResponse({'success': False, 'message': f'Fallo: {error_actual}. Reintentando...', 'retry': True})
 
 # 6. RUNNER
@@ -327,39 +370,23 @@ def save_answer(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error'}, status=400)
 
-# 8. FINALIZAR
+# 8. FINALIZAR (MODIFICADO: Usa la función centralizada)
 def submit_exam_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     if attempt.completed_at: return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-    exam = attempt.exam
-    score_obtained = 0
-    total_possible_points = 0
-    questions = exam.items.all()
-    answers = attempt.answers or {}
-
-    for q in questions:
-        link = exam.examitemlink_set.filter(item=q).first()
-        points_for_question = link.points if link else 1.0
-        total_possible_points += points_for_question
-        selected = answers.get(str(q.id))
-        if selected:
-            correct = next((o for o in (q.options or []) if o.get('correct')), None)
-            if correct and correct.get('text') == selected:
-                score_obtained += points_for_question
-
-    if total_possible_points > 0: final_grade = (score_obtained / total_possible_points) * 10
-    else: final_grade = 0.0
-
-    attempt.score = final_grade
     attempt.completed_at = timezone.now()
+    # Usa la nueva lógica para asegurar consistencia
+    attempt.score = calculate_final_score(attempt)
     attempt.save()
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-# 9. PANTALLA FINAL
+# 9. PANTALLA FINAL (MODIFICADO: Visibilidad si Validado)
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all()
+    
+    # Cálculo de Riesgo por Eventos
     risk_score = 0
     risk_score += events.filter(event_type='FOCUS_LOST').count() * 1
     risk_score += events.filter(event_type='FULLSCREEN_EXIT').count() * 2
@@ -369,6 +396,7 @@ def exam_finished_view(request, attempt_id):
     
     limit_high = attempt.exam.tenant.risk_threshold_high
     
+    # Verificar si la validación de DNI falló o quedó en manual
     last_dni_evidence = Evidence.objects.filter(attempt=attempt).exclude(file_url__contains='INCIDENTE').last()
     dni_manual_review = False
     if last_dni_evidence:
@@ -376,7 +404,15 @@ def exam_finished_view(request, attempt_id):
         if status in ['manual_review', 'failed', 'error']:
             dni_manual_review = True
 
-    en_revision = (risk_score > limit_high) or dni_manual_review
+    # --- LÓGICA DE VISIBILIDAD DE NOTA ---
+    # Si el docente VALIDÓ (approved) o ANULÓ (rejected), esa es la verdad absoluta.
+    if attempt.review_status == 'approved':
+        en_revision = False # ¡Muestra la nota!
+    elif attempt.review_status == 'rejected':
+        en_revision = False # Muestra nota 0
+    else:
+        # Si sigue 'pending' o 'revision', usamos la heurística automática
+        en_revision = (risk_score > limit_high) or dni_manual_review
 
     if en_revision:
         return render(request, 'runner/finished.html', {'attempt': attempt, 'en_revision': True, 'risk_score': risk_score})
@@ -465,107 +501,136 @@ def teacher_dashboard_view(request, exam_id):
             status_color = 'yellow'
             status_text = "Riesgo Medio"
         
+        # Muestra el estado validado en el dashboard principal
+        if attempt.review_status == 'approved':
+            status_color = 'blue'
+            status_text = "Validado"
+        elif attempt.review_status == 'rejected':
+            status_color = 'gray'
+            status_text = "Anulado"
+        
         results.append({
             'attempt': attempt, 'risk_score': risk_score, 'status_color': status_color, 
-            'status_text': status_text, 'event_count': events.count(), 'show_grade': (status_color == 'green')
+            'status_text': status_text, 'event_count': events.count(), 'show_grade': (status_color == 'green' or status_color == 'blue')
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO (CORREGIDO: Soporte POST + Filtros)
+# 12. DETALLE DEL INTENTO (MODIFICADO: POST + ALERTAS)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
-
-    # --- LÓGICA DE GUARDADO (VEREDICTO) ---
+    
+    # --- PROCESAMIENTO POST (Guardado) ---
     if request.method == "POST":
         action = request.POST.get('action')
         feedback = request.POST.get('teacher_comment', '').strip()
-        manual_score = request.POST.get('manual_score')
+        
+        # Capturamos la penalidad manual
+        try: 
+            raw_penalty = float(request.POST.get('penalty_points', 0))
+            attempt.penalty_points = max(0.0, raw_penalty)
+        except: pass
 
         attempt.teacher_comment = feedback
 
-        if action == 'approve':
-            attempt.review_status = 'approved'
-            if manual_score:
-                try: attempt.score = float(manual_score)
-                except: pass
-        
+        if action == 'save_penalties' or action == 'approve':
+            # Lista de preguntas a anular
+            penalized_ids = request.POST.getlist('penalized_item')
+            attempt.penalized_items = penalized_ids
+            
+            # Recalcular
+            attempt.score = calculate_final_score(attempt)
+            
+            if action == 'approve':
+                attempt.review_status = 'approved'
+            else:
+                if attempt.review_status == 'pending':
+                    attempt.review_status = 'revision'
+
         elif action == 'reject':
             attempt.review_status = 'rejected'
-            attempt.score = 0.0 # Anulado
+            attempt.score = 0.0
             
-        elif action == 'save_comment':
-             if manual_score:
-                try: attempt.score = float(manual_score)
-                except: pass
-
         attempt.save()
         return redirect('runner:attempt_detail', attempt_id=attempt.id)
 
-    # --- LÓGICA DE VISUALIZACIÓN ---
+    # --- PREPARACIÓN DE DATOS (LECTURA) ---
     if attempt.start_time:
         raw_events = list(attempt.events.filter(timestamp__gte=attempt.start_time).order_by('timestamp'))
     else:
         raw_events = list(attempt.events.all().order_by('timestamp'))
 
     final_events = []
-    processed_ids = set() 
+    skip_ids = set()
+    question_alerts = {} # Diccionario para marcar preguntas sospechosas
 
     for i, event in enumerate(raw_events):
-        if event.id in processed_ids: continue
-        
-        # Filtro de basura técnica DNI
-        reason = event.metadata.get('reason', '')
-        if event.event_type == 'IDENTITY_MISMATCH' and ('Fallo' in reason or 'DNI' in reason or 'Intente' in reason or 'No parece' in reason):
+        if event.id in skip_ids:
             continue
 
         if event.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
-            processed_ids.add(event.id)
-            found_return = False
             for j in range(i + 1, len(raw_events)):
                 next_ev = raw_events[j]
+                
                 if next_ev.event_type == 'FOCUS_GAINED':
-                    processed_ids.add(next_ev.id) 
-                    if not found_return:
-                        delta = (next_ev.timestamp - event.timestamp).total_seconds()
-                        event.duration_away = int(delta)
-                        event.return_timestamp = next_ev.timestamp
-                        found_return = True
-                        for k in range(j + 1, len(raw_events)):
-                            future_ev = raw_events[k]
-                            time_diff = (future_ev.timestamp - next_ev.timestamp).total_seconds()
-                            if time_diff > 15: break 
-                            if future_ev.event_type == 'ANSWER_SAVED':
-                                event.suspicious_answer = True
-                                event.reaction_time = int(time_diff)
-                                processed_ids.add(future_ev.id) 
-                                break
-                    continue 
-            if not found_return and i + 1 < len(raw_events):
+                    delta = (next_ev.timestamp - event.timestamp).total_seconds()
+                    event.duration_away = int(delta)
+                    event.return_timestamp = next_ev.timestamp
+                    
+                    skip_ids.add(next_ev.id)
+                    
+                    # Detectar si respondió rápido después del incidente
+                    for k in range(j + 1, len(raw_events)):
+                        future_ev = raw_events[k]
+                        time_diff = (future_ev.timestamp - next_ev.timestamp).total_seconds()
+                        if time_diff > 30: break # Ventana de 30 seg
+                        
+                        if future_ev.event_type == 'ANSWER_SAVED':
+                            reaction = (future_ev.timestamp - next_ev.timestamp).total_seconds()
+                            event.suspicious_answer = True
+                            event.reaction_time = int(reaction)
+                            
+                            # Guardamos la alerta para la tabla de preguntas
+                            qid = future_ev.metadata.get('qid')
+                            if qid:
+                                question_alerts[str(qid)] = f"Respondió {int(reaction)}s después de incidente"
+                            
+                            skip_ids.add(future_ev.id)
+                            break
+                        if future_ev.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
+                            break
+                    break 
+
+            if not getattr(event, 'duration_away', None) and i + 1 < len(raw_events):
                  delta = (raw_events[i+1].timestamp - event.timestamp).total_seconds()
                  event.duration_away = int(delta)
-            final_events.append(event)
-        elif event.event_type == 'FOCUS_GAINED':
-            processed_ids.add(event.id)
-        else:
-            processed_ids.add(event.id)
-            final_events.append(event)
+        
+        final_events.append(event)
 
     evidence_all = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
     evidence_validation = [ev for ev in evidence_all if "INCIDENTE" not in (ev.file_url or "")]
 
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
+    penalized_set = set(attempt.penalized_items or [])
+    
     qa_list = []
     for item in items:
-        user_response = student_answers.get(str(item.id))
+        sid = str(item.id)
+        user_response = student_answers.get(sid)
         correct_option = next((o for o in (item.options or []) if o.get('correct')), None)
         correct_text = correct_option.get('text') if correct_option else "N/A"
         is_correct = (user_response and user_response == correct_text)
+        
         qa_list.append({
-            'question': item.stem, 'user_response': user_response,
-            'correct_response': correct_text, 'is_correct': is_correct
+            'id': item.id,
+            'question': item.stem, 
+            'user_response': user_response,
+            'correct_response': correct_text, 
+            'is_correct': is_correct,
+            'is_penalized': sid in penalized_set,
+            'alert': question_alerts.get(sid)
         })
 
     return render(request, 'runner/attempt_detail.html', {
