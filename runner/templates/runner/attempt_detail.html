@@ -35,9 +35,8 @@
                 Foto DNI (Referencia Actual)
             </h3>
             <div class="aspect-w-16 aspect-h-9 bg-gray-100 rounded-md overflow-hidden flex items-center justify-center border group relative">
-                {% if attempt.photo_id_url %}
-                    <img src="{{ attempt.photo_id_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Foto ID">
-                    <a href="{{ attempt.photo_id_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
+                {% if attempt.signed_photo_id_url %} <img src="{{ attempt.signed_photo_id_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Foto ID">
+                    <a href="{{ attempt.signed_photo_id_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
                         🔍 Ver Original
                     </a>
                 {% else %}<div class="text-gray-400 italic p-10 text-center">No se capturó foto de documento</div>{% endif %}
@@ -50,9 +49,8 @@
                 Rostro Detectado (Inicio de Examen)
             </h3>
             <div class="aspect-w-16 aspect-h-9 bg-gray-100 rounded-md overflow-hidden flex items-center justify-center border group relative">
-                {% if attempt.reference_face_url %}
-                    <img src="{{ attempt.reference_face_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Rostro Ref">
-                    <a href="{{ attempt.reference_face_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
+                {% if attempt.signed_face_url %} <img src="{{ attempt.signed_face_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Rostro Ref">
+                    <a href="{{ attempt.signed_face_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
                         🔍 Ver Original
                     </a>
                 {% else %}<div class="text-gray-400 italic p-10 text-center">No se capturó rostro inicial</div>{% endif %}
@@ -68,8 +66,7 @@
         {% for evidence in evidence_list %}
         <div class="bg-white border rounded-lg shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
             <div class="relative h-32 bg-gray-100 group">
-                <img src="{{ evidence.file_url }}" class="w-full h-full object-cover" alt="Evidencia">
-                <a href="{{ evidence.file_url }}" target="_blank" class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-bold">
+                <img src="{{ evidence.signed_file_url }}" class="w-full h-full object-cover" alt="Evidencia"> <a href="{{ evidence.signed_file_url }}" target="_blank" class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-bold">
                     Abrir Foto ↗
                 </a>
             </div>
@@ -179,10 +176,9 @@
                         </div>
                     </div>
 
-                    {% if event.metadata.evidence_url %}
-                        <div class="shrink-0 mx-auto sm:mx-0">
-                            <a href="{{ event.metadata.evidence_url }}" target="_blank" class="block group relative w-32 h-24">
-                                <img src="{{ event.metadata.evidence_url }}" 
+                    {% if event.signed_evidence_url %} <div class="shrink-0 mx-auto sm:mx-0">
+                            <a href="{{ event.signed_evidence_url }}" target="_blank" class="block group relative w-32 h-24">
+                                <img src="{{ event.signed_evidence_url }}" 
                                      class="w-full h-full object-cover rounded border border-gray-300 shadow-sm group-hover:opacity-90 transition-opacity" 
                                      alt="Evidencia"
                                      loading="lazy">
