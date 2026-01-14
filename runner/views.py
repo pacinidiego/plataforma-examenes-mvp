@@ -246,6 +246,7 @@ def validate_dni_ocr(request, attempt_id):
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     
     else:
+        # LOG DEL INCIDENTE
         try:
             AttemptEvent.objects.create(
                 attempt=attempt, event_type='IDENTITY_MISMATCH', 
@@ -253,6 +254,7 @@ def validate_dni_ocr(request, attempt_id):
             )
         except: pass
 
+        # LÓGICA DE REVISIÓN MANUAL
         if intento_actual >= MAX_INTENTOS or force_manual_review:
             last_ev = Evidence.objects.filter(attempt=attempt).last()
             if last_ev:
@@ -260,6 +262,10 @@ def validate_dni_ocr(request, attempt_id):
                 last_ev.save()
             return JsonResponse({'success': True, 'warning': True, 'message': 'Pase a revisión manual.', 'retry': False})
         else:
+            last_ev = Evidence.objects.filter(attempt=attempt).last()
+            if last_ev:
+                last_ev.gemini_analysis = {'status': 'failed', 'error': error_actual, 'intento': intento_actual}
+                last_ev.save()
             return JsonResponse({'success': False, 'message': f'Fallo: {error_actual}. Reintentando...', 'retry': True})
 
 # 6. RUNNER
@@ -360,10 +366,12 @@ def submit_exam_view(request, attempt_id):
     attempt.save()
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-# 9. PANTALLA FINAL
+# 9. PANTALLA FINAL (CORREGIDA: Detección de Revisión Manual por DNI)
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all()
+    
+    # Cálculo de Riesgo por Eventos
     risk_score = 0
     risk_score += events.filter(event_type='FOCUS_LOST').count() * 1
     risk_score += events.filter(event_type='FULLSCREEN_EXIT').count() * 2
@@ -372,9 +380,21 @@ def exam_finished_view(request, attempt_id):
     risk_score += events.filter(event_type='IDENTITY_MISMATCH').count() * 10
     
     limit_high = attempt.exam.tenant.risk_threshold_high
-    en_revision = risk_score > limit_high
+    
+    # CORRECCIÓN: Verificar si la validación de DNI falló o quedó en manual
+    last_dni_evidence = Evidence.objects.filter(attempt=attempt).exclude(file_url__contains='INCIDENTE').last()
+    dni_manual_review = False
+    if last_dni_evidence:
+        status = last_dni_evidence.gemini_analysis.get('status', '')
+        # Si el estado es 'manual_review' o 'failed' (y el alumno rindió igual), es revisión.
+        if status in ['manual_review', 'failed', 'error']:
+            dni_manual_review = True
+
+    # Es revisión si supera el riesgo O falló el DNI
+    en_revision = (risk_score > limit_high) or dni_manual_review
 
     if en_revision:
+        # Renderizamos con flag en_revision=True para ocultar nota
         return render(request, 'runner/finished.html', {'attempt': attempt, 'en_revision': True, 'risk_score': risk_score})
 
     items = attempt.exam.items.all()
@@ -446,10 +466,21 @@ def teacher_dashboard_view(request, exam_id):
         risk_score += events.filter(event_type='MULTI_FACE').count() * 5
         risk_score += events.filter(event_type='IDENTITY_MISMATCH').count() * 10
         
+        # Verificar estado DNI también aquí para el color del semáforo
+        dni_failed = False
+        last_dni = Evidence.objects.filter(attempt=attempt).exclude(file_url__contains='INCIDENTE').last()
+        if last_dni and last_dni.gemini_analysis.get('status') in ['manual_review', 'failed', 'error']:
+            dni_failed = True
+
         status_color = 'green'
         status_text = "Confiable"
-        if risk_score > limit_high: status_color = 'red'; status_text = "Alto Riesgo"
-        elif risk_score > limit_medium: status_color = 'yellow'; status_text = "Riesgo Medio"
+        
+        if risk_score > limit_high or dni_failed: 
+            status_color = 'red'
+            status_text = "Alto Riesgo / Rev. Manual"
+        elif risk_score > limit_medium: 
+            status_color = 'yellow'
+            status_text = "Riesgo Medio"
         
         results.append({
             'attempt': attempt, 'risk_score': risk_score, 'status_color': status_color, 
@@ -457,21 +488,20 @@ def teacher_dashboard_view(request, exam_id):
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO (CORREGIDO: FILTROS DE TIEMPO Y AGRUPACIÓN DE EVENTOS)
+# 12. DETALLE DEL INTENTO (CORREGIDO: AGRUPACIÓN CORRECTA DE EVENTOS)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    # 1. OBTENER EVENTOS (SOLO LOS QUE OCURRIERON DURANTE EL EXAMEN)
-    # Esto elimina los logs de 'Identity Mismatch' que ocurren durante el Tech Check
+    # 1. OBTENER EVENTOS
     if attempt.start_time:
         raw_events = list(attempt.events.filter(timestamp__gte=attempt.start_time).order_by('timestamp'))
     else:
         raw_events = list(attempt.events.all().order_by('timestamp'))
 
     final_events = []
-    skip_ids = set()
+    skip_ids = set() # Set de IDs para no renderizar eventos duplicados
 
     # 2. PROCESAR Y AGRUPAR EVENTOS
     for i, event in enumerate(raw_events):
@@ -489,10 +519,10 @@ def attempt_detail_view(request, attempt_id):
                     event.duration_away = int(delta)
                     event.return_timestamp = next_ev.timestamp
                     
-                    # ¡AQUÍ ESTÁ EL TRUCO! Agregamos el ID a la lista de salto para que no se muestre abajo
+                    # CORRECCIÓN: Ocultamos el evento FOCUS_GAINED de la lista principal
                     skip_ids.add(next_ev.id)
                     
-                    # Buscar si respondió rápido después
+                    # Buscar si respondió rápido después del retorno
                     for k in range(j + 1, len(raw_events)):
                         future_ev = raw_events[k]
                         if future_ev.event_type == 'ANSWER_SAVED':
@@ -500,7 +530,10 @@ def attempt_detail_view(request, attempt_id):
                             if reaction < 20: 
                                 event.suspicious_answer = True
                                 event.reaction_time = int(reaction)
+                                # CORRECCIÓN: Ocultamos también el ANSWER_SAVED para que no salga duplicado abajo
+                                skip_ids.add(future_ev.id)
                             break
+                        # Si vuelve a salir, cortamos la búsqueda de respuesta
                         if future_ev.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
                             break
                     break 
@@ -512,8 +545,7 @@ def attempt_detail_view(request, attempt_id):
         
         final_events.append(event)
 
-    # 3. FILTRAR EVIDENCIA DE VALIDACIÓN
-    # Traemos todo lo que NO sea un incidente de vigilancia (para que aparezcan los intentos fallidos)
+    # 3. FILTRAR EVIDENCIA DE VALIDACIÓN (DNI)
     evidence_all = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
     evidence_validation = [
         ev for ev in evidence_all 
@@ -535,7 +567,7 @@ def attempt_detail_view(request, attempt_id):
         })
 
     return render(request, 'runner/attempt_detail.html', {
-        'attempt': attempt, 'events': final_events, # Pasamos la lista procesada
+        'attempt': attempt, 'events': final_events, 
         'evidence_list': evidence_validation, 'qa_list': qa_list
     })
 
