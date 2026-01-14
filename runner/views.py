@@ -19,7 +19,6 @@ from django.utils import timezone
 from django.template.loader import render_to_string
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.db.models import Q
 
 # Librerías Externas
 from weasyprint import HTML
@@ -145,10 +144,9 @@ def validate_dni_ocr(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         
-        # Conteo de intentos
+        # Filtro seguro para contar intentos (sin romper por JSON)
         intentos_previos = Evidence.objects.filter(attempt=attempt).exclude(file_url__contains='INCIDENTE').count()
         intento_actual = intentos_previos + 1
-        MAX_INTENTOS = 3
         
         data = json.loads(request.body)
         image_data = data.get('image', '')
@@ -170,7 +168,6 @@ def validate_dni_ocr(request, attempt_id):
         attempt.photo_id_url = file_url
         attempt.save()
 
-        # Creamos evidencia visual
         evidencia_actual = Evidence.objects.create(
             attempt=attempt,
             file_url=file_url,
@@ -179,18 +176,19 @@ def validate_dni_ocr(request, attempt_id):
         )
 
     except Exception as e:
-        return JsonResponse({'success': False, 'message': f'Error interno subida: {str(e)}'})
+        return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'})
 
     if not GOOGLE_API_KEY:
         evidencia_actual.gemini_analysis = {'status': 'success', 'intento': intento_actual, 'modelo': 'simulado'}
         evidencia_actual.save()
-        return JsonResponse({'success': True, 'message': 'Validado (Simulación).'})
+        return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    # --- LÓGICA IA ---
     modelos_a_probar = ["gemini-flash-lite-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     ia_success = False
     error_actual = ""
     modelo_usado = ""
+    force_manual_review = False 
+    MAX_INTENTOS = 3
 
     payload = {
         "contents": [{
@@ -205,59 +203,60 @@ def validate_dni_ocr(request, attempt_id):
     for model_name in modelos_a_probar:
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
         try:
-            response = requests.post(api_url, headers=headers, json=payload, timeout=8)
+            response = requests.post(api_url, headers=headers, json=payload, timeout=10)
             if response.status_code == 200:
                 modelo_usado = model_name
-                try:
-                    candidates = response.json().get('candidates', [])
-                    if not candidates:
-                        error_actual = "IA bloqueó la imagen (Safety)"
+                json_res = response.json()
+                candidates = json_res.get('candidates', [])
+                if not candidates:
+                    error_actual = "IA bloqueó la imagen (Seguridad)"
+                    break 
+                
+                raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
+                clean_text = raw_text.replace('```json', '').replace('```', '').strip()
+                ai_data = json.loads(clean_text)
+                
+                if ai_data.get('es_documento'):
+                    numbers_found = str(ai_data.get('numeros', ''))
+                    legajo_alumno = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
+                    if legajo_alumno and (legajo_alumno in numbers_found or numbers_found in legajo_alumno):
+                        ia_success = True
+                        error_actual = ""
                         break 
-                    
-                    raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
-                    clean_text = raw_text.replace('```json', '').replace('```', '').strip()
-                    ai_data = json.loads(clean_text)
-                    
-                    if ai_data.get('es_documento'):
-                        numbers_found = str(ai_data.get('numeros', ''))
-                        legajo_clean = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
-                        
-                        if legajo_clean and (legajo_clean in numbers_found or numbers_found in legajo_clean):
-                            ia_success = True
-                            error_actual = ""
-                            break 
-                        else:
-                            error_actual = f"Legajo no coincide (Leído: {numbers_found})"
                     else:
-                        error_actual = "No parece un DNI válido"
-                except:
-                    error_actual = "Error parseando respuesta IA"
+                        error_actual = f"Legajo no coincide (Leído: {numbers_found})"
+                        # No break, probamos otro modelo
+                else:
+                    error_actual = "No parece un DNI válido"
+                    # No break
+            elif response.status_code == 404: continue 
             elif response.status_code == 429:
-                continue 
+                if model_name == modelos_a_probar[-1]: force_manual_review = True
+                continue
             else:
                 error_actual = f"Error API ({response.status_code})"
+                break 
         except Exception as e:
             error_actual = f"Error red: {str(e)}"
-            continue
+            break
 
-    # --- DECISIÓN FINAL ---
     if ia_success:
         evidencia_actual.gemini_analysis = {'status': 'success', 'modelo': modelo_usado, 'intento': intento_actual}
         evidencia_actual.save()
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     
     else:
-        # IMPORTANTE: NO CREAMOS AttemptEvent AQUÍ.
-        # El fallo queda registrado solo en la tabla Evidence para el historial superior.
+        # IMPORTANTE: NO CREAMOS AttemptEvent AQUÍ PARA EVITAR RUIDO EN LA BITÁCORA.
+        # El fallo queda registrado solo en la tabla Evidence.
 
-        if intento_actual >= MAX_INTENTOS:
+        if intento_actual >= MAX_INTENTOS or force_manual_review:
             evidencia_actual.gemini_analysis = {'status': 'manual_review', 'error': error_actual, 'intento': intento_actual}
             evidencia_actual.save()
             return JsonResponse({'success': True, 'warning': True, 'message': 'Pase a revisión manual.', 'retry': False})
         else:
             evidencia_actual.gemini_analysis = {'status': 'failed', 'error': error_actual, 'intento': intento_actual}
             evidencia_actual.save()
-            return JsonResponse({'success': False, 'message': f'Fallo: {error_actual}. Intente mejorar la luz.', 'retry': True})
+            return JsonResponse({'success': False, 'message': f'Fallo: {error_actual}. Reintentando...', 'retry': True})
 
 # 6. RUNNER
 def exam_runner_view(request, access_code, attempt_id):
@@ -361,7 +360,6 @@ def submit_exam_view(request, attempt_id):
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all()
-    
     risk_score = 0
     risk_score += events.filter(event_type='FOCUS_LOST').count() * 1
     risk_score += events.filter(event_type='FULLSCREEN_EXIT').count() * 2
@@ -473,12 +471,39 @@ def teacher_dashboard_view(request, exam_id):
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO (CORREGIDO: FILTRO AGRESIVO DE ERRORES DNI)
+# 12. DETALLE DEL INTENTO (CORREGIDO: Soporte POST + Filtros)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
-    
+
+    # --- LÓGICA DE GUARDADO (VEREDICTO) ---
+    if request.method == "POST":
+        action = request.POST.get('action')
+        feedback = request.POST.get('teacher_comment', '').strip()
+        manual_score = request.POST.get('manual_score')
+
+        attempt.teacher_comment = feedback
+
+        if action == 'approve':
+            attempt.review_status = 'approved'
+            if manual_score:
+                try: attempt.score = float(manual_score)
+                except: pass
+        
+        elif action == 'reject':
+            attempt.review_status = 'rejected'
+            attempt.score = 0.0 # Anulado
+            
+        elif action == 'save_comment':
+             if manual_score:
+                try: attempt.score = float(manual_score)
+                except: pass
+
+        attempt.save()
+        return redirect('runner:attempt_detail', attempt_id=attempt.id)
+
+    # --- LÓGICA DE VISUALIZACIÓN ---
     if attempt.start_time:
         raw_events = list(attempt.events.filter(timestamp__gte=attempt.start_time).order_by('timestamp'))
     else:
@@ -488,65 +513,50 @@ def attempt_detail_view(request, attempt_id):
     processed_ids = set() 
 
     for i, event in enumerate(raw_events):
-        if event.id in processed_ids:
-            continue
+        if event.id in processed_ids: continue
         
-        # CORRECCIÓN DEFINITIVA: Filtramos eventos basura de DNI
-        # Buscamos 'Fallo', 'DNI' o 'Intente' o 'No parece' en la razón para cubrir todas las variaciones.
+        # Filtro de basura técnica DNI
         reason = event.metadata.get('reason', '')
         if event.event_type == 'IDENTITY_MISMATCH' and ('Fallo' in reason or 'DNI' in reason or 'Intente' in reason or 'No parece' in reason):
             continue
 
         if event.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
             processed_ids.add(event.id)
-            
             found_return = False
             for j in range(i + 1, len(raw_events)):
                 next_ev = raw_events[j]
-                
                 if next_ev.event_type == 'FOCUS_GAINED':
                     processed_ids.add(next_ev.id) 
-                    
                     if not found_return:
                         delta = (next_ev.timestamp - event.timestamp).total_seconds()
                         event.duration_away = int(delta)
                         event.return_timestamp = next_ev.timestamp
                         found_return = True
-                        
                         for k in range(j + 1, len(raw_events)):
                             future_ev = raw_events[k]
                             time_diff = (future_ev.timestamp - next_ev.timestamp).total_seconds()
                             if time_diff > 15: break 
-                            
                             if future_ev.event_type == 'ANSWER_SAVED':
                                 event.suspicious_answer = True
                                 event.reaction_time = int(time_diff)
                                 processed_ids.add(future_ev.id) 
                                 break
                     continue 
-            
             if not found_return and i + 1 < len(raw_events):
                  delta = (raw_events[i+1].timestamp - event.timestamp).total_seconds()
                  event.duration_away = int(delta)
-            
             final_events.append(event)
-        
         elif event.event_type == 'FOCUS_GAINED':
             processed_ids.add(event.id)
-        
         else:
             processed_ids.add(event.id)
             final_events.append(event)
 
     evidence_all = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
-    evidence_validation = [
-        ev for ev in evidence_all 
-        if "INCIDENTE" not in (ev.file_url or "")
-    ]
+    evidence_validation = [ev for ev in evidence_all if "INCIDENTE" not in (ev.file_url or "")]
 
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
-    
     qa_list = []
     for item in items:
         user_response = student_answers.get(str(item.id))
