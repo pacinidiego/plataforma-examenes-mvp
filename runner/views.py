@@ -573,14 +573,45 @@ def teacher_dashboard_view(request, exam_id):
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
 # 12. DETALLE DEL INTENTO (CON RESPUESTAS)
+# Reemplaza la función attempt_detail_view con esta versión mejorada
+
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     
-    events = attempt.events.all().order_by('timestamp')
-    evidence_list = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
+    # 1. OBTENER EVENTOS Y CALCULAR TIEMPOS DE FUGA
+    events = list(attempt.events.all().order_by('timestamp'))
     
+    # Recorremos los eventos para enriquecerlos con datos de "Contexto"
+    for i, event in enumerate(events):
+        if event.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
+            # Buscamos el siguiente evento para saber cuándo volvió o qué hizo
+            if i + 1 < len(events):
+                next_event = events[i+1]
+                delta = (next_event.timestamp - event.timestamp).total_seconds()
+                
+                # Guardamos la duración en el objeto evento (temporalmente para el template)
+                event.duration_away = int(delta)
+                event.next_action = next_event.event_type
+                
+                # Analizamos si respondió rápido al volver (menos de 5 segundos)
+                if next_event.event_type == 'ANSWER_SAVED' and delta < 60: # Si guardó algo luego de perder el foco
+                     # Calculamos tiempo entre volver y responder si tuviéramos FOCUS_GAINED, 
+                     # pero aproximamos con el delta total
+                     event.suspicious_answer = True
+
+    # 2. FILTRAR EVIDENCIA PARA EL HISTORIAL DE VALIDACIÓN
+    # Solo mostramos en el carrusel de arriba las que tienen número de intento (Validaciones de DNI)
+    # Excluimos las que son tipo 'INCIDENTE' (Capturas de pantalla, errores, etc)
+    evidence_all = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
+    
+    # Lista para "Historial de Intentos" (Solo DNI/Cara)
+    evidence_validation = [
+        ev for ev in evidence_all 
+        if ev.gemini_analysis.get('intento') or ev.gemini_analysis.get('tipo') != 'INCIDENTE'
+    ]
+
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
     
@@ -604,9 +635,10 @@ def attempt_detail_view(request, attempt_id):
     return render(request, 'runner/attempt_detail.html', {
         'attempt': attempt, 
         'events': events, 
-        'evidence_list': evidence_list,
+        'evidence_list': evidence_validation, # Pasamos la lista filtrada
         'qa_list': qa_list
     })
+
 
 @login_required
 @user_passes_test(is_staff)
