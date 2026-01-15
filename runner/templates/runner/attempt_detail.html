@@ -2,8 +2,9 @@
 
 {% block content %}
 <div class="max-w-6xl mx-auto py-10 px-4">
+    
     <div class="mb-6">
-        <a href="javascript:history.back()" class="text-blue-600 hover:underline inline-flex items-center">
+        <a href="{% url 'runner:teacher_dashboard' attempt.exam.id %}" class="text-blue-600 hover:underline inline-flex items-center">
             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
             Volver al tablero
         </a>
@@ -62,8 +63,6 @@
 
     {% if evidence_list %}
     <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2 mt-8">Historial Completo de Validación</h2>
-    <p class="text-sm text-gray-500 mb-4">Registro de todos los intentos de DNI procesados por la IA.</p>
-    
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-10">
         {% for evidence in evidence_list %}
         <div class="bg-white border rounded-lg shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
@@ -89,14 +88,12 @@
                      <span class="inline-block w-full text-center px-2 py-1 text-[10px] rounded bg-green-100 text-green-800 font-bold">APROBADO</span>
                 {% elif evidence.gemini_analysis.status == 'manual_review' %}
                      <span class="inline-block w-full text-center px-2 py-1 text-[10px] rounded bg-yellow-100 text-yellow-800 font-bold">REVISIÓN MANUAL</span>
-                     {% if evidence.gemini_analysis.error %}
-                        <p class="text-[9px] text-red-600 mt-1 leading-tight">{{ evidence.gemini_analysis.error|truncatechars:30 }}</p>
-                     {% endif %}
                 {% else %}
                      <span class="inline-block w-full text-center px-2 py-1 text-[10px] rounded bg-red-100 text-red-800 font-bold">REINTENTAR</span>
-                     {% if evidence.gemini_analysis.error %}
-                        <p class="text-[9px] text-red-600 mt-1 leading-tight">{{ evidence.gemini_analysis.error|truncatechars:30 }}</p>
-                     {% endif %}
+                {% endif %}
+                
+                {% if evidence.gemini_analysis.error %}
+                    <p class="text-[9px] text-red-600 mt-1 leading-tight">{{ evidence.gemini_analysis.error|truncatechars:30 }}</p>
                 {% endif %}
             </div>
         </div>
@@ -345,7 +342,7 @@
                     
                     <button type="submit" name="action" value="save_penalties"
                             class="w-full py-3 px-4 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
-                        <span>💾</span> Guardar Penalidades
+                        <span>💾</span> Guardar Cambios
                     </button>
 
                     <div class="h-px bg-gray-200 my-1"></div>
@@ -371,8 +368,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Datos iniciales pasados desde Django
     const totalQuestions = {{ qa_list|length }}; 
-    // Calculamos puntaje base asumiendo todas las correctas valen 1 punto (ajustar según tu lógica de puntos)
-    // Filtramos las que llegaron como correctas desde el backend
+    // IDs de preguntas correctas originales
     const correctItemsIds = [
         {% for qa in qa_list %}{% if qa.is_correct %}"{{ qa.id }}",{% endif %}{% endfor %}
     ];
@@ -385,11 +381,10 @@ document.addEventListener('DOMContentLoaded', function() {
         let activeScore = 0;
         let penaltyManual = parseFloat(penaltyInput.value) || 0;
 
-        // 1. Recorrer IDs de preguntas correctas originales
         correctItemsIds.forEach(id => {
             const cb = document.querySelector(`.penalty-checkbox[value="${id}"]`);
             if (cb && cb.checked) {
-                // Está penalizada, no suma
+                // Está penalizada (marcada), no suma
             } else {
                 // Suma punto (asumiendo 1 pto por pregunta para el preview)
                 activeScore += 1;
@@ -411,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Listeners
-    penaltyInput.addEventListener('input', calculateOnline);
+    if(penaltyInput) penaltyInput.addEventListener('input', calculateOnline);
     checkboxes.forEach(cb => cb.addEventListener('change', calculateOnline));
 });
 </script>
