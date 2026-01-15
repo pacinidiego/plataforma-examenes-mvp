@@ -246,6 +246,8 @@
             
             {% csrf_token %}
             
+            <input type="hidden" name="action" id="actionInput">
+
             <div class="p-6 border-b flex flex-col md:flex-row items-center justify-between gap-6
                 {% if attempt.review_status == 'approved' %}bg-green-50
                 {% elif attempt.review_status == 'rejected' %}bg-red-50
@@ -347,14 +349,12 @@
 
                     <div class="h-px bg-gray-200 my-1"></div>
 
-                    <button type="submit" name="action" value="approve"
-                            onclick="return confirm('¿Confirmas que este examen es VÁLIDO? El alumno verá la nota inmediatamente.')"
+                    <button type="button" onclick="openModal('approve')"
                             class="w-full py-3 px-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow-md shadow-green-200 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
                         <span>✅</span> Validar y Publicar
                     </button>
 
-                    <button type="submit" name="action" value="reject"
-                            onclick="return confirm('¿Estás seguro de ANULAR este examen? La nota pasará a 0 irreversiblemente.')"
+                    <button type="button" onclick="openModal('reject')"
                             class="w-full py-3 px-4 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 shadow-md shadow-red-200 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
                         <span>⛔</span> Anular por Fraude
                     </button>
@@ -364,51 +364,149 @@
     </div>
 </div>
 
+<div id="confirmationModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-600 bg-opacity-75 transition-opacity backdrop-blur-sm" aria-hidden="true" onclick="closeModal()"></div>
+
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <div class="relative inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div class="sm:flex sm:items-start">
+                    
+                    <div id="modalIconContainer" class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10">
+                        <svg id="modalIconCheck" class="hidden h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <svg id="modalIconX" class="hidden h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </div>
+
+                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                        <h3 class="text-lg leading-6 font-bold text-gray-900" id="modal-title">
+                            Confirmar Acción
+                        </h3>
+                        <div class="mt-2">
+                            <p class="text-sm text-gray-500" id="modal-description">
+                                ¿Estás seguro?
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button type="button" id="confirmBtn" onclick="confirmAction()"
+                        class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 text-base font-bold text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm">
+                    Confirmar
+                </button>
+                <button type="button" onclick="closeModal()"
+                        class="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Datos iniciales pasados desde Django
-    const totalQuestions = {{ qa_list|length }}; 
-    // IDs de preguntas correctas originales
-    const correctItemsIds = [
-        {% for qa in qa_list %}{% if qa.is_correct %}"{{ qa.id }}",{% endif %}{% endfor %}
-    ];
-    
-    const penaltyInput = document.getElementById('penaltyInput');
-    const checkboxes = document.querySelectorAll('.penalty-checkbox');
-    const display = document.getElementById('finalScoreDisplay');
+    // Variables globales para el modal
+    let pendingAction = '';
+    const modal = document.getElementById('confirmationModal');
+    const title = document.getElementById('modal-title');
+    const desc = document.getElementById('modal-description');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const iconContainer = document.getElementById('modalIconContainer');
+    const iconCheck = document.getElementById('modalIconCheck');
+    const iconX = document.getElementById('modalIconX');
+    const actionInput = document.getElementById('actionInput');
+    const gradingForm = document.getElementById('gradingForm');
 
-    function calculateOnline() {
-        let activeScore = 0;
-        let penaltyManual = parseFloat(penaltyInput.value) || 0;
+    function openModal(actionType) {
+        pendingAction = actionType;
+        
+        // Resetear iconos
+        iconCheck.classList.add('hidden');
+        iconX.classList.add('hidden');
+        
+        if (actionType === 'approve') {
+            // Configurar para APROBAR
+            title.textContent = 'Validar y Publicar Examen';
+            desc.textContent = '¿Confirmas que este examen es VÁLIDO? El alumno verá la nota calculada inmediatamente y el estado cambiará a Aprobado.';
+            
+            // Estilos Verde
+            iconContainer.className = 'mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10';
+            iconCheck.classList.remove('hidden');
+            
+            confirmBtn.className = 'w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-bold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:ml-3 sm:w-auto sm:text-sm';
+            confirmBtn.textContent = 'Sí, Validar';
 
-        correctItemsIds.forEach(id => {
-            const cb = document.querySelector(`.penalty-checkbox[value="${id}"]`);
-            if (cb && cb.checked) {
-                // Está penalizada (marcada), no suma
-            } else {
-                // Suma punto (asumiendo 1 pto por pregunta para el preview)
-                activeScore += 1;
-            }
-        });
-
-        // Calcular nota base 10 (asumiendo totalQuestions > 0)
-        let finalScore = 0;
-        if (totalQuestions > 0) {
-            finalScore = (activeScore / totalQuestions) * 10;
+        } else if (actionType === 'reject') {
+            // Configurar para ANULAR
+            title.textContent = 'Anular Examen por Fraude';
+            desc.innerHTML = '¿Estás seguro de <b>ANULAR</b> este examen? <br><br>⚠️ La nota pasará a <b>0.0</b> irreversiblemente y se notificará al alumno.';
+            
+            // Estilos Rojo
+            iconContainer.className = 'mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10';
+            iconX.classList.remove('hidden');
+            
+            confirmBtn.className = 'w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-bold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm';
+            confirmBtn.textContent = 'Sí, Anular';
         }
 
-        // Restar penalidad manual
-        finalScore -= penaltyManual;
-        if (finalScore < 0) finalScore = 0;
-
-        // Actualizar UI
-        display.textContent = finalScore.toFixed(1);
+        // Mostrar Modal
+        modal.classList.remove('hidden');
     }
 
-    // Listeners
-    if(penaltyInput) penaltyInput.addEventListener('input', calculateOnline);
-    checkboxes.forEach(cb => cb.addEventListener('change', calculateOnline));
-});
+    function closeModal() {
+        modal.classList.add('hidden');
+    }
+
+    function confirmAction() {
+        // Asignar el valor al input oculto y enviar el formulario
+        actionInput.value = pendingAction;
+        gradingForm.submit();
+    }
+
+    // Lógica existente de cálculo online
+    document.addEventListener('DOMContentLoaded', function() {
+        const totalQuestions = {{ qa_list|length }}; 
+        const correctItemsIds = [
+            {% for qa in qa_list %}{% if qa.is_correct %}"{{ qa.id }}",{% endif %}{% endfor %}
+        ];
+        
+        const penaltyInput = document.getElementById('penaltyInput');
+        const checkboxes = document.querySelectorAll('.penalty-checkbox');
+        const display = document.getElementById('finalScoreDisplay');
+
+        function calculateOnline() {
+            let activeScore = 0;
+            let penaltyManual = parseFloat(penaltyInput.value) || 0;
+
+            correctItemsIds.forEach(id => {
+                const cb = document.querySelector(`.penalty-checkbox[value="${id}"]`);
+                if (cb && cb.checked) {
+                    // Está penalizada, no suma
+                } else {
+                    activeScore += 1;
+                }
+            });
+
+            let finalScore = 0;
+            if (totalQuestions > 0) {
+                finalScore = (activeScore / totalQuestions) * 10;
+            }
+
+            finalScore -= penaltyManual;
+            if (finalScore < 0) finalScore = 0;
+
+            display.textContent = finalScore.toFixed(1);
+        }
+
+        if(penaltyInput) penaltyInput.addEventListener('input', calculateOnline);
+        checkboxes.forEach(cb => cb.addEventListener('change', calculateOnline));
+    });
 </script>
 
 {% endblock %}
