@@ -19,6 +19,7 @@ from django.utils import timezone
 from django.template.loader import render_to_string
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.db.models import Q 
 
 # Librerías Externas
 from weasyprint import HTML
@@ -88,7 +89,7 @@ def calculate_final_score(attempt):
 # SECCIÓN ALUMNO
 # ==========================================
 
-# 1. LOBBY
+# 1. LOBBY (CORREGIDO: Detecta Approved/Rejected como finalizado)
 def lobby_view(request, access_code):
     exam = get_object_or_404(Exam, access_code=access_code)
     
@@ -96,8 +97,12 @@ def lobby_view(request, access_code):
         nombre = request.POST.get('full_name', '').strip()
         legajo = request.POST.get('student_id', '').strip()
         
+        # Buscamos si ya existe un intento TERMINADO O JUZGADO
         finished_attempt = Attempt.objects.filter(
-            exam=exam, student_legajo__iexact=legajo, completed_at__isnull=False
+            exam=exam, student_legajo__iexact=legajo
+        ).filter(
+            Q(completed_at__isnull=False) | 
+            Q(review_status__in=['approved', 'rejected'])
         ).first()
 
         if finished_attempt:
@@ -306,7 +311,9 @@ def validate_dni_ocr(request, attempt_id):
 def exam_runner_view(request, access_code, attempt_id):
     exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
-    if attempt.completed_at: return redirect('runner:exam_finished', attempt_id=attempt.id)
+    # Redirección si ya está completo o juzgado
+    if attempt.completed_at or attempt.review_status in ['rejected', 'approved']: 
+        return redirect('runner:exam_finished', attempt_id=attempt.id)
 
     total_duration = exam.get_total_duration_seconds()
     if attempt.start_time:
@@ -381,13 +388,12 @@ def submit_exam_view(request, attempt_id):
     attempt.score = calculate_final_score(attempt)
     # Por defecto queda pendiente de revisión si hay riesgos, pero se guarda el score calculado
     if attempt.review_status == 'pending':
-        # Podríamos añadir lógica auto-approve si risk es 0 aquí
         pass
         
     attempt.save()
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-# 9. PANTALLA FINAL (MODIFICADA: INCLUYE FEEDBACK Y PENALIZACIONES)
+# 9. PANTALLA FINAL (Feedback Alumno)
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all()
@@ -411,7 +417,7 @@ def exam_finished_view(request, attempt_id):
             dni_manual_review = True
 
     # --- LÓGICA DE VISIBILIDAD DE NOTA ---
-    # Approved: Muestra nota. Rejected: Muestra 0. Pending/Revision: Oculta.
+    # Approved/Rejected: Muestra la decisión. Pending/Revision: Oculta.
     if attempt.review_status == 'approved':
         en_revision = False
     elif attempt.review_status == 'rejected':
@@ -426,9 +432,8 @@ def exam_finished_view(request, attempt_id):
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
     
-    # Convertimos la lista de penalizadas a un Set de strings para búsqueda rápida
+    # Penalizadas
     penalized_set = set(str(x) for x in (attempt.penalized_items or []))
-    
     detalles = []
     
     for item in items:
@@ -444,17 +449,14 @@ def exam_finished_view(request, attempt_id):
         detalles.append({
             'es_correcta': es_correcta, 
             'pregunta_id': item.id,
-            'is_penalized': sid in penalized_set # Flag para mostrar "Anulada/Fraude"
+            'is_penalized': sid in penalized_set
         })
 
     score_percentage = 0
     if attempt.score is not None: score_percentage = int((attempt.score / 10) * 100)
 
     return render(request, 'runner/finished.html', {
-        'attempt': attempt, 
-        'detalles': detalles, 
-        'score_percentage': score_percentage, 
-        'en_revision': False
+        'attempt': attempt, 'detalles': detalles, 'score_percentage': score_percentage, 'en_revision': False
     })
 
 # 10. LOGS
@@ -531,7 +533,7 @@ def teacher_dashboard_view(request, exam_id):
         elif attempt.review_status == 'rejected':
             status_color = 'gray'
             status_text = "Anulado"
-        elif attempt.review_status == 'revision': # <--- Estado intermedio
+        elif attempt.review_status == 'revision': 
             status_color = 'indigo'
             status_text = "En Revisión (Guardado)"
         
@@ -541,12 +543,12 @@ def teacher_dashboard_view(request, exam_id):
             'status_color': status_color, 
             'status_text': status_text, 
             'event_count': events.count(), 
-            # Permitimos ver la nota también si está en revisión (para control docente)
+            # Permitimos ver la nota también si está en revisión
             'show_grade': (status_color in ['green', 'blue', 'indigo'])
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO
+# 12. DETALLE DEL INTENTO (CORREGIDO: Fuerza completed_at si se juzga)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
@@ -557,14 +559,14 @@ def attempt_detail_view(request, attempt_id):
         action = request.POST.get('action')
         feedback = request.POST.get('teacher_comment', '').strip()
         
-        # 1. Capturamos la penalidad manual (Puntos directos a restar)
+        # 1. Capturamos la penalidad manual
         try: 
             raw_penalty = float(request.POST.get('penalty_points', 0))
             attempt.penalty_points = max(0.0, raw_penalty)
         except: 
             pass
 
-        # 2. Capturamos las preguntas marcadas para anular (array de strings IDs)
+        # 2. Capturamos las preguntas marcadas para anular
         penalized_ids = request.POST.getlist('penalized_item')
         attempt.penalized_items = penalized_ids 
 
@@ -576,6 +578,8 @@ def attempt_detail_view(request, attempt_id):
             
             if action == 'approve':
                 attempt.review_status = 'approved'
+                # SI VALIDAMOS, CERRAMOS EL EXAMEN PARA QUE NO QUEDE EN LIMBO
+                if not attempt.completed_at: attempt.completed_at = timezone.now()
             elif attempt.review_status == 'pending':
                 # Si solo guarda, pasa a revisión
                 attempt.review_status = 'revision'
@@ -583,6 +587,8 @@ def attempt_detail_view(request, attempt_id):
         elif action == 'reject':
             attempt.review_status = 'rejected'
             attempt.score = 0.0
+            # SI ANULAMOS, CERRAMOS EL EXAMEN PARA QUE NO QUEDE EN LIMBO
+            if not attempt.completed_at: attempt.completed_at = timezone.now()
             
         attempt.save()
         return redirect('runner:attempt_detail', attempt_id=attempt.id)
@@ -601,11 +607,9 @@ def attempt_detail_view(request, attempt_id):
         if event.id in skip_ids:
             continue
         
-        # --- FILTRO 1: Focus Gained fuera ---
+        # --- FILTROS DE LOGS ---
         if event.event_type == 'FOCUS_GAINED':
             continue
-
-        # --- FILTRO 2: Logs de DNI fuera ---
         if event.event_type == 'IDENTITY_MISMATCH':
             reason = str(event.metadata.get('reason', ''))
             if reason.startswith('Fallo'):
@@ -655,7 +659,7 @@ def attempt_detail_view(request, attempt_id):
 
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
-    penalized_set = set(attempt.penalized_items or [])
+    penalized_set = set(str(x) for x in (attempt.penalized_items or []))
     
     qa_list = []
     for item in items:
