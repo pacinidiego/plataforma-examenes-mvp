@@ -44,45 +44,6 @@ def is_staff(user):
 def es_docente_o_admin(user):
     return user.is_staff or user.groups.filter(name='Docente').exists()
 
-# --- CÁLCULO DE NOTA (NUEVA FUNCIÓN REQUERIDA) ---
-def calculate_final_score(attempt):
-    """
-    Calcula la nota considerando:
-    1. Respuestas correctas.
-    2. Preguntas anuladas (valen 0).
-    3. Penalidad manual.
-    """
-    exam = attempt.exam
-    score_obtained = 0
-    total_possible_points = 0
-    questions = exam.items.all()
-    answers = attempt.answers or {}
-    penalized = attempt.penalized_items or [] # Lista de IDs anulados
-
-    for q in questions:
-        link = exam.examitemlink_set.filter(item=q).first()
-        points_for_question = link.points if link else 1.0
-        total_possible_points += points_for_question
-        
-        # Si la pregunta está anulada, suma 0 puntos
-        if str(q.id) in penalized:
-            continue 
-
-        selected = answers.get(str(q.id))
-        if selected:
-            correct = next((o for o in (q.options or []) if o.get('correct')), None)
-            if correct and correct.get('text') == selected:
-                score_obtained += points_for_question
-
-    final_score = 0.0
-    if total_possible_points > 0: 
-        final_score = (score_obtained / total_possible_points) * 10
-    
-    # Restar la penalidad manual (si existe)
-    final_score -= attempt.penalty_points
-    
-    return max(0.0, final_score)
-
 # ==========================================
 # SECCIÓN ALUMNO
 # ==========================================
@@ -131,7 +92,7 @@ def biometric_gate_view(request, access_code, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return redirect('runner:exam_runner', access_code=access_code, attempt_id=attempt.id)
 
-# 4. REGISTRO BIOMÉTRICO (MODIFICADO PARA GUARDAR PATH)
+# 4. REGISTRO BIOMÉTRICO
 @require_POST
 def register_biometrics(request, attempt_id):
     try:
@@ -149,8 +110,9 @@ def register_biometrics(request, attempt_id):
                 try:
                     image_content = base64.b64decode(base64_clean)
                     filename = f"evidence/FACE_REF_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
-                    path = default_storage.save(filename, ContentFile(image_content))
-                    attempt.reference_face_url = path # Guardamos PATH
+                    saved_path = default_storage.save(filename, ContentFile(image_content))
+                    file_url = default_storage.url(saved_path)
+                    attempt.reference_face_url = file_url
                 except Exception as e:
                     print(f"Error subiendo referencia facial: {e}")
 
@@ -165,8 +127,9 @@ def register_biometrics(request, attempt_id):
                 try:
                     image_content = base64.b64decode(base64_clean)
                     filename = f"evidence/DNI_REF_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
-                    path = default_storage.save(filename, ContentFile(image_content))
-                    attempt.photo_id_url = path # Guardamos PATH
+                    saved_path = default_storage.save(filename, ContentFile(image_content))
+                    file_url = default_storage.url(saved_path)
+                    attempt.photo_id_url = file_url
                 except Exception as e:
                     print(f"Error subiendo referencia DNI: {e}")
             
@@ -175,13 +138,13 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (CORREGIDO: HISTORIAL MÚLTIPLE + PATH)
+# 5. VALIDACIÓN DNI
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         
-        # Filtro para contar intentos previos correctamente
+        # Filtro seguro para contar intentos (sin romper por JSON)
         intentos_previos = Evidence.objects.filter(attempt=attempt).exclude(file_url__contains='INCIDENTE').count()
         intento_actual = intentos_previos + 1
         
@@ -197,19 +160,17 @@ def validate_dni_ocr(request, attempt_id):
             return JsonResponse({'success': False, 'message': 'Imagen vacía.'})
         
         image_content = base64.b64decode(base64_clean)
-        # Nombre único por intento
         file_name = f"evidence/dni_{attempt.id}_intento_{intento_actual}_{uuid.uuid4().hex[:8]}.jpg"
         
-        path = default_storage.save(file_name, ContentFile(image_content))
+        saved_path = default_storage.save(file_name, ContentFile(image_content))
+        file_url = default_storage.url(saved_path)
         
-        # Actualizamos la foto "actual" del intento
-        attempt.photo_id_url = path
+        attempt.photo_id_url = file_url
         attempt.save()
 
-        # CREAMOS NUEVA EVIDENCIA PARA ESTE INTENTO
         evidencia_actual = Evidence.objects.create(
             attempt=attempt,
-            file_url=path,
+            file_url=file_url,
             timestamp=timezone.now(),
             gemini_analysis={'intento': intento_actual, 'status': 'procesando'}
         )
@@ -222,7 +183,6 @@ def validate_dni_ocr(request, attempt_id):
         evidencia_actual.save()
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    # --- LÓGICA IA ---
     modelos_a_probar = ["gemini-flash-lite-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     ia_success = False
     error_actual = ""
@@ -249,7 +209,7 @@ def validate_dni_ocr(request, attempt_id):
                 json_res = response.json()
                 candidates = json_res.get('candidates', [])
                 if not candidates:
-                    error_actual = "IA bloqueó la imagen"
+                    error_actual = "IA bloqueó la imagen (Seguridad)"
                     break 
                 
                 raw_text = candidates[0].get('content', {}).get('parts', [])[0].get('text', '')
@@ -264,9 +224,11 @@ def validate_dni_ocr(request, attempt_id):
                         error_actual = ""
                         break 
                     else:
-                        error_actual = f"Legajo no coincide ({numbers_found})"
+                        error_actual = f"Legajo no coincide (Leído: {numbers_found})"
+                        # No break, probamos otro modelo
                 else:
                     error_actual = "No parece un DNI válido"
+                    # No break
             elif response.status_code == 404: continue 
             elif response.status_code == 429:
                 if model_name == modelos_a_probar[-1]: force_manual_review = True
@@ -284,7 +246,9 @@ def validate_dni_ocr(request, attempt_id):
         return JsonResponse({'success': True, 'message': 'Identidad verificada.'})
     
     else:
-        # NO CREAMOS Evento en Bitácora, solo actualizamos Evidencia
+        # IMPORTANTE: NO CREAMOS AttemptEvent AQUÍ PARA EVITAR RUIDO EN LA BITÁCORA.
+        # El fallo queda registrado solo en la tabla Evidence.
+
         if intento_actual >= MAX_INTENTOS or force_manual_review:
             evidencia_actual.gemini_analysis = {'status': 'manual_review', 'error': error_actual, 'intento': intento_actual}
             evidencia_actual.save()
@@ -296,10 +260,11 @@ def validate_dni_ocr(request, attempt_id):
 
 # 6. RUNNER
 def exam_runner_view(request, access_code, attempt_id):
+    exam = get_object_or_404(Exam, access_code=access_code)
     attempt = get_object_or_404(Attempt, id=attempt_id)
     if attempt.completed_at: return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-    total_duration = attempt.exam.get_total_duration_seconds()
+    total_duration = exam.get_total_duration_seconds()
     if attempt.start_time:
         elapsed = (timezone.now() - attempt.start_time).total_seconds()
         remaining = max(0, total_duration - elapsed)
@@ -313,20 +278,20 @@ def exam_runner_view(request, access_code, attempt_id):
 
     if remaining <= 0 and attempt.start_time: return redirect('runner:submit_exam', attempt_id=attempt.id)
 
-    items = list(attempt.exam.items.all())
-    if attempt.exam.shuffle_items: random.Random(str(attempt.id)).shuffle(items)
+    items = list(exam.items.all())
+    if exam.shuffle_items: random.Random(str(attempt.id)).shuffle(items)
     
     saved_answers = attempt.answers or {}
     initial_step = len(saved_answers)
     if initial_step >= len(items): initial_step = len(items) - 1
 
     return render(request, 'runner/exam_runner.html', {
-        'exam': attempt.exam,
+        'exam': exam,
         'attempt': attempt,
         'items': items,
         'total_questions': len(items),
         'remaining_seconds': int(remaining),
-        'time_per_item': attempt.exam.time_per_item,
+        'time_per_item': exam.time_per_item,
         'initial_step': initial_step,
         'has_started': attempt.start_time is not None
     })
@@ -362,21 +327,39 @@ def save_answer(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error'}, status=400)
 
-# 8. FINALIZAR (MODIFICADO CON NUEVA FUNCIÓN)
+# 8. FINALIZAR
 def submit_exam_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     if attempt.completed_at: return redirect('runner:exam_finished', attempt_id=attempt.id)
 
+    exam = attempt.exam
+    score_obtained = 0
+    total_possible_points = 0
+    questions = exam.items.all()
+    answers = attempt.answers or {}
+
+    for q in questions:
+        link = exam.examitemlink_set.filter(item=q).first()
+        points_for_question = link.points if link else 1.0
+        total_possible_points += points_for_question
+        selected = answers.get(str(q.id))
+        if selected:
+            correct = next((o for o in (q.options or []) if o.get('correct')), None)
+            if correct and correct.get('text') == selected:
+                score_obtained += points_for_question
+
+    if total_possible_points > 0: final_grade = (score_obtained / total_possible_points) * 10
+    else: final_grade = 0.0
+
+    attempt.score = final_grade
     attempt.completed_at = timezone.now()
-    attempt.score = calculate_final_score(attempt)
     attempt.save()
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-# 9. PANTALLA FINAL (MODIFICADO VISIBILIDAD)
+# 9. PANTALLA FINAL
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all()
-    
     risk_score = 0
     risk_score += events.filter(event_type='FOCUS_LOST').count() * 1
     risk_score += events.filter(event_type='FULLSCREEN_EXIT').count() * 2
@@ -393,13 +376,7 @@ def exam_finished_view(request, attempt_id):
         if status in ['manual_review', 'failed', 'error']:
             dni_manual_review = True
 
-    # --- LÓGICA DE VISIBILIDAD ---
-    if attempt.review_status == 'approved':
-        en_revision = False 
-    elif attempt.review_status == 'rejected':
-        en_revision = False
-    else:
-        en_revision = (risk_score > limit_high) or dni_manual_review
+    en_revision = (risk_score > limit_high) or dni_manual_review
 
     if en_revision:
         return render(request, 'runner/finished.html', {'attempt': attempt, 'en_revision': True, 'risk_score': risk_score})
@@ -423,35 +400,33 @@ def exam_finished_view(request, attempt_id):
         'attempt': attempt, 'detalles': detalles, 'score_percentage': score_percentage, 'en_revision': False
     })
 
-# 10. LOGS (MODIFICADO GUARDADO DE FOTOS Y TIPO DE EVIDENCIA)
+# 10. LOGS
 @require_POST
 def log_event(request, attempt_id):
     try:
         attempt = get_object_or_404(Attempt, id=attempt_id)
         data = json.loads(request.body)
-        evt = data.get('event_type')
-        meta = data.get('metadata', {})
-        path = None 
+        event_type = data.get('event_type')
+        metadata = data.get('metadata', {})
+        image_data = data.get('image', None) 
+        evidence_url = None
 
-        if data.get('image'):
-            if ';base64,' in data['image']:
-                b64 = data['image'].split(';base64,')[1]
-            else:
-                b64 = data['image']
+        if image_data:
+            if ';base64,' in image_data: base64_clean = image_data.split(';base64,')[1]
+            else: base64_clean = image_data
             
-            # Guardamos con 'inc_' para diferenciar de DNI
-            filename = f"evidence/inc_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
-            path = default_storage.save(filename, ContentFile(base64.b64decode(b64)))
-            
-            # Creamos Evidence marcando 'tipo': 'INCIDENTE'
-            # Esto nos permite filtrarlas en la vista de detalle para que no salgan en el historial DNI
+            image_content = base64.b64decode(base64_clean)
+            filename = f"evidence/INCIDENTE_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
+            saved_path = default_storage.save(filename, ContentFile(image_content))
+            evidence_url = default_storage.url(saved_path)
+
             Evidence.objects.create(
-                attempt=attempt, file_url=path, timestamp=timezone.now(),
-                gemini_analysis={'tipo': 'INCIDENTE', 'motivo': evt, 'alerta': 'ALTA'}
+                attempt=attempt, file_url=evidence_url, timestamp=timezone.now(),
+                gemini_analysis={'tipo': 'INCIDENTE', 'motivo': event_type, 'alerta': 'ALTA'}
             )
-            meta['evidence_url'] = path
-            
-        AttemptEvent.objects.create(attempt=attempt, event_type=evt, metadata=meta, evidence_url=path)
+            metadata['evidence_url'] = evidence_url
+
+        AttemptEvent.objects.create(attempt=attempt, event_type=event_type, metadata=metadata)
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -490,143 +465,107 @@ def teacher_dashboard_view(request, exam_id):
             status_color = 'yellow'
             status_text = "Riesgo Medio"
         
-        if attempt.review_status == 'approved':
-            status_color = 'blue'
-            status_text = "Validado"
-        elif attempt.review_status == 'rejected':
-            status_color = 'gray'
-            status_text = "Anulado"
-        
         results.append({
             'attempt': attempt, 'risk_score': risk_score, 'status_color': status_color, 
-            'status_text': status_text, 'event_count': events.count(), 'show_grade': (status_color == 'green' or status_color == 'blue')
+            'status_text': status_text, 'event_count': events.count(), 'show_grade': (status_color == 'green')
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO (CORREGIDO: FILTRO FOCUS_GAINED + PROCESAMIENTO)
+# 12. DETALLE DEL INTENTO (CORREGIDO: Soporte POST + Filtros)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
-    
-    # --- POST ---
+
+    # --- LÓGICA DE GUARDADO (VEREDICTO) ---
     if request.method == "POST":
         action = request.POST.get('action')
         feedback = request.POST.get('teacher_comment', '').strip()
-        
-        try: 
-            raw_penalty = float(request.POST.get('penalty_points', 0))
-            attempt.penalty_points = max(0.0, raw_penalty)
-        except: pass
+        manual_score = request.POST.get('manual_score')
 
         attempt.teacher_comment = feedback
 
-        if action == 'save_penalties' or action == 'approve':
-            penalized_ids = request.POST.getlist('penalized_item')
-            attempt.penalized_items = penalized_ids
-            attempt.score = calculate_final_score(attempt)
-            
-            if action == 'approve':
-                attempt.review_status = 'approved'
-            else:
-                if attempt.review_status == 'pending':
-                    attempt.review_status = 'revision'
-
+        if action == 'approve':
+            attempt.review_status = 'approved'
+            if manual_score:
+                try: attempt.score = float(manual_score)
+                except: pass
+        
         elif action == 'reject':
             attempt.review_status = 'rejected'
-            attempt.score = 0.0
+            attempt.score = 0.0 # Anulado
             
+        elif action == 'save_comment':
+             if manual_score:
+                try: attempt.score = float(manual_score)
+                except: pass
+
         attempt.save()
         return redirect('runner:attempt_detail', attempt_id=attempt.id)
 
-    # --- LECTURA ---
+    # --- LÓGICA DE VISUALIZACIÓN ---
     if attempt.start_time:
         raw_events = list(attempt.events.filter(timestamp__gte=attempt.start_time).order_by('timestamp'))
     else:
         raw_events = list(attempt.events.all().order_by('timestamp'))
 
     final_events = []
-    skip_ids = set()
-    question_alerts = {}
+    processed_ids = set() 
 
     for i, event in enumerate(raw_events):
-        if event.id in skip_ids: continue
-
-        # --- FILTRO 1: Ocultar FOCUS_GAINED de la tabla ---
-        if event.event_type == 'FOCUS_GAINED':
+        if event.id in processed_ids: continue
+        
+        # Filtro de basura técnica DNI
+        reason = event.metadata.get('reason', '')
+        if event.event_type == 'IDENTITY_MISMATCH' and ('Fallo' in reason or 'DNI' in reason or 'Intente' in reason or 'No parece' in reason):
             continue
 
-        # --- FILTRO 2: Ocultar fallos de DNI en la bitácora (ya salen en Historial) ---
-        if event.event_type == 'IDENTITY_MISMATCH':
-            continue
-
-        # --- Lógica de emparejamiento (Focus Lost -> Gained) ---
         if event.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
+            processed_ids.add(event.id)
+            found_return = False
             for j in range(i + 1, len(raw_events)):
                 next_ev = raw_events[j]
-                
                 if next_ev.event_type == 'FOCUS_GAINED':
-                    # Calculamos duración
-                    delta = (next_ev.timestamp - event.timestamp).total_seconds()
-                    event.duration_away = int(delta)
-                    event.return_timestamp = next_ev.timestamp
-                    
-                    # Marcamos el Gained como "ya usado" para que no salga
-                    skip_ids.add(next_ev.id)
-                    
-                    # Buscar respuesta rápida
-                    for k in range(j + 1, len(raw_events)):
-                        future_ev = raw_events[k]
-                        time_diff = (future_ev.timestamp - next_ev.timestamp).total_seconds()
-                        if time_diff > 30: break 
-                        
-                        if future_ev.event_type == 'ANSWER_SAVED':
-                            event.suspicious_answer = True
-                            event.reaction_time = int(time_diff)
-                            qid = future_ev.metadata.get('qid')
-                            if qid:
-                                question_alerts[str(qid)] = f"Respondió {int(time_diff)}s después de incidente"
-                            # No ocultamos el ANSWER_SAVED, queremos verlo
-                            break
-                        if future_ev.event_type in ['FOCUS_LOST', 'FULLSCREEN_EXIT']:
-                            break
-                    break 
-
-            if not getattr(event, 'duration_away', None) and i + 1 < len(raw_events):
+                    processed_ids.add(next_ev.id) 
+                    if not found_return:
+                        delta = (next_ev.timestamp - event.timestamp).total_seconds()
+                        event.duration_away = int(delta)
+                        event.return_timestamp = next_ev.timestamp
+                        found_return = True
+                        for k in range(j + 1, len(raw_events)):
+                            future_ev = raw_events[k]
+                            time_diff = (future_ev.timestamp - next_ev.timestamp).total_seconds()
+                            if time_diff > 15: break 
+                            if future_ev.event_type == 'ANSWER_SAVED':
+                                event.suspicious_answer = True
+                                event.reaction_time = int(time_diff)
+                                processed_ids.add(future_ev.id) 
+                                break
+                    continue 
+            if not found_return and i + 1 < len(raw_events):
                  delta = (raw_events[i+1].timestamp - event.timestamp).total_seconds()
                  event.duration_away = int(delta)
-        
-        final_events.append(event)
+            final_events.append(event)
+        elif event.event_type == 'FOCUS_GAINED':
+            processed_ids.add(event.id)
+        else:
+            processed_ids.add(event.id)
+            final_events.append(event)
 
-    # Filtrar evidencias: Solo las que NO son incidentes (para el historial DNI)
-    # Las que tienen "INCIDENTE" en la URL o metadata se excluyen de aquí
-    # (Ya se muestran en la bitácora si tienen 'evidence_url')
     evidence_all = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
-    evidence_validation = [
-        ev for ev in evidence_all 
-        if "INCIDENTE" not in (ev.file_url or "") and ev.gemini_analysis.get('tipo') != 'INCIDENTE'
-    ]
+    evidence_validation = [ev for ev in evidence_all if "INCIDENTE" not in (ev.file_url or "")]
 
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
-    penalized_set = set(attempt.penalized_items or [])
-    
     qa_list = []
     for item in items:
-        sid = str(item.id)
-        user_response = student_answers.get(sid)
+        user_response = student_answers.get(str(item.id))
         correct_option = next((o for o in (item.options or []) if o.get('correct')), None)
         correct_text = correct_option.get('text') if correct_option else "N/A"
         is_correct = (user_response and user_response == correct_text)
-        
         qa_list.append({
-            'id': item.id,
-            'question': item.stem, 
-            'user_response': user_response,
-            'correct_response': correct_text, 
-            'is_correct': is_correct,
-            'is_penalized': sid in penalized_set,
-            'alert': question_alerts.get(sid)
+            'question': item.stem, 'user_response': user_response,
+            'correct_response': correct_text, 'is_correct': is_correct
         })
 
     return render(request, 'runner/attempt_detail.html', {
