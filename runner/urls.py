@@ -22,15 +22,16 @@ urlpatterns = [
     path('api/save-answer/<uuid:attempt_id>/', views.save_answer, name='save_answer'),
     path('api/log-event/<uuid:attempt_id>/', views.log_event, name='log_event'),
     
-    # --- NUEVA RUTA: Iniciar Timer cuando se pone Pantalla Completa ---
+    # Timer
     path('api/start-timer/<uuid:attempt_id>/', views.start_exam_timer, name='start_timer'),
-    # ------------------------------------------------------------------
 
     path('submit/<uuid:attempt_id>/', views.submit_exam_view, name='submit_exam'),
     path('finished/<uuid:attempt_id>/', views.exam_finished_view, name='exam_finished'),
 
     # 3. GESTIÓN
+    # Esta es la ruta clave para el botón "Volver":
     path('dashboard/<int:exam_id>/', views.teacher_dashboard_view, name='teacher_dashboard'),
+    
     path('attempt/<uuid:attempt_id>/detail/', views.attempt_detail_view, name='attempt_detail'),
     path('pdf_export/<int:exam_id>/', views.descargar_pdf_examen, name='descargar_pdf'),
 ]
