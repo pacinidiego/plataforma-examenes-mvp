@@ -19,7 +19,7 @@
             </div>
         </div>
         <div class="mt-4 md:mt-0 text-right bg-gray-50 p-4 rounded-lg">
-            <p class="text-sm text-gray-500 uppercase tracking-wide">Nota Actual</p>
+            <p class="text-sm text-gray-500 uppercase tracking-wide">Nota Calculada</p>
             <p class="text-3xl font-bold text-gray-900">{{ attempt.score|default_if_none:"-"|floatformat:1 }}</p>
             <p class="text-xs text-gray-400 mt-1">
                 {% if attempt.completed_at %}Finalizado: {{ attempt.completed_at|date:"d/m H:i" }}{% else %}En curso / Abandonado{% endif %}
@@ -35,8 +35,9 @@
                 Foto DNI (Referencia Actual)
             </h3>
             <div class="aspect-w-16 aspect-h-9 bg-gray-100 rounded-md overflow-hidden flex items-center justify-center border group relative">
-                {% if attempt.signed_photo_id_url %} <img src="{{ attempt.signed_photo_id_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Foto ID">
-                    <a href="{{ attempt.signed_photo_id_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
+                {% if attempt.photo_id_url %}
+                    <img src="{{ attempt.photo_id_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Foto ID">
+                    <a href="{{ attempt.photo_id_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
                         🔍 Ver Original
                     </a>
                 {% else %}<div class="text-gray-400 italic p-10 text-center">No se capturó foto de documento</div>{% endif %}
@@ -49,8 +50,9 @@
                 Rostro Detectado (Inicio de Examen)
             </h3>
             <div class="aspect-w-16 aspect-h-9 bg-gray-100 rounded-md overflow-hidden flex items-center justify-center border group relative">
-                {% if attempt.signed_face_url %} <img src="{{ attempt.signed_face_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Rostro Ref">
-                    <a href="{{ attempt.signed_face_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
+                {% if attempt.reference_face_url %}
+                    <img src="{{ attempt.reference_face_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Rostro Ref">
+                    <a href="{{ attempt.reference_face_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
                         🔍 Ver Original
                     </a>
                 {% else %}<div class="text-gray-400 italic p-10 text-center">No se capturó rostro inicial</div>{% endif %}
@@ -66,7 +68,8 @@
         {% for evidence in evidence_list %}
         <div class="bg-white border rounded-lg shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
             <div class="relative h-32 bg-gray-100 group">
-                <img src="{{ evidence.signed_file_url }}" class="w-full h-full object-cover" alt="Evidencia"> <a href="{{ evidence.signed_file_url }}" target="_blank" class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-bold">
+                <img src="{{ evidence.file_url }}" class="w-full h-full object-cover" alt="Evidencia">
+                <a href="{{ evidence.file_url }}" target="_blank" class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-bold">
                     Abrir Foto ↗
                 </a>
             </div>
@@ -101,8 +104,41 @@
     </div>
     {% endif %}
 
+    <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Detalle de Respuestas</h2>
+    <div class="space-y-4 mb-10">
+        {% for qa in qa_list %}
+        <div class="p-4 rounded-lg border flex flex-col md:flex-row md:items-start gap-4 shadow-sm
+            {% if qa.is_correct %}bg-green-50 border-green-200{% else %}bg-red-50 border-red-200{% endif %}">
+            <div class="flex-shrink-0 mt-1">
+                {% if qa.is_correct %} <span class="text-green-600 text-xl">✅</span> {% else %} <span class="text-red-600 text-xl">❌</span> {% endif %}
+            </div>
+            <div class="flex-1">
+                <h3 class="font-bold text-gray-900 mb-2">{{ qa.question }}</h3>
+                <div class="grid md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="block text-xs uppercase font-bold text-gray-500 mb-1">Respuesta del Alumno</span>
+                        <div class="font-medium {% if qa.is_correct %}text-green-800{% else %}text-red-800{% endif %}">
+                            {{ qa.user_response|default:"Sin respuesta" }}
+                        </div>
+                    </div>
+                    {% if not qa.is_correct %}
+                    <div>
+                        <span class="block text-xs uppercase font-bold text-gray-500 mb-1">Respuesta Correcta</span>
+                        <div class="font-medium text-gray-800">{{ qa.correct_response }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="p-6 bg-gray-50 border border-gray-200 rounded-lg text-center text-gray-500">
+            No hay preguntas o respuestas registradas para este examen.
+        </div>
+        {% endfor %}
+    </div>
+
     <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Bitácora de Vigilancia (Logs)</h2>
-    <div class="bg-gray-50 rounded-lg p-6 border border-gray-200 mb-10">
+    <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
         <div class="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
             
             {% for event in events %}
@@ -176,9 +212,10 @@
                         </div>
                     </div>
 
-                    {% if event.signed_evidence_url %} <div class="shrink-0 mx-auto sm:mx-0">
-                            <a href="{{ event.signed_evidence_url }}" target="_blank" class="block group relative w-32 h-24">
-                                <img src="{{ event.signed_evidence_url }}" 
+                    {% if event.metadata.evidence_url %}
+                        <div class="shrink-0 mx-auto sm:mx-0">
+                            <a href="{{ event.metadata.evidence_url }}" target="_blank" class="block group relative w-32 h-24">
+                                <img src="{{ event.metadata.evidence_url }}" 
                                      class="w-full h-full object-cover rounded border border-gray-300 shadow-sm group-hover:opacity-90 transition-opacity" 
                                      alt="Evidencia"
                                      loading="lazy">
@@ -201,9 +238,9 @@
             {% endfor %}
         </div>
     </div>
-
+    
     <div class="mt-12 mb-20 border-t pt-8">
-        <h2 class="text-2xl font-bold text-gray-900 mb-6">Auditoría y Veredicto Final</h2>
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">Veredicto y Calificación Final</h2>
         
         <form method="POST" class="bg-white rounded-xl border-2 shadow-lg overflow-hidden transition-colors
             {% if attempt.review_status == 'approved' %}border-green-500 shadow-green-100
@@ -219,111 +256,58 @@
                 
                 <div class="flex items-center gap-4">
                     <div class="p-3 rounded-full bg-white shadow-sm border">
-                        {% if attempt.review_status == 'approved' %} <span class="text-2xl">✅</span>
-                        {% elif attempt.review_status == 'rejected' %} <span class="text-2xl">⛔</span>
-                        {% else %} <span class="text-2xl">⚖️</span> {% endif %}
+                        {% if attempt.review_status == 'approved' %}
+                            <span class="text-2xl">✅</span>
+                        {% elif attempt.review_status == 'rejected' %}
+                            <span class="text-2xl">⛔</span>
+                        {% else %}
+                            <span class="text-2xl">⚖️</span>
+                        {% endif %}
                     </div>
                     <div>
                         <p class="text-xs font-bold uppercase tracking-wider opacity-60">Estado Actual</p>
-                        <h3 class="text-xl font-black text-gray-800">{{ attempt.get_review_status_display }}</h3>
+                        <h3 class="text-xl font-black text-gray-800">
+                            {{ attempt.get_review_status_display }}
+                        </h3>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-6">
-                    <div class="text-right">
-                        <label class="block text-xs font-bold text-red-500 uppercase mb-1">Penalidad Manual</label>
-                        <div class="flex items-center justify-end">
-                            <span class="text-xl font-bold text-red-500 mr-1">-</span>
-                            <input type="number" step="0.1" min="0" name="penalty_points" 
-                                   value="{{ attempt.penalty_points|stringformat:'.1f' }}" 
-                                   class="text-2xl font-bold text-right bg-transparent border-b-2 border-red-200 focus:border-red-500 outline-none w-16 text-red-600">
-                        </div>
-                    </div>
-                    <div class="text-right border-l pl-6">
-                        <p class="text-xs font-bold text-gray-500 uppercase mb-1">Nota Final</p>
-                        <p class="text-4xl font-black text-gray-900 leading-none">{{ attempt.score|default_if_none:"0.0"|floatformat:1 }}</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="border-b bg-gray-50/50">
-                <div class="px-6 py-4">
-                    <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Revisión de Integridad por Pregunta</h4>
-                    <div class="overflow-x-auto border rounded-lg bg-white shadow-sm">
-                        <table class="w-full text-sm text-left">
-                            <thead class="text-xs text-gray-500 uppercase bg-gray-100 border-b">
-                                <tr>
-                                    <th class="px-4 py-3 w-10">#</th>
-                                    <th class="px-4 py-3">Pregunta</th>
-                                    <th class="px-4 py-3 w-32">Estado</th>
-                                    <th class="px-4 py-3 w-48">Alertas</th>
-                                    <th class="px-4 py-3 w-32 text-center text-red-600 font-bold">ANULAR</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                {% for qa in qa_list %}
-                                <tr class="hover:bg-gray-50 transition-colors {% if qa.alert %}bg-red-50{% endif %}">
-                                    <td class="px-4 py-3 font-mono text-gray-500">{{ forloop.counter }}</td>
-                                    <td class="px-4 py-3">
-                                        <div class="font-medium text-gray-900 line-clamp-1" title="{{ qa.question }}">{{ qa.question }}</div>
-                                        <div class="text-xs text-gray-500 mt-1">
-                                            Rta: <span class="font-medium {% if qa.is_correct %}text-green-600{% else %}text-red-600{% endif %}">{{ qa.user_response|default:"-" }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="px-4 py-3">
-                                        {% if qa.is_penalized %}
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">ANULADA</span>
-                                        {% elif qa.is_correct %}
-                                            <span class="text-green-600 font-bold">Correcta</span>
-                                        {% else %}
-                                            <span class="text-gray-400">Incorrecta</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="px-4 py-3">
-                                        {% if qa.alert %}
-                                            <div class="flex items-center text-xs text-red-700 font-bold animate-pulse">
-                                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                                                {{ qa.alert }}
-                                            </div>
-                                        {% else %} <span class="text-gray-300 text-xs">-</span> {% endif %}
-                                    </td>
-                                    <td class="px-4 py-3 text-center bg-gray-50 border-l">
-                                        <label class="inline-flex items-center cursor-pointer">
-                                            <input type="checkbox" name="penalized_item" value="{{ qa.id }}" 
-                                                   class="w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500"
-                                                   {% if qa.is_penalized %}checked{% endif %}>
-                                        </label>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="text-right">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nota Final (Editable)</label>
+                    <input type="number" step="0.1" name="manual_score" value="{{ attempt.score|stringformat:'.1f' }}" 
+                           class="text-3xl font-bold text-right bg-transparent border-b-2 border-gray-300 focus:border-indigo-600 outline-none w-24 p-1">
                 </div>
             </div>
 
             <div class="p-6 grid md:grid-cols-3 gap-8">
+                
                 <div class="md:col-span-2">
-                    <label class="block text-sm font-bold text-gray-700 mb-2">Comentarios del Docente</label>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Comentarios / Justificación</label>
                     <textarea name="teacher_comment" rows="4" 
                               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
-                              placeholder="Explica las penalizaciones o el veredicto...">{{ attempt.teacher_comment|default:'' }}</textarea>
+                              placeholder="Escribe aquí el feedback para el alumno o la justificación de la anulación...">{{ attempt.teacher_comment|default:'' }}</textarea>
+                    <p class="text-xs text-gray-400 mt-2">Este comentario quedará registrado en la auditoría del examen.</p>
                 </div>
+
                 <div class="flex flex-col gap-3 justify-end">
-                    <button type="submit" name="action" value="save_penalties"
-                            class="w-full py-3 px-4 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold rounded-lg hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2">
-                        <span>🔄</span> Recalcular Nota
+                    
+                    <button type="submit" name="action" value="save_comment"
+                            class="w-full py-3 px-4 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                        <span>💾</span> Guardar Cambios
                     </button>
+
                     <div class="h-px bg-gray-200 my-1"></div>
+
                     <button type="submit" name="action" value="approve"
-                            onclick="return confirm('¿Confirmas que este examen es VÁLIDO? El alumno verá esta nota.')"
+                            onclick="return confirm('¿Confirmas que este examen es VÁLIDO?')"
                             class="w-full py-3 px-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow-md shadow-green-200 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
-                        <span>✅</span> Validar y Publicar
+                        <span>✅</span> Validar Examen
                     </button>
+
                     <button type="submit" name="action" value="reject"
-                            onclick="return confirm('¿Estás seguro de ANULAR el examen? Nota pasará a 0.')"
+                            onclick="return confirm('¿Estás seguro de ANULAR este examen? La nota pasará a 0.')"
                             class="w-full py-3 px-4 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 shadow-md shadow-red-200 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
-                        <span>⛔</span> Anular Todo
+                        <span>⛔</span> Anular por Fraude
                     </button>
                 </div>
             </div>
