@@ -53,12 +53,12 @@ def get_secure_url(path_reference):
     if not path_reference:
         return None
     
-    # Si empieza con http, asumimos que es un link viejo (ya quemado) o externo
+    # Si empieza con http, asumimos que es un link viejo o externo
     if str(path_reference).startswith('http'):
         return path_reference
         
     try:
-        # Esto genera un link válido por 1 hora (o lo que configure AWS_QUERYSTRING_EXPIRE)
+        # Genera link válido por el tiempo default del storage (ej. 1 hora)
         return default_storage.url(path_reference)
     except Exception as e:
         print(f"Error generando URL firmada: {e}")
@@ -106,6 +106,7 @@ def lobby_view(request, access_code):
         nombre = request.POST.get('full_name', '').strip()
         legajo = request.POST.get('student_id', '').strip()
         
+        # Detecta si ya terminó O si ya fue juzgado por el docente
         finished_attempt = Attempt.objects.filter(
             exam=exam, student_legajo__iexact=legajo
         ).filter(
@@ -145,7 +146,7 @@ def biometric_gate_view(request, access_code, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     return redirect('runner:exam_runner', access_code=access_code, attempt_id=attempt.id)
 
-# 4. REGISTRO BIOMÉTRICO (CORREGIDO: Guarda PATH, no URL)
+# 4. REGISTRO BIOMÉTRICO (Guarda PATH)
 @require_POST
 def register_biometrics(request, attempt_id):
     try:
@@ -160,7 +161,7 @@ def register_biometrics(request, attempt_id):
                 try:
                     image_content = base64.b64decode(base64_clean)
                     filename = f"evidence/FACE_REF_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
-                    # Guardamos el PATH relativo, no la URL firmada
+                    # Guardamos PATH relativo
                     saved_path = default_storage.save(filename, ContentFile(image_content))
                     attempt.reference_face_url = saved_path 
                 except Exception as e:
@@ -174,7 +175,7 @@ def register_biometrics(request, attempt_id):
                 try:
                     image_content = base64.b64decode(base64_clean)
                     filename = f"evidence/DNI_REF_{attempt.id}_{uuid.uuid4().hex[:6]}.jpg"
-                    # Guardamos el PATH relativo
+                    # Guardamos PATH relativo
                     saved_path = default_storage.save(filename, ContentFile(image_content))
                     attempt.photo_id_url = saved_path 
                 except Exception as e:
@@ -185,7 +186,7 @@ def register_biometrics(request, attempt_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# 5. VALIDACIÓN DNI (CORREGIDO: Guarda PATH, no URL)
+# 5. VALIDACIÓN DNI (Guarda PATH)
 @require_POST
 def validate_dni_ocr(request, attempt_id):
     try:
@@ -219,7 +220,6 @@ def validate_dni_ocr(request, attempt_id):
     if not GOOGLE_API_KEY:
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    # ... (Resto de la lógica de Gemini se mantiene igual) ...
     modelos = ["gemini-flash-lite-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     ia_success = False
     error_actual = ""
@@ -428,7 +428,7 @@ def exam_finished_view(request, attempt_id):
         'attempt': attempt, 'detalles': detalles, 'score_percentage': score_percentage, 'en_revision': False
     })
 
-# 10. LOGS (CORREGIDO: Guarda PATH)
+# 10. LOGS (Guarda PATH)
 @require_POST
 def log_event(request, attempt_id):
     try:
@@ -448,17 +448,11 @@ def log_event(request, attempt_id):
             # Guardamos PATH
             saved_path = default_storage.save(filename, ContentFile(image_content))
             
-            # Metadata debe tener la URL FIRMADA para que el frontend pueda mostrarla (si la pide inmediatamente)
-            # PERO en la BD Evidence guardamos el path.
-            # Aquí hay un truco: al guardarlo en metadata, si pasa 1 hora, ese link en JSON muere.
-            # Lo correcto es guardar el path en metadata y que el visualizador lo firme.
-            # Para simplificar el MVP, guardamos el path en Evidence y usamos Evidence para mostrar.
-            
             Evidence.objects.create(
                 attempt=attempt, file_url=saved_path, timestamp=timezone.now(),
                 gemini_analysis={'tipo': 'INCIDENTE', 'motivo': event_type, 'alerta': 'ALTA'}
             )
-            # En metadata del evento, guardamos el path para referencia
+            # En metadata guardamos el path
             metadata['evidence_path'] = saved_path
 
         AttemptEvent.objects.create(attempt=attempt, event_type=event_type, metadata=metadata)
@@ -517,7 +511,7 @@ def teacher_dashboard_view(request, exam_id):
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO (CORREGIDO: GENERACIÓN DE LINKS FRESCOS)
+# 12. DETALLE DEL INTENTO (Links frescos + Corrección temp_signed_url)
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
@@ -561,7 +555,6 @@ def attempt_detail_view(request, attempt_id):
     skip_ids = set()
     question_alerts = {} 
 
-    # (Procesamiento de eventos igual que antes...)
     for i, event in enumerate(raw_events):
         if event.id in skip_ids: continue
         if event.event_type == 'FOCUS_GAINED': continue
@@ -595,24 +588,22 @@ def attempt_detail_view(request, attempt_id):
                  delta = (raw_events[i+1].timestamp - event.timestamp).total_seconds()
                  event.duration_away = int(delta)
         
-        # --- NUEVO: Generar Link Fresco para evidencias en logs ---
+        # --- Generar URL firmada en variable TEMPORAL (Evita el Error 500) ---
         if event.metadata.get('evidence_path'):
-             # Si tenemos el path, generamos la URL firmada fresca
-             event.signed_evidence_url = get_secure_url(event.metadata.get('evidence_path'))
+             event.temp_signed_url = get_secure_url(event.metadata.get('evidence_path'))
         elif event.metadata.get('evidence_url'):
-             # Fallback para datos viejos
-             event.signed_evidence_url = get_secure_url(event.metadata.get('evidence_url'))
+             event.temp_signed_url = get_secure_url(event.metadata.get('evidence_url'))
 
         final_events.append(event)
 
     evidence_all = Evidence.objects.filter(attempt=attempt).order_by('timestamp')
     evidence_validation = [ev for ev in evidence_all if "INCIDENTE" not in (ev.file_url or "")]
     
-    # --- GENERACIÓN DE LINKS FRESCOS PARA EL TEMPLATE ---
+    # Firmas principales
     photo_id_signed = get_secure_url(attempt.photo_id_url)
     face_ref_signed = get_secure_url(attempt.reference_face_url)
     
-    # Inyectamos URL firmada en cada objeto de evidencia
+    # Firmas lista evidencias
     for ev in evidence_validation:
         ev.signed_url = get_secure_url(ev.file_url)
 
@@ -637,12 +628,11 @@ def attempt_detail_view(request, attempt_id):
         'events': final_events, 
         'evidence_list': evidence_validation, 
         'qa_list': qa_list,
-        # Pasamos las URLs firmadas
         'photo_id_signed': photo_id_signed,
         'face_ref_signed': face_ref_signed
     })
 
-# ... (Resto de vistas de teacher_home, portal, pdf igual) ...
+# ... (Resto de vistas igual) ...
 @login_required
 @user_passes_test(is_staff)
 def teacher_home_view(request):
