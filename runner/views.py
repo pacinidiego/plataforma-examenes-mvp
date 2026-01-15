@@ -501,6 +501,7 @@ def teacher_dashboard_view(request, exam_id):
         status_color = 'green'
         status_text = "Confiable"
         
+        # 1. Evaluación automática de riesgo
         if risk_score > limit_high or dni_failed: 
             status_color = 'red'
             status_text = "Alto Riesgo / Rev. Manual"
@@ -508,16 +509,25 @@ def teacher_dashboard_view(request, exam_id):
             status_color = 'yellow'
             status_text = "Riesgo Medio"
         
+        # 2. Sobreescritura por estado manual
         if attempt.review_status == 'approved':
             status_color = 'blue'
             status_text = "Validado"
         elif attempt.review_status == 'rejected':
             status_color = 'gray'
             status_text = "Anulado"
+        elif attempt.review_status == 'revision': # <--- NUEVA CONDICIÓN
+            status_color = 'indigo'
+            status_text = "En Revisión (Guardado)"
         
         results.append({
-            'attempt': attempt, 'risk_score': risk_score, 'status_color': status_color, 
-            'status_text': status_text, 'event_count': events.count(), 'show_grade': (status_color == 'green' or status_color == 'blue')
+            'attempt': attempt, 
+            'risk_score': risk_score, 
+            'status_color': status_color, 
+            'status_text': status_text, 
+            'event_count': events.count(), 
+            # Permitimos ver la nota también si está en revisión (para control docente)
+            'show_grade': (status_color in ['green', 'blue', 'indigo'])
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
