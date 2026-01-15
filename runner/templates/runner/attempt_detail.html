@@ -36,9 +36,9 @@
                 Foto DNI (Referencia Actual)
             </h3>
             <div class="aspect-w-16 aspect-h-9 bg-gray-100 rounded-md overflow-hidden flex items-center justify-center border group relative">
-                {% if attempt.photo_id_url %}
-                    <img src="{{ attempt.photo_id_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Foto ID">
-                    <a href="{{ attempt.photo_id_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
+                {% if photo_id_signed %}
+                    <img src="{{ photo_id_signed }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Foto ID">
+                    <a href="{{ photo_id_signed }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
                         🔍 Ver Original
                     </a>
                 {% else %}<div class="text-gray-400 italic p-10 text-center">No se capturó foto de documento</div>{% endif %}
@@ -51,9 +51,9 @@
                 Rostro Detectado (Inicio de Examen)
             </h3>
             <div class="aspect-w-16 aspect-h-9 bg-gray-100 rounded-md overflow-hidden flex items-center justify-center border group relative">
-                {% if attempt.reference_face_url %}
-                    <img src="{{ attempt.reference_face_url }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Rostro Ref">
-                    <a href="{{ attempt.reference_face_url }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
+                {% if face_ref_signed %}
+                    <img src="{{ face_ref_signed }}" class="object-contain w-full h-64 hover:scale-105 transition-transform duration-300" alt="Rostro Ref">
+                    <a href="{{ face_ref_signed }}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold">
                         🔍 Ver Original
                     </a>
                 {% else %}<div class="text-gray-400 italic p-10 text-center">No se capturó rostro inicial</div>{% endif %}
@@ -67,8 +67,8 @@
         {% for evidence in evidence_list %}
         <div class="bg-white border rounded-lg shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
             <div class="relative h-32 bg-gray-100 group">
-                <img src="{{ evidence.file_url }}" class="w-full h-full object-cover" alt="Evidencia">
-                <a href="{{ evidence.file_url }}" target="_blank" class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-bold">
+                <img src="{{ evidence.signed_url }}" class="w-full h-full object-cover" alt="Evidencia">
+                <a href="{{ evidence.signed_url }}" target="_blank" class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-bold">
                     Abrir Foto ↗
                 </a>
             </div>
@@ -197,7 +197,7 @@
                             {% if event.metadata %}
                                 <div class="bg-gray-50 p-2 rounded text-xs overflow-x-auto border border-gray-100">
                                     {% for key, value in event.metadata.items %}
-                                        {% if key != 'evidence_url' and key != 'image' and key != 'reason' %}
+                                        {% if key != 'evidence_url' and key != 'image' and key != 'reason' and key != 'evidence_path' %}
                                             <div class="mb-1"><span class="font-bold text-gray-600">{{ key }}:</span> {{ value }}</div>
                                         {% endif %}
                                         {% if key == 'reason' and not event.duration_away %}
@@ -209,10 +209,10 @@
                         </div>
                     </div>
 
-                    {% if event.metadata.evidence_url %}
+                    {% if event.signed_evidence_url %}
                         <div class="shrink-0 mx-auto sm:mx-0">
-                            <a href="{{ event.metadata.evidence_url }}" target="_blank" class="block group relative w-32 h-24">
-                                <img src="{{ event.metadata.evidence_url }}" 
+                            <a href="{{ event.signed_evidence_url }}" target="_blank" class="block group relative w-32 h-24">
+                                <img src="{{ event.signed_evidence_url }}" 
                                      class="w-full h-full object-cover rounded border border-gray-300 shadow-sm group-hover:opacity-90 transition-opacity" 
                                      alt="Evidencia"
                                      loading="lazy">
@@ -367,13 +367,10 @@
 <div id="confirmationModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div class="fixed inset-0 bg-gray-600 bg-opacity-75 transition-opacity backdrop-blur-sm" aria-hidden="true" onclick="closeModal()"></div>
-
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-
         <div class="relative inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
             <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div class="sm:flex sm:items-start">
-                    
                     <div id="modalIconContainer" class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10">
                         <svg id="modalIconCheck" class="hidden h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -382,29 +379,17 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </div>
-
                     <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                        <h3 class="text-lg leading-6 font-bold text-gray-900" id="modal-title">
-                            Confirmar Acción
-                        </h3>
+                        <h3 class="text-lg leading-6 font-bold text-gray-900" id="modal-title">Confirmar Acción</h3>
                         <div class="mt-2">
-                            <p class="text-sm text-gray-500" id="modal-description">
-                                ¿Estás seguro?
-                            </p>
+                            <p class="text-sm text-gray-500" id="modal-description">¿Estás seguro?</p>
                         </div>
                     </div>
                 </div>
             </div>
-            
             <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button type="button" id="confirmBtn" onclick="confirmAction()"
-                        class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 text-base font-bold text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm">
-                    Confirmar
-                </button>
-                <button type="button" onclick="closeModal()"
-                        class="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
-                    Cancelar
-                </button>
+                <button type="button" id="confirmBtn" onclick="confirmAction()" class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 text-base font-bold text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm">Confirmar</button>
+                <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Cancelar</button>
             </div>
         </div>
     </div>
@@ -425,37 +410,24 @@
 
     function openModal(actionType) {
         pendingAction = actionType;
-        
-        // Resetear iconos
         iconCheck.classList.add('hidden');
         iconX.classList.add('hidden');
         
         if (actionType === 'approve') {
-            // Configurar para APROBAR
             title.textContent = 'Validar y Publicar Examen';
             desc.textContent = '¿Confirmas que este examen es VÁLIDO? El alumno verá la nota calculada inmediatamente y el estado cambiará a Aprobado.';
-            
-            // Estilos Verde
             iconContainer.className = 'mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10';
             iconCheck.classList.remove('hidden');
-            
             confirmBtn.className = 'w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-bold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:ml-3 sm:w-auto sm:text-sm';
             confirmBtn.textContent = 'Sí, Validar';
-
         } else if (actionType === 'reject') {
-            // Configurar para ANULAR
             title.textContent = 'Anular Examen por Fraude';
             desc.innerHTML = '¿Estás seguro de <b>ANULAR</b> este examen? <br><br>⚠️ La nota pasará a <b>0.0</b> irreversiblemente y se notificará al alumno.';
-            
-            // Estilos Rojo
             iconContainer.className = 'mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10';
             iconX.classList.remove('hidden');
-            
             confirmBtn.className = 'w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-bold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm';
             confirmBtn.textContent = 'Sí, Anular';
         }
-
-        // Mostrar Modal
         modal.classList.remove('hidden');
     }
 
@@ -464,12 +436,10 @@
     }
 
     function confirmAction() {
-        // Asignar el valor al input oculto y enviar el formulario
         actionInput.value = pendingAction;
         gradingForm.submit();
     }
 
-    // Lógica existente de cálculo online
     document.addEventListener('DOMContentLoaded', function() {
         const totalQuestions = {{ qa_list|length }}; 
         const correctItemsIds = [
