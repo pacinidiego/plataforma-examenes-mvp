@@ -387,7 +387,7 @@ def submit_exam_view(request, attempt_id):
     attempt.save()
     return redirect('runner:exam_finished', attempt_id=attempt.id)
 
-# 9. PANTALLA FINAL
+# 9. PANTALLA FINAL (MODIFICADA: INCLUYE FEEDBACK Y PENALIZACIONES)
 def exam_finished_view(request, attempt_id):
     attempt = get_object_or_404(Attempt, id=attempt_id)
     events = attempt.events.all()
@@ -425,21 +425,36 @@ def exam_finished_view(request, attempt_id):
 
     items = attempt.exam.items.all()
     student_answers = attempt.answers or {}
+    
+    # Convertimos la lista de penalizadas a un Set de strings para búsqueda rápida
+    penalized_set = set(str(x) for x in (attempt.penalized_items or []))
+    
     detalles = []
     
     for item in items:
-        user_response = student_answers.get(str(item.id))
+        sid = str(item.id)
+        user_response = student_answers.get(sid)
         correct_option = next((o for o in (item.options or []) if o.get('correct')), None)
         correct_text = correct_option.get('text') if correct_option else None
+        
         es_correcta = False
-        if user_response and correct_text and user_response == correct_text: es_correcta = True
-        detalles.append({'es_correcta': es_correcta, 'pregunta_id': item.id})
+        if user_response and correct_text and user_response == correct_text: 
+            es_correcta = True
+            
+        detalles.append({
+            'es_correcta': es_correcta, 
+            'pregunta_id': item.id,
+            'is_penalized': sid in penalized_set # Flag para mostrar "Anulada/Fraude"
+        })
 
     score_percentage = 0
     if attempt.score is not None: score_percentage = int((attempt.score / 10) * 100)
 
     return render(request, 'runner/finished.html', {
-        'attempt': attempt, 'detalles': detalles, 'score_percentage': score_percentage, 'en_revision': False
+        'attempt': attempt, 
+        'detalles': detalles, 
+        'score_percentage': score_percentage, 
+        'en_revision': False
     })
 
 # 10. LOGS
@@ -516,7 +531,7 @@ def teacher_dashboard_view(request, exam_id):
         elif attempt.review_status == 'rejected':
             status_color = 'gray'
             status_text = "Anulado"
-        elif attempt.review_status == 'revision': # <--- NUEVA CONDICIÓN
+        elif attempt.review_status == 'revision': # <--- Estado intermedio
             status_color = 'indigo'
             status_text = "En Revisión (Guardado)"
         
@@ -531,7 +546,7 @@ def teacher_dashboard_view(request, exam_id):
         })
     return render(request, 'runner/teacher_dashboard.html', {'exam': exam, 'results': results})
 
-# 12. DETALLE DEL INTENTO (MODIFICADO Y COMPLETADO)
+# 12. DETALLE DEL INTENTO
 @login_required
 @user_passes_test(is_staff)
 def attempt_detail_view(request, attempt_id):
