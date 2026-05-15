@@ -9,12 +9,19 @@ from django.http import HttpResponse
 def health_check(request):
     return HttpResponse("OK: Web Service (S0a) está activo.", content_type="text/plain")
 
+def robots_txt(request):
+    content = "User-agent: *\nDisallow: /\n"
+    return HttpResponse(content, content_type="text/plain")
+
 urlpatterns = [
     # (S0a) Panel de Admin del Platform SA
     path('admin/', admin.site.urls),
     
     # (S0a) Health Check
     path('health/', health_check, name='health_check'),
+
+    # Robots
+    path('robots.txt', robots_txt, name='robots_txt'),
 
     # (S1b) URLs de Autenticación
     path('accounts/', include('django.contrib.auth.urls')),
