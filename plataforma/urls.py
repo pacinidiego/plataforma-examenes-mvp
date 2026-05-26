@@ -5,16 +5,12 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_GET
-import os
 import time
 
 START_TIME = time.time()
 
 @require_GET
 def health_check(request):
-    if request.headers.get('X-X71-Key') != os.environ.get('X71_API_KEY'):
-        return JsonResponse({"error": "forbidden"}, status=403)
-
     db_ok = True
     try:
         from django.db import connection
