@@ -3,11 +3,32 @@ Definiciones de URL principales para plataforma.
 """
 from django.contrib import admin
 from django.urls import path, include
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_GET
+import os
+import time
 
-# (S0a) Ruta de Health Check para Render
+START_TIME = time.time()
+
+@require_GET
 def health_check(request):
-    return HttpResponse("OK: Web Service (S0a) está activo.", content_type="text/plain")
+    if request.headers.get('X-X71-Key') != os.environ.get('X71_API_KEY'):
+        return JsonResponse({"error": "forbidden"}, status=403)
+
+    db_ok = True
+    try:
+        from django.db import connection
+        connection.ensure_connection()
+    except Exception:
+        db_ok = False
+
+    return JsonResponse({
+        "status": "ok",
+        "app": "plataforma-examenes",
+        "version": "1.0.0",
+        "db": db_ok,
+        "uptime_seconds": int(time.time() - START_TIME),
+    })
 
 def robots_txt(request):
     content = "User-agent: *\nDisallow: /\n"
