@@ -5,7 +5,6 @@ services:
     env: python
     plan: starter
     region: oregon
-    pythonVersion: "3.12"
     buildFilter:
       paths:
       - "**.py"
@@ -38,7 +37,6 @@ services:
     env: python
     plan: starter
     region: oregon
-    pythonVersion: "3.12"
     buildFilter:
       paths:
       - "**.py"
