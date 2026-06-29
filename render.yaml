@@ -11,7 +11,8 @@ services:
       - "requirements.txt"
     # OCR ahora via OpenRouter: ya no hace falta torch/easyocr (build liviano).
     buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
-    startCommand: "gunicorn plataforma.wsgi"
+    # 1 worker + reciclado periódico: en 512MB con WeasyPrint, más workers se van a OOM.
+    startCommand: "gunicorn plataforma.wsgi --max-requests 150 --max-requests-jitter 30"
     healthCheckPath: /health/
     envVars:
       # DB real en Neon. Valor cargado a mano en el dashboard (NO lo maneja el
@@ -27,7 +28,7 @@ services:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: WEB_CONCURRENCY
-        value: 2
+        value: 1
       # IA — OpenRouter. El valor se carga a mano en el dashboard (no se commitea).
       - key: OPENROUTER_API_KEY
         sync: false
