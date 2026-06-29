@@ -21,7 +21,8 @@ from django.contrib import messages
 from django.utils import timezone 
 from django.contrib.postgres.aggregates import StringAgg 
 
-import google.generativeai as genai 
+# Cliente de IA (OpenRouter — ver plataforma/ai.py)
+from plataforma.ai import client as ai_client, CHAT_MODEL, strip_fences
 
 from exams.models import Exam, Item, ExamItemLink
 from tenancy.models import TenantMembership
@@ -196,20 +197,21 @@ def ai_generate_distractors(request):
     if not stem or not correct_answer:
         return HttpResponse("<p class='text-red-500'>Por favor, escribe el enunciado y la respuesta correcta primero.</p>")
 
+    if not ai_client:
+        return HttpResponse("<p class='text-red-500'>IA no configurada (falta OPENROUTER_API_KEY).</p>")
+
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
         prompt = (
             "Eres un asistente de educación experto en crear exámenes.\n"
             f"Genera 3 distractores incorrectos para: P: \"{stem}\" R: \"{correct_answer}\".\n"
             "Devuelve solo un array JSON de strings: [\"D1\", \"D2\", \"D3\"]"
         )
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json",
-            )
+        response = ai_client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
         )
-        distractors = json.loads(response.text)
+        distractors = json.loads(strip_fences(response.choices[0].message.content))
         if len(distractors) < 3:
             distractors.extend(["", ""]) 
         
@@ -480,8 +482,9 @@ def ai_preview_items(request, exam_id):
             lista_preguntas = "\n- ".join(existing_stems)
             avoid_text = f"\nIMPORTANTE - YA TENGO ESTAS PREGUNTAS, NO LAS REPITAS:\n{lista_preguntas}\n"
 
-        model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
-        
+        if not ai_client:
+            return HttpResponse("<p class='text-red-500'>IA no configurada (falta OPENROUTER_API_KEY).</p>")
+
         prompt = (
             "Eres un experto en evaluación académica universitaria.\n"
             f"PEDIDO: \"{user_prompt}\".\n"
@@ -495,13 +498,14 @@ def ai_preview_items(request, exam_id):
             "Devuelve SOLO un JSON Array válido:\n"
             "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\"], \"tags\": \"tag1, tag2\"}]"
         )
-        
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(response_mime_type="application/json")
+
+        response = ai_client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
         )
-        
-        generated_data = json.loads(response.text)
+
+        generated_data = json.loads(strip_fences(response.choices[0].message.content))
         
         for item in generated_data:
             item['json_string'] = json.dumps(item)

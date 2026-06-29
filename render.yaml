@@ -28,6 +28,9 @@ services:
         generateValue: true
       - key: WEB_CONCURRENCY
         value: 4
+      # IA — OpenRouter. El valor se carga a mano en el dashboard (no se commitea).
+      - key: OPENROUTER_API_KEY
+        sync: false
 
   # Servicio 2: El Worker Asíncrono (Celery)
   - type: worker

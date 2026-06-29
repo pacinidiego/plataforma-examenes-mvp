@@ -4,7 +4,6 @@ import base64
 import re
 import os
 import traceback
-import requests
 import time
 import uuid
 from io import BytesIO
@@ -23,20 +22,14 @@ from django.db.models import Q
 
 # Librerías Externas
 from weasyprint import HTML
-import google.generativeai as genai 
+from openai import RateLimitError
+
+# Cliente de IA (OpenRouter — ver plataforma/ai.py)
+from plataforma.ai import client as ai_client, VISION_MODEL, VISION_FALLBACK_MODEL, strip_fences
 
 # Modelos
 from exams.models import Exam
 from .models import Attempt, AttemptEvent, Evidence
-
-# --- CONFIGURACIÓN GEMINI ---
-GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-
-if GOOGLE_API_KEY:
-    try:
-        genai.configure(api_key=GOOGLE_API_KEY)
-    except:
-        pass
 
 # --- FUNCIONES AUXILIARES ---
 def is_staff(user):
@@ -217,60 +210,57 @@ def validate_dni_ocr(request, attempt_id):
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'})
 
-    if not GOOGLE_API_KEY:
+    if not ai_client:
         return JsonResponse({'success': True, 'message': 'Simulación (Sin API Key).'})
 
-    modelos = ["gemini-flash-lite-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
+    modelos = [VISION_MODEL, VISION_FALLBACK_MODEL]
     ia_success = False
     error_actual = ""
     modelo_usado = ""
-    force_manual = False 
+    force_manual = False
     MAX_INTENTOS = 3
 
-    payload = {
-        "contents": [{
-            "parts": [
-                { "text": "Analiza esta imagen. Responde SOLO JSON: {\"es_documento\": true, \"numeros\": \"123456\"}. Si no es DNI, false." },
-                { "inline_data": { "mime_type": "image/jpeg", "data": base64_clean } }
-            ]
-        }]
-    }
-    headers = {'Content-Type': 'application/json'}
+    mensajes = [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Analiza esta imagen de un documento de identidad. Responde SOLO JSON: {\"es_documento\": true, \"numeros\": \"123456\"}. Si no es un DNI/documento, devolve es_documento false."},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_clean}"}},
+        ],
+    }]
 
     for m in modelos:
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={GOOGLE_API_KEY}"
         try:
-            r = requests.post(api_url, headers=headers, json=payload, timeout=10)
-            if r.status_code == 200:
-                modelo_usado = m
-                res = r.json()
-                cands = res.get('candidates', [])
-                if not cands:
-                    error_actual = "IA bloqueó la imagen"
-                    break 
-                raw = cands[0].get('content', {}).get('parts', [])[0].get('text', '')
-                ai_data = json.loads(raw.replace('```json', '').replace('```', '').strip())
-                
-                if ai_data.get('es_documento'):
-                    nums = str(ai_data.get('numeros', ''))
-                    legajo = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
-                    if legajo and (legajo in nums or nums in legajo):
-                        ia_success = True
-                        break 
-                    else:
-                        error_actual = f"Legajo no coincide ({nums})"
-                        break 
+            resp = ai_client.chat.completions.create(
+                model=m,
+                messages=mensajes,
+                temperature=0,
+                max_tokens=200,
+                timeout=20,
+            )
+            modelo_usado = m
+            raw = strip_fences(resp.choices[0].message.content)
+            if not raw:
+                error_actual = "IA bloqueó la imagen"
+                break
+            ai_data = json.loads(raw)
+
+            if ai_data.get('es_documento'):
+                nums = str(ai_data.get('numeros', ''))
+                legajo = re.sub(r'[^0-9]', '', str(attempt.student_legajo))
+                if legajo and (legajo in nums or nums in legajo):
+                    ia_success = True
+                    break
                 else:
-                    error_actual = "No es DNI válido"
-                    break 
-            elif r.status_code == 429:
-                if m == modelos[-1]: force_manual = True
-                continue
+                    error_actual = f"Legajo no coincide ({nums})"
+                    break
             else:
-                error_actual = f"Error API ({r.status_code})"
-                break 
+                error_actual = "No es DNI válido"
+                break
+        except RateLimitError:
+            if m == modelos[-1]: force_manual = True
+            continue
         except Exception as e:
-            error_actual = f"Red: {str(e)}"
+            error_actual = f"Error IA: {str(e)}"
             break
 
     if ia_success:

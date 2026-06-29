@@ -22,6 +22,9 @@ openpyxl==3.1.2
 # PDF
 WeasyPrint>=63.0
 
-# IA (Solo Gemini - Súper ligero)
-google-generativeai>=0.7.2
+# IA (OpenRouter vía SDK OpenAI - mismo stack que XARA)
+openai>=1.40.0
 pillow
+
+# Variables de entorno en desarrollo local (.env)
+python-dotenv>=1.0.0

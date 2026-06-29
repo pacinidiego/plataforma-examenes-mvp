@@ -1,16 +1,23 @@
 """
 Configuración de Django para el proyecto Plataforma.
-Sprint S1c (v7): Integración de IA (Gemini)
+Sprint S1c (v7): Integración de IA (OpenRouter — mismo stack que XARA).
 """
 
 import os
 from pathlib import Path
 import dj_database_url # Render usa esto
 import importlib # Para el logging
-import google.generativeai as genai # (S1c) Importamos la librería de IA
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# En desarrollo local cargamos variables desde un archivo .env (ignorado por git).
+# En Render las variables vienen del entorno, así que esto es un no-op si no hay .env.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / '.env')
+except ImportError:
+    pass
 
 # Clave secreta
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-placeholder-key-s0a')
@@ -200,12 +207,10 @@ LOGIN_URL = '/accounts/login/'
 LOGOUT_REDIRECT_URL = '/'
 
 # --- 5. Configuración de IA (S1c - v7) ---
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-if GEMINI_API_KEY:
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-    except Exception as e:
-        print(f"Error al configurar la API de Gemini: {e}")
+# La IA ahora usa OpenRouter (ver plataforma/ai.py). El cliente lee
+# OPENROUTER_API_KEY del entorno; acá solo dejamos un aviso al arrancar.
+if not os.environ.get('OPENROUTER_API_KEY'):
+    print("AVISO: OPENROUTER_API_KEY no definida — la IA correrá en modo simulación.")
 
 # Si alguien intenta entrar al portal sin permiso, mandarlo aquí:
 LOGIN_URL = '/admin/login/'
