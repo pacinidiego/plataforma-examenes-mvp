@@ -507,13 +507,16 @@ def ai_preview_items(request, exam_id):
             "distractores plausibles pero incorrectos.\n"
             "- Si el pedido no indica cantidad, generá 5 preguntas (máximo 10).\n"
             "- 2 o 3 etiquetas clave por pregunta en el campo 'tags' (separadas por coma).\n"
+            "- Asigná a cada pregunta una dificultad realista en el campo 'difficulty': "
+            "\"facil\", \"media\" o \"dificil\". Si el pedido indica una distribución "
+            "(ej. '5 fáciles y 2 difíciles'), respetala EXACTAMENTE.\n"
             "- Respondé en el idioma del pedido (español por defecto)."
         )
         user_msg = (
             f"PEDIDO DEL DOCENTE (seguilo exactamente):\n{user_prompt}\n"
             f"{avoid_text}\n"
             "Devolvé SOLO un JSON Array válido, sin texto extra ni markdown:\n"
-            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\", \"...\"], \"tags\": \"tag1, tag2\"}]"
+            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\", \"...\"], \"tags\": \"tag1, tag2\", \"difficulty\": \"facil|media|dificil\"}]"
         )
 
         print(f"🧠 [IA generar] modelo={CHAT_MODEL} temp=0.4 pedido={user_prompt!r}", flush=True)
@@ -565,7 +568,16 @@ def ai_commit_items(request, exam_id):
                 options_list.append({"text": dist, "correct": False})
             
             default_tag = data.get('tags', 'IA-Gen')
-            
+
+            # Mapeo de la dificultad que asignó la IA -> entero del modelo (1/2/3).
+            dif_raw = str(data.get('difficulty', '')).strip().lower()
+            if dif_raw in ('1', 'facil', 'fácil', 'easy'):
+                difficulty = 1
+            elif dif_raw in ('3', 'dificil', 'difícil', 'hard'):
+                difficulty = 3
+            else:
+                difficulty = 2  # media / por defecto
+
             item, created = Item.objects.get_or_create(
                 tenant=exam.tenant,
                 stem__iexact=data['stem'].strip(),
@@ -573,7 +585,7 @@ def ai_commit_items(request, exam_id):
                     'author': request.user,
                     'item_type': 'MC',
                     'stem': data['stem'].strip(),
-                    'difficulty': 2,
+                    'difficulty': difficulty,
                     'options': options_list,
                     'tags': default_tag
                 }
