@@ -12,8 +12,8 @@ from openai import OpenAI
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 # --- Modelos (elegidos por tarea, los que mejor se adaptan) ---
-# Texto / JSON estructurado: barato y muy bueno siguiendo instrucciones de formato.
-CHAT_MODEL = "deepseek/deepseek-chat"
+# Texto / JSON estructurado: fuerte en contenido académico y redacción en español.
+CHAT_MODEL = "google/gemini-2.5-pro"
 # Visión / OCR de documentos: fuerte leyendo texto en imágenes (igual que XARA).
 VISION_MODEL = "qwen/qwen2.5-vl-72b-instruct"
 # Fallback de visión si el principal falla o está saturado.
