@@ -45,7 +45,10 @@ services:
       - "requirements.txt"
     # OCR ahora via OpenRouter: ya no hace falta torch/easyocr.
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "celery -A plataforma worker -l info"
+    # --concurrency=1: Celery por defecto abre 1 proceso por CPU que ve el
+    # contenedor (muchas en Render) y cada uno carga Django+WeasyPrint -> OOM.
+    # --max-tasks-per-child recicla para no acumular memoria.
+    startCommand: "celery -A plataforma worker -l info --concurrency=1 --max-tasks-per-child=100"
     envVars:
       # DB real en Neon. Valor cargado a mano en el dashboard (NO lo maneja el
       # blueprint, para que un sync no lo pise). Ver plataforma-db abajo: queda
