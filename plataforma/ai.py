@@ -27,6 +27,10 @@ if OPENROUTER_API_KEY:
         base_url="https://openrouter.ai/api/v1",
         api_key=OPENROUTER_API_KEY,
         default_headers={"X-Title": "Plataforma Examenes"},
+        # Generaciones largas (muchas preguntas) tardan; cortamos limpio a 170s,
+        # justo antes del --timeout 180 de gunicorn, para devolver error en vez
+        # de que gunicorn mate el worker. (La visión de DNI usa su propio timeout.)
+        timeout=170,
     )
 
 
