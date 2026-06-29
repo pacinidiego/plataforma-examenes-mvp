@@ -201,24 +201,36 @@ def ai_generate_distractors(request):
         return HttpResponse("<p class='text-red-500'>IA no configurada (falta OPENROUTER_API_KEY).</p>")
 
     try:
-        prompt = (
-            "Eres un asistente de educación experto en crear exámenes.\n"
-            f"Genera 3 distractores incorrectos para: P: \"{stem}\" R: \"{correct_answer}\".\n"
-            "Devuelve solo un array JSON de strings: [\"D1\", \"D2\", \"D3\"]"
+        system_msg = (
+            "Sos un experto en crear exámenes. Generás distractores: opciones incorrectas "
+            "pero plausibles y del mismo tipo/registro que la respuesta correcta, sin "
+            "repetirla ni contradecirla. Respondé en el idioma de la pregunta."
         )
+        user_msg = (
+            f"Pregunta: \"{stem}\"\nRespuesta correcta: \"{correct_answer}\"\n"
+            "Generá EXACTAMENTE 3 distractores. Devolvé SOLO un array JSON de strings, "
+            "sin texto extra ni markdown: [\"D1\", \"D2\", \"D3\"]"
+        )
+        print(f"🧠 [IA distractores] modelo={CHAT_MODEL} stem={stem!r}", flush=True)
         response = ai_client.chat.completions.create(
             model=CHAT_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.4,
         )
-        distractors = json.loads(strip_fences(response.choices[0].message.content))
+        raw = response.choices[0].message.content
+        print(f"🧠 [IA distractores] respuesta cruda: {(raw or '')[:500]}", flush=True)
+        distractors = json.loads(strip_fences(raw))
         if len(distractors) < 3:
-            distractors.extend(["", ""]) 
-        
-        context = {'distractors': distractors[:3]} 
+            distractors.extend(["", ""])
+
+        context = {'distractors': distractors[:3]}
         return render(request, 'backoffice/partials/distractors.html', context)
 
     except Exception as e:
+        print(f"❌ [IA distractores] ERROR: {type(e).__name__}: {e}", flush=True)
         return HttpResponse(f"<p class='text-red-500'>Error de IA: {e}</p>")
 
 @login_required
@@ -485,27 +497,38 @@ def ai_preview_items(request, exam_id):
         if not ai_client:
             return HttpResponse("<p class='text-red-500'>IA no configurada (falta OPENROUTER_API_KEY).</p>")
 
-        prompt = (
-            "Eres un experto en evaluación académica universitaria.\n"
-            f"PEDIDO: \"{user_prompt}\".\n"
-            "INSTRUCCIONES:\n"
-            "1. Genera preguntas de opción múltiple según el pedido (Máx 10).\n"
-            "2. Si no pide cantidad, genera 5.\n"
-            "3. INCLUYE ETIQUETAS: Para cada pregunta, genera un string con 2 o 3 etiquetas clave separadas por comas (ej: 'Historia, Europa, Guerra') en el campo 'tags'.\n"
-            f"{avoid_text}"
-            "\n"
-            "--- FORMATO JSON ---\n"
-            "Devuelve SOLO un JSON Array válido:\n"
-            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\"], \"tags\": \"tag1, tag2\"}]"
+        system_msg = (
+            "Sos un experto en evaluación académica universitaria. Generás preguntas de "
+            "opción múltiple siguiendo AL PIE DE LA LETRA el pedido del docente: respetá la "
+            "cantidad, el tema, el nivel/dificultad, el enfoque y el idioma que indique. Lo "
+            "que diga el pedido tiene prioridad sobre cualquier valor por defecto.\n"
+            "Reglas:\n"
+            "- Cada pregunta: enunciado claro, UNA respuesta correcta y EXACTAMENTE 3 "
+            "distractores plausibles pero incorrectos.\n"
+            "- Si el pedido no indica cantidad, generá 5 preguntas (máximo 10).\n"
+            "- 2 o 3 etiquetas clave por pregunta en el campo 'tags' (separadas por coma).\n"
+            "- Respondé en el idioma del pedido (español por defecto)."
+        )
+        user_msg = (
+            f"PEDIDO DEL DOCENTE (seguilo exactamente):\n{user_prompt}\n"
+            f"{avoid_text}\n"
+            "Devolvé SOLO un JSON Array válido, sin texto extra ni markdown:\n"
+            "[{\"stem\": \"...\", \"correct_answer\": \"...\", \"distractors\": [\"...\", \"...\", \"...\"], \"tags\": \"tag1, tag2\"}]"
         )
 
+        print(f"🧠 [IA generar] modelo={CHAT_MODEL} temp=0.4 pedido={user_prompt!r}", flush=True)
         response = ai_client.chat.completions.create(
             model=CHAT_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.4,
         )
 
-        generated_data = json.loads(strip_fences(response.choices[0].message.content))
+        raw = response.choices[0].message.content
+        print(f"🧠 [IA generar] respuesta cruda ({len(raw or '')} chars): {(raw or '')[:2000]}", flush=True)
+        generated_data = json.loads(strip_fences(raw))
         
         for item in generated_data:
             item['json_string'] = json.dumps(item)
@@ -517,6 +540,7 @@ def ai_preview_items(request, exam_id):
         })
 
     except Exception as e:
+        print(f"❌ [IA generar] ERROR: {type(e).__name__}: {e}", flush=True)
         return HttpResponse(f"<div class='bg-red-100 text-red-700 p-4 rounded mb-4'>Error IA: {e}</div>")
 
 
