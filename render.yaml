@@ -14,10 +14,11 @@ services:
     startCommand: "gunicorn plataforma.wsgi"
     healthCheckPath: /health/
     envVars:
+      # DB real en Neon. Valor cargado a mano en el dashboard (NO lo maneja el
+      # blueprint, para que un sync no lo pise). Ver plataforma-db abajo: queda
+      # definida pero sin usar (es la free vacía de Render).
       - key: DATABASE_URL
-        fromDatabase:
-          name: plataforma-db
-          property: connectionString
+        sync: false
       - key: CELERY_BROKER_URL
         fromService:
           type: redis
@@ -45,10 +46,11 @@ services:
     buildCommand: "pip install -r requirements.txt"
     startCommand: "celery -A plataforma worker -l info"
     envVars:
+      # DB real en Neon. Valor cargado a mano en el dashboard (NO lo maneja el
+      # blueprint, para que un sync no lo pise). Ver plataforma-db abajo: queda
+      # definida pero sin usar (es la free vacía de Render).
       - key: DATABASE_URL
-        fromDatabase:
-          name: plataforma-db
-          property: connectionString
+        sync: false
       - key: CELERY_BROKER_URL
         fromService:
           type: redis
