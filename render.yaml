@@ -10,8 +10,8 @@ services:
       paths:
       - "**.py"
       - "requirements.txt"
-    # COMANDO CORREGIDO: Usa $(pwd) para tmp y fuerza CPU torch
-    buildCommand: "mkdir -p tmp_build && export TMPDIR=$(pwd)/tmp_build && pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install easyocr && pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    # OCR ahora via OpenRouter: ya no hace falta torch/easyocr (build liviano).
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
     startCommand: "gunicorn plataforma.wsgi"
     healthCheckPath: /health/
     envVars:
@@ -27,7 +27,7 @@ services:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: WEB_CONCURRENCY
-        value: 4
+        value: 2
       # IA — OpenRouter. El valor se carga a mano en el dashboard (no se commitea).
       - key: OPENROUTER_API_KEY
         sync: false
@@ -43,8 +43,8 @@ services:
       paths:
       - "**.py"
       - "requirements.txt"
-    # Aplicamos el mismo fix al worker para que tenga las librerías de IA disponibles
-    buildCommand: "mkdir -p tmp_build && export TMPDIR=$(pwd)/tmp_build && pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install easyocr && pip install -r requirements.txt"
+    # OCR ahora via OpenRouter: ya no hace falta torch/easyocr.
+    buildCommand: "pip install -r requirements.txt"
     startCommand: "celery -A plataforma worker -l info"
     envVars:
       - key: DATABASE_URL
