@@ -7,7 +7,7 @@ services:
     region: oregon
     buildFilter:
       paths:
-      - "**.py"
+      - "**/*.py"
       - "requirements.txt"
     # OCR ahora via OpenRouter: ya no hace falta torch/easyocr (build liviano).
     buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
@@ -40,7 +40,7 @@ services:
     region: oregon
     buildFilter:
       paths:
-      - "**.py"
+      - "**/*.py"
       - "requirements.txt"
     # OCR ahora via OpenRouter: ya no hace falta torch/easyocr.
     buildCommand: "pip install -r requirements.txt"
